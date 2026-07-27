@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script="res://resources/dialogue_line.gd" format=3]
+
+[resource]
+script = Resource("res://resources/dialogue_line.gd")
+lines = Array[String](["[Evil Potato] HEY I AM THE EVIL POTATO!!!!!11!! I WAS SENT HERE BY SOMEONE NAMED... \"LarpGuy\"???",
+"[Evil Potato] \"ANYWAYS, YOU ARE NOT GOOD PERSON BY THE WAY.\"",
+"[Evil Potato] \"YAH TAKE THAT AS AN INSULT BOY.\""])

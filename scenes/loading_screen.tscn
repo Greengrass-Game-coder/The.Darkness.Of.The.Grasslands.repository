@@ -1,0 +1,62 @@
+[gd_scene format=3 uid="uid://c4pfnl4fn160a"]
+
+[ext_resource type="Script" uid="uid://bq1hmjg5dg3t3" path="res://scripts/systems/loading_screen.gd" id="1_c7v23"]
+
+[node name="LoadingScreen" type="CanvasLayer" unique_id=972383548]
+script = ExtResource("1_c7v23")
+
+[node name="TextureRect" type="TextureRect" parent="." unique_id=2085949861]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+stretch_mode = 2
+
+[node name="ProgressBar" type="ProgressBar" parent="." unique_id=1210466223]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -488.0
+offset_top = -154.0
+offset_right = -88.0
+offset_bottom = -134.0
+grow_horizontal = 2
+grow_vertical = 0
+rotation = -1.5719527
+show_percentage = false
+
+[node name="LoadingLabel" type="Label" parent="." unique_id=1681238866]
+auto_translate_mode = 2
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -104.0
+offset_top = -657.0
+offset_right = 96.0
+offset_bottom = -612.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 32
+text = "Loading..."
+horizontal_alignment = 1
+
+[node name="SkipButton" type="Button" parent="." unique_id=1792967809]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = 286.0
+offset_top = -82.0
+offset_right = 446.0
+offset_bottom = -48.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 1
+theme_override_colors/font_color = Color(1, 1, 1, 0.8)
+theme_override_font_sizes/font_size = 18
+text = "Skip"

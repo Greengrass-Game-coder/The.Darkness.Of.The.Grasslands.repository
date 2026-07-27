@@ -1,0 +1,38 @@
+{
+	"abilities": [
+		{
+			"cooldown": 20.0,
+			"defense": 5,
+			"damage_absorption": 0.85,
+			"description": "Raise a guard, absorbing 85% of incoming damage. A successful block against an M1 or manual-hit Killer ability unlocks Grass Punch.",
+			"name": "Block",
+			"type": "defense"
+		},
+		{
+			"cooldown": 20.0,
+			"parry_cooldown": 30.0,
+			"stun_duration": 2.0,
+			"parry_stun_duration": 3.0,
+			"parry_window": 2.0,
+			"description": "Locked by default. Unlocked via a successful Block. Aim with mouse and click to strike. Parried version stuns 3s.",
+			"name": "Grass Punch",
+			"type": "offense",
+			"locked": true
+		},
+		{
+			"cooldown": 45.0,
+			"heal_amount": 70,
+			"heal_type": "over_time",
+			"description": "Heal-over-time for a nearby ally. If no ally is nearby when cast, heals self instantly instead.",
+			"name": "Spare Flower",
+			"type": "heal"
+		}
+	],
+	"description": "A resilient survivor fighting to make it through the darkness.",
+	"equipped": true,
+	"max_hp": 100,
+	"name": "Greengrass",
+	"role": "survivor",
+	"speed": 4.5,
+	"sprint_speed": 10
+}

@@ -1,0 +1,23 @@
+[gd_scene format=3 uid="uid://dstklnmm5vpbq"]
+
+[node name="TestUI" type="Control" unique_id=1695344137]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=505970138]
+layout_mode = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+color = Color(0, 0.5, 0, 0.5)
+
+[node name="Label" type="Label" parent="." unique_id=1483148116]
+layout_mode = 0
+offset_left = 500.0
+offset_top = 300.0
+offset_right = 780.0
+offset_bottom = 400.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 48
+text = "CAN YOU SEE ME?"

@@ -1,0 +1,25 @@
+{
+	"abilities": [
+		{
+			"cooldown": 2.5,
+			"damage": 25,
+			"description": "A brutal strike that damages survivors.",
+			"name": "Hit",
+			"type": "attack"
+		},
+		{
+			"cooldown": 15.0,
+			"description": "Teleport a short distance toward the targeted location.",
+			"name": "Teleportation",
+			"range": 400,
+			"type": "mobility"
+		}
+	],
+	"description": "A relentless killer stalking through the grasslands.",
+	"equipped": true,
+	"max_hp": 6666,
+	"name": "Violentgrass",
+	"role": "killer",
+	"speed": 5.5,
+	"sprint_speed": 8.0
+}

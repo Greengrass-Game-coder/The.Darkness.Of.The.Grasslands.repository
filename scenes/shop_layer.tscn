@@ -1,0 +1,82 @@
+[gd_scene format=3 uid="uid://b0v4w12x7anp5"]
+
+[ext_resource type="Script" uid="uid://cosnm45u2m072" path="res://scripts/ui/shop_layer.gd" id="1_niabj"]
+[ext_resource type="Texture2D" uid="uid://on8uvcgn3tlk" path="res://The Darkness Of The Grasslands assets/UI/Lobby/Shop and inventory background UI.png" id="2_mj8x6"]
+
+[node name="ShopLayer" type="Control" unique_id=1354609834]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+script = ExtResource("1_niabj")
+
+[node name="EditorBackdrop" type="ColorRect" parent="." unique_id=24893227]
+layout_mode = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+color = Color(0, 0, 0, 0.3)
+
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=415930313]
+layer = 10
+
+[node name="Panel" type="Control" parent="UILayer" unique_id=999796059]
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -640.0
+offset_top = -360.0
+offset_right = 640.0
+offset_bottom = 360.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Background" type="TextureRect" parent="UILayer/Panel" unique_id=1961931393]
+layout_mode = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+texture = ExtResource("2_mj8x6")
+expand_mode = 1
+
+[node name="CloseButton" type="Button" parent="UILayer/Panel" unique_id=1332231188]
+layout_mode = 0
+offset_left = 1008.0
+offset_top = 105.0
+offset_right = 1068.0
+offset_bottom = 165.0
+theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
+theme_override_font_sizes/font_size = 24
+text = "X"
+
+[node name="TabButtons" type="HBoxContainer" parent="UILayer/Panel" unique_id=1806874349]
+layout_mode = 0
+offset_left = 240.0
+offset_top = 90.0
+offset_right = 1040.0
+offset_bottom = 130.0
+alignment = 1
+
+[node name="KillersTab" type="Button" parent="UILayer/Panel/TabButtons" unique_id=1390291856]
+custom_minimum_size = Vector2(250, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
+theme_override_font_sizes/font_size = 18
+text = "KILLERS"
+
+[node name="SurvivorsTab" type="Button" parent="UILayer/Panel/TabButtons" unique_id=469108778]
+custom_minimum_size = Vector2(250, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.3, 1, 0.3, 1)
+theme_override_font_sizes/font_size = 18
+text = "SURVIVORS"
+
+[node name="CharacterContainer" type="Control" parent="UILayer/Panel" unique_id=1427366529]
+anchors_preset = 0
+offset_left = 140.0
+offset_top = 140.0
+offset_right = 1140.0
+offset_bottom = 660.0

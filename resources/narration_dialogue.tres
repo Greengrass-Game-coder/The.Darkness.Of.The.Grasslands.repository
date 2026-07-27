@@ -1,0 +1,5 @@
+[gd_resource type="Resource" script="res://resources/dialogue_line.gd" format=3]
+
+[resource]
+script = Resource("res://resources/dialogue_line.gd")
+lines = Array[String](["[Narration] You feel a presence watching you...", "[Narration] The countdown echoes in the distance...", "[Narration] Something stirs beneath the grass.", "[Narration] The darkness grows closer with every second."])

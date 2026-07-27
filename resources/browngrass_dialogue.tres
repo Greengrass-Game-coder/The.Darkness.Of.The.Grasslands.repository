@@ -1,0 +1,57 @@
+[gd_resource type="Resource" script="res://resources/dialogue_line.gd" format=3]
+
+[resource]
+script = Resource("res://resources/dialogue_line.gd")
+lines = Array[String](["[Browngrass] ...", "[Browngrass] It's all your fault...", "[Browngrass] You did this to yourself.", "[Lobby Person] (Choose)", "[Browngrass] I wont tell you...", "[Browngrass] Your doing... Your. Problem.", "[Browngrass] Anyways-- Welcome to the Grasslands... Err.. What's left of it now...", "[Browngrass] Anything you wanna say now..?", "[Lobby Person] (Choose)", "[Browngrass] This flower...?", "[Browngrass] Love and Tragedy...", "[Browngrass] I am nobody...", "[Browngrass] if you will ask me that same specific question i am gonna lose it.", "[Browngrass] ...", "[Browngrass] There is no way out... You got here by accident.", "[Browngrass] ...", "[Browngrass] Me and my best friend...", "[Browngrass] Good.. Now cease.", "[Browngrass] Oh Great...", "[Browngrass] It's not okay... Its just... NOT... okay... Please... Leave me alone."])
+choices = {
+3: [{
+"text": "What do you mean?",
+"target": 4
+}, {
+"text": "How did I get here..?",
+"target": 5
+}],
+8: [{
+"text": "What is this flower you're looking at..?",
+"target": 9,
+"set_flag": "q1_done"
+}, {
+"text": "Who are you?",
+"target": 11
+}, {
+"text": "Can you PLEASE tell me how I got here... Please...",
+"target": 13
+}, {
+"text": "Why is it Love and Tragedy.",
+"target": 15,
+"condition_flag": "q1_done"
+}, {
+"text": "Bye",
+"target": -2
+}],
+10: [{
+"text": "...",
+"target": 7,
+"auto": true
+}],
+12: [{
+"text": "...",
+"target": 7,
+"auto": true
+}],
+14: [{
+"text": "...",
+"target": 7,
+"auto": true
+}],
+16: [{
+"text": "...",
+"target": 7,
+"auto": true
+}],
+18: [{
+"text": "...",
+"target": 7,
+"auto": true
+}]
+}

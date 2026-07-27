@@ -1,0 +1,206 @@
+[gd_scene format=3 uid="uid://cgn0gr14ek4gn"]
+
+[ext_resource type="Script" uid="uid://xc186l36e36p" path="res://scripts/characters/violentgrass_controller.gd" id="1_7nksj"]
+[ext_resource type="Texture2D" uid="uid://csqa6rckwj22o" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/walk directions/VIOLENTGRASS ---- Killer/Walk DOWN/Walk_DOWN_frame-1.png" id="2_d0"]
+[ext_resource type="Texture2D" uid="uid://wy6wbh2tpwhg" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/walk directions/VIOLENTGRASS ---- Killer/Walk DOWN/Walk_DOWN_frame-2.png" id="2_d1"]
+[ext_resource type="Texture2D" uid="uid://da334vo0k38xp" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/walk directions/VIOLENTGRASS ---- Killer/Walk UP LEFT/Walk_LEFT_frame-1.png" id="3_l0"]
+[ext_resource type="Texture2D" uid="uid://cdbp8tcqow212" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/walk directions/VIOLENTGRASS ---- Killer/Walk UP LEFT/Walk_LEFT_frame-2.png" id="3_l1"]
+[ext_resource type="Texture2D" uid="uid://cd01vdbl5okxj" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/walk directions/VIOLENTGRASS ---- Killer/Walk RIGHT/Walk_RIGHT_frame-1.png" id="4_r0"]
+[ext_resource type="Texture2D" uid="uid://be4rpmu83qlwq" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/walk directions/VIOLENTGRASS ---- Killer/Walk RIGHT/Walk_RIGHT_frame-2.png" id="4_r1"]
+[ext_resource type="Texture2D" uid="uid://dks8pghudio27" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/walk directions/VIOLENTGRASS ---- Killer/Walk UP/Walk_UP_frame-1.png" id="5_u0"]
+[ext_resource type="Texture2D" uid="uid://dl8efomu43an0" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/walk directions/VIOLENTGRASS ---- Killer/Walk UP/Walk_UP_frame-2.png" id="5_u1"]
+[ext_resource type="Texture2D" uid="uid://bfkbhnt7s5q1n" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Teleportation/Teleportation_frame-(1).png" id="7_01"]
+[ext_resource type="Texture2D" uid="uid://c0uyd4nk4nhtq" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Teleportation/Teleportation_frame-(2).png" id="7_02"]
+[ext_resource type="Texture2D" uid="uid://bg5sl58mrso4k" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Teleportation/Teleportation_frame-(3).png" id="7_03"]
+[ext_resource type="Texture2D" uid="uid://ccpokjnc62e2k" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Teleportation/Teleportation_frame-(4).png" id="7_04"]
+[ext_resource type="Texture2D" uid="uid://clk4cpheo47gt" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Teleportation/Teleportation_frame-(5).png" id="7_05"]
+[ext_resource type="Texture2D" uid="uid://7mfbpmtdgc5u" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Teleportation/Teleportation_frame-(6).png" id="7_06"]
+[ext_resource type="Texture2D" uid="uid://rcson75s518l" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Teleportation/Teleportation_frame-(7).png" id="7_07"]
+[ext_resource type="Texture2D" uid="uid://mi3xk0fyseh7" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-1.png" id="10_xlvmw"]
+[ext_resource type="Texture2D" uid="uid://ml25qyixcxhv" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-2.png" id="11_l8gh4"]
+[ext_resource type="Texture2D" uid="uid://cpgea7bbr05gc" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-3.png" id="12_1as1f"]
+[ext_resource type="Texture2D" uid="uid://b8xe83ncq3814" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-4.png" id="13_k6e6u"]
+[ext_resource type="Texture2D" uid="uid://hg3c5qu41m0x" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-5.png" id="14_y6yn3"]
+[ext_resource type="Texture2D" uid="uid://bsw6h4kpc213a" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-6.png" id="15_8il8y"]
+[ext_resource type="Texture2D" uid="uid://ehxkm4kumd2r" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-7.png" id="16_rgpu3"]
+[ext_resource type="Texture2D" uid="uid://0r20dvwk4qla" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-8.png" id="17_3edid"]
+[ext_resource type="Texture2D" uid="uid://cai0gtdc4v4f0" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-9.png" id="18_ervg2"]
+[ext_resource type="Texture2D" uid="uid://b6g6mtrgod0fn" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-10.png" id="19_unp45"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_vg"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_d0")
+}],
+"loop": 0,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_d0")
+}],
+"loop": 0,
+"name": &"idle_down",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3_l0")
+}],
+"loop": 0,
+"name": &"idle_left",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("4_r0")
+}],
+"loop": 0,
+"name": &"idle_right",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("5_u0")
+}],
+"loop": 0,
+"name": &"idle_up",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_d0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_d1")
+}],
+"loop": 1,
+"name": &"walk_down",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3_l0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_l1")
+}],
+"loop": 1,
+"name": &"walk_left",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("4_r0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_r1")
+}],
+"loop": 1,
+"name": &"walk_right",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("5_u0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_u1")
+}],
+"loop": 1,
+"name": &"walk_up",
+"speed": 8.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_vg"]
+size = Vector2(28, 34)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_xlvmw"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("10_xlvmw")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_l8gh4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_1as1f")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_k6e6u")
+}, {
+"duration": 1.0,
+"texture": ExtResource("14_y6yn3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("15_8il8y")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_rgpu3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("17_3edid")
+}, {
+"duration": 1.0,
+"texture": ExtResource("18_ervg2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("19_unp45")
+}],
+"loop": 0,
+"name": &"hit_down",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("7_01")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_02")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_03")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_04")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_05")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_06")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_07")
+}],
+"loop": 0,
+"name": &"teleport_down",
+"speed": 10.0
+}]
+
+[node name="Violentgrass" type="CharacterBody2D" unique_id=1091763125]
+script = ExtResource("1_7nksj")
+sprint_speed = 500.0
+chase_fade_in_duration = 0.0
+chase_fade_out_duration = 0.0
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=475775191]
+scale = Vector2(0.25, 0.25)
+sprite_frames = SubResource("SpriteFrames_vg")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=624060751]
+shape = SubResource("RectangleShape2D_vg")
+
+[node name="StateTimer" type="Timer" parent="." unique_id=2046478376]
+one_shot = true
+
+[node name="AbilityVFX" type="AnimatedSprite2D" parent="." unique_id=545769201]
+z_index = 100
+scale = Vector2(0.25, 0.25)
+sprite_frames = SubResource("SpriteFrames_xlvmw")
+animation = &"hit_down"
