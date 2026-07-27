@@ -1,6 +1,6 @@
 extends Node
 
-## WebSocket client that connects to the Railway-hosted game server.
+## WebSocket client that connects to the Render-hosted game server.
 ## Autoload — accessible globally as NetworkManager.
 
 signal connected_to_server()
@@ -13,7 +13,9 @@ signal chat_message_received(sender: String, text: String)
 signal match_found(match_data: Dictionary)
 signal game_started(role: String, player_list: Array)
 signal phase_changed(phase: String, time_remaining: float)
-signal admin_command_result(success: bool, mesconst RAILWAY_URL: String = "wss://the-darkness-server.onrender.com"6.up.railway.app"
+signal admin_command_result(success: bool, message: String)
+
+const SERVER_URL: String = "wss://the-darkness-server.onrender.com"
 const RECONNECT_DELAY: float = 3.0
 const MAX_RECONNECT_ATTEMPTS: int = 5
 
@@ -25,9 +27,38 @@ var _reconnect_timer: float = 0.0
 var _in_queue: bool = false
 var _handlers: Dictionary = {}
 
+# Render wake-up (free tier spins down after inactivity)
+var _http: HTTPRequest = null
+var _waking_server: bool = false
+var _wake_done: bool = false
+
 
 func _ready() -> void:
 	_register_handlers()
+	_setup_wake_up()
+
+
+func _setup_wake_up() -> void:
+	"""Create HTTP node to ping Render and wake it from sleep."""
+	_http = HTTPRequest.new()
+	add_child(_http)
+	_http.request_completed.connect(_on_wake_response)
+
+
+func _wake_server() -> void:
+	"""Send an HTTP GET to wake the Render free-tier server from sleep."""
+	if _waking_server or _wake_done:
+		return
+	_waking_server = true
+	print("NetworkManager: Waking server at ", SERVER_URL)
+	_http.request(SERVER_URL)
+
+
+func _on_wake_response(_result: int, _response_code: int, _headers: Array, _body: PackedByteArray) -> void:
+	_waking_server = false
+	_wake_done = true
+	print("NetworkManager: Server is awake, connecting WebSocket...")
+	_do_connect()
 
 
 func _register_handlers() -> void:
@@ -45,23 +76,33 @@ func _register_handlers() -> void:
 
 
 func connect_to_server() -> void:
-	"""Connect to the Railway WebSocket server."""
+	"""Connect to the WebSocket server. Wakes Render first if needed."""
 	if connected:
 		return
-	
+	if not _wake_done:
+		_wake_server()
+		return
+	_do_connect()
+
+
+func _do_connect() -> void:
+	"""Internal: create WebSocket connection."""
+	if connected:
+		return
+
 	socket = WebSocketMultiplayerPeer.new()
-	var player_name: String = GameState.logged_in_username if GameState.logged_in_username.is_empty() == false else "Player"
-	var url: String = RAILWAY_URL + "?player_name=" + player_name.uri_encode()
+	var player_name: String = GameState.logged_in_username if not GameState.logged_in_username.is_empty() else "Player"
+	var url: String = SERVER_URL + "?player_name=" + player_name.uri_encode()
 	var err: int = socket.create_client(url)
-	
+
 	if err != OK:
 		connection_failed.emit("Failed to create WebSocket client: " + error_string(err))
 		return
-	
+
 	multiplayer.multiplayer_peer = socket
 	_connect_signals()
 	reconnect_attempts = 0
-	print("NetworkManager: Connecting to ", RAILWAY_URL)
+	print("NetworkManager: Connecting to ", SERVER_URL)
 
 
 func _connect_signals() -> void:
@@ -79,7 +120,7 @@ func _on_socket_connected() -> void:
 	connected = true
 	reconnect_attempts = 0
 	connected_to_server.emit()
-	print("NetworkManager: Connected to Railway server")
+	print("NetworkManager: Connected to server")
 
 
 func _on_socket_connect_failed() -> void:
@@ -109,11 +150,11 @@ func _process(delta: float) -> void:
 		_reconnect_timer -= delta
 		if _reconnect_timer <= 0:
 			connect_to_server()
-	
+
 	# Poll for incoming packets
 	if not connected or not socket:
 		return
-	
+
 	socket.poll()
 	if socket.get_available_packet_count() > 0:
 		var raw: PackedByteArray = socket.get_packet()
