@@ -9,7 +9,7 @@ extends Node
 ##
 ## For Railway: select this scene as main, export as Linux headless server.
 
-const SERVER_PORT: int = int(OS.get_environment("PORT")) if OS.has_environment("PORT") else 8080
+var server_port: int = 8080  # Set in _ready() from Render PORT env
 const MAX_PLAYERS: int = 9  # 1 killer + 8 survivors
 const MATCH_DURATION_ROUND: float = 240.0  # 4 minutes
 const MATCH_DURATION_LMS: float = 195.0  # 3.25 minutes
@@ -36,13 +36,16 @@ var _current_match_id: int = 0
 
 
 func _ready() -> void:
-	print("DedicatedServer: Starting on port ", SERVER_PORT)
+	# Render sets PORT env var (default 10000, but we use whatever Render gives)
+	if OS.has_environment("PORT"):
+		server_port = int(OS.get_environment("PORT"))
+	print("DedicatedServer: Starting on port ", server_port)
 	_start_server()
 
 
 func _start_server() -> void:
 	_server = WebSocketMultiplayerPeer.new()
-	var err: int = _server.create_server(SERVER_PORT, "*")
+	var err: int = _server.create_server(server_port, "*")
 	if err != OK:
 		push_error("DedicatedServer: Failed to create server: ", error_string(err))
 		get_tree().quit(1)
@@ -52,7 +55,7 @@ func _start_server() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	
-	print("DedicatedServer: Server running on port ", SERVER_PORT, " (max ", MAX_PLAYERS, " players)")
+	print("DedicatedServer: Server running on port ", server_port, " (max ", MAX_PLAYERS, " players)")
 
 
 func _process(delta: float) -> void:

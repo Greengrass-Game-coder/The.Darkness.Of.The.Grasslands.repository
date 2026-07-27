@@ -8,6 +8,7 @@ COPY Server/TheDarknessServer.pck .
 
 RUN chmod +x ./TheDarknessServer.x86_64
 
-EXPOSE 8080
+# Render routes via PORT env var (default 10000) — no EXPOSE needed
+# Server reads PORT from environment in dedicated_server.gd
 
 CMD ["./TheDarknessServer.x86_64", "--headless"]
