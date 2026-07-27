@@ -2,14 +2,12 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Copy all project files
-COPY . .
+# Only copy the server binary + pck — no game assets needed
+COPY Server/TheDarknessServer.x86_64 .
+COPY Server/TheDarknessServer.pck .
 
-# Make server binary executable
-RUN chmod +x ./Server/TheDarknessServer.x86_64
+RUN chmod +x ./TheDarknessServer.x86_64
 
-# Expose server port
 EXPOSE 8080
 
-# Run the dedicated server
-CMD ["./Server/TheDarknessServer.x86_64", "--headless"]
+CMD ["./TheDarknessServer.x86_64", "--headless"]
