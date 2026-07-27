@@ -13,7 +13,7 @@ export_credentials_cfg
 Server/*.x86_64
 
 # The external assets folder - NOT part of the repo
-"The Darkness Of The Grasslands assets"/
+The Darkness Of The Grasslands assets/
 
 # Imported translations (automatically generated from CSV files)
 *.translation
