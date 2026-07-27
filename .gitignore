@@ -9,6 +9,9 @@ export.cfg
 export_credentials_cfg
 *.tmp
 
+# Server binaries — Docker downloads Godot headless at build time
+Server/*.x86_64
+
 # The external assets folder - NOT part of the repo
 "The Darkness Of The Grasslands assets"/
 
