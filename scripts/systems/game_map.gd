@@ -617,6 +617,8 @@ func _add_map_border_walls() -> void:
 	
 	var body := StaticBody2D.new()
 	body.name = "MapBorderWalls"
+	# Map borders on collision layer 3
+	body.collision_layer = 4
 	add_child(body)
 	
 	# Top
@@ -674,6 +676,17 @@ func _setup_chase_music() -> void:
 
 func _play_killer_cutscene() -> void:
 	"""Play the Violentgrass killer intro cutscene from PNG frames."""
+	# Hide everything except the cutscene
+	var hud: CanvasLayer = $HUD
+	if hud:
+		hud.visible = false
+	if map_visual:
+		map_visual.visible = false
+	
+	# Disable player movement
+	if is_instance_valid(_player) and _player.has_method("set_physics_process"):
+		_player.set_physics_process(false)
+	
 	var cutscene := CutscenePlayer.new()
 	cutscene.name = "KillerCutscene"
 	cutscene.fps = 8.0  # 43 frames at 8fps ≈ 5.4 seconds
@@ -683,16 +696,24 @@ func _play_killer_cutscene() -> void:
 	var audio_path: String = ""  # No audio yet — user can add later
 	
 	# Pause the match timer while cutscene plays
-	match_timer.paused = true
+	if match_timer:
+		match_timer.paused = true
 	
 	cutscene.play_cutscene(folder_path, audio_path)
 	
-	# Wait for cutscene to finish, then fade out
+	# Wait for cutscene to finish (has auto-fade in last 1s)
 	await cutscene.finished
-	await cutscene.fade_out_and_free(0.5)
+	cutscene.queue_free()
 	
-	# Unpause and start the match
-	match_timer.paused = false
+	# Restore everything
+	if hud:
+		hud.visible = true
+	if map_visual:
+		map_visual.visible = true
+	if is_instance_valid(_player) and _player.has_method("set_physics_process"):
+		_player.set_physics_process(true)
+	if match_timer:
+		match_timer.paused = false
 	print("GameMap: Killer intro finished, match started")
 
 

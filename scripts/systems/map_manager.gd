@@ -93,6 +93,7 @@ func build_collision(parent_node: Node) -> void:
 	
 	var wall_body := StaticBody2D.new()
 	wall_body.name = "WallCollision"
+	wall_body.collision_layer = 4  # Layer 3 = walls
 	parent_node.add_child(wall_body)
 	
 	var grid_w: int = ceili(float(blueprint_size.x) / GRID_SIZE)

@@ -130,8 +130,8 @@ func _has_line_of_sight(target: Node2D) -> bool:
 		return false
 	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(global_position, target.global_position, 1)
-	# Only collide with walls (layer 1 = wall tiles on TileMapLayer)
-	query.collision_mask = 1
+	# Only collide with walls (layer 3)
+	query.collision_mask = 4
 	query.exclude = [self, target]
 	var result: Dictionary = space_state.intersect_ray(query)
 	return result.is_empty()

@@ -82,6 +82,9 @@ func _ready() -> void:
 	current_stamina = max_stamina
 	_change_state(State.IDLE)
 	add_to_group("survivors")
+	# Collision: survivor on layer 1, only collide with killer (layer 2) + walls (layer 3)
+	collision_layer = 1
+	collision_mask = 2 | 4  # layer 2 (killer) + layer 3 (walls)
 	hp_changed.emit(current_hp, max_hp)
 	stamina_changed.emit(current_stamina, max_stamina)
 	_setup_ability_vfx_frames()
@@ -372,7 +375,7 @@ func _check_punch_hit() -> Array[Node2D]:
 	query.shape = shape
 	query.transform = Transform2D(0, global_position)
 	query.exclude = [self]
-	query.collision_mask = 1
+	query.collision_mask = 2  # Detect killers (layer 2)
 	var results: Array[Dictionary] = space_state.intersect_shape(query)
 	var hits: Array[Node2D] = []
 	for r in results:

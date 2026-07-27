@@ -14,7 +14,10 @@ var _current_frame: int = 0
 var _playing: bool = false
 var _sprite: Sprite2D = null
 var _black_bg: ColorRect = null
+var _fade_overlay: ColorRect = null
 var _timer: float = 0.0
+var _total_duration: float = 0.0
+var _is_fading_out: bool = false
 var _audio_player: AudioStreamPlayer = null
 
 
@@ -59,6 +62,8 @@ func play_cutscene(folder_path: String, audio_path: String = "") -> void:
 	_current_frame = 0
 	_playing = true
 	_timer = 0.0
+	_total_duration = float(_frames.size()) / fps
+	_is_fading_out = false
 	show()
 	
 	# Play audio
@@ -99,6 +104,13 @@ func _build_ui() -> void:
 	
 	_sprite.texture = _frames[0]
 	container.add_child(_sprite)
+	
+	# Fade overlay on top (for the 1-second-before-end fade-out)
+	_fade_overlay = ColorRect.new()
+	_fade_overlay.name = "FadeOverlay"
+	_fade_overlay.color = Color(0, 0, 0, 0)
+	_fade_overlay.anchors_preset = Control.PRESET_FULL_RECT
+	container.add_child(_fade_overlay)
 
 
 func _process(delta: float) -> void:
@@ -106,6 +118,12 @@ func _process(delta: float) -> void:
 		return
 	
 	_timer += delta
+	
+	# Auto-fade when 1 second remains
+	if not _is_fading_out and _total_duration > 0 and _timer >= _total_duration - 1.0:
+		_is_fading_out = true
+		var fade_tween: Tween = create_tween()
+		fade_tween.tween_property(_fade_overlay, "color", Color(0, 0, 0, 1), 1.0)
 	
 	var frame_duration: float = 1.0 / fps
 	while _timer >= frame_duration and _playing:

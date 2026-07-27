@@ -310,7 +310,7 @@ func _ai_teleport_to_random() -> void:
 	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(global_position, destination)
 	query.exclude = [self]
-	query.collision_mask = 1
+	query.collision_mask = 4  # Wall layer
 	var result: Dictionary = space_state.intersect_ray(query)
 
 	if result.is_empty():

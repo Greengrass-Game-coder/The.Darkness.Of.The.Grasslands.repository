@@ -19,7 +19,7 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 # Hit ability
 @export var hit_damage: float = 25.0
 @export var hit_cooldown: float = 2.5
-@export var hit_range: float = 80.0
+@export var hit_range: float = 120.0  # Extended range — hits outside collision body
 
 # Teleportation ability
 @export var teleport_cooldown: float = 15.0
@@ -70,6 +70,9 @@ func _ready() -> void:
 	current_stamina = max_stamina
 	_change_state(State.IDLE)
 	add_to_group("killers")
+	# Collision: killer on layer 2, only collide with survivor (layer 1) + walls (layer 3)
+	collision_layer = 2
+	collision_mask = 1 | 4  # layer 1 (survivor) + layer 3 (walls)
 	stamina_changed.emit(current_stamina, max_stamina)
 	_setup_ability_vfx_frames()
 	if not ability_vfx.animation_finished.is_connected(_on_ability_vfx_finished):
@@ -337,7 +340,7 @@ func _do_teleport_move() -> void:
 		var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 		var query := PhysicsRayQueryParameters2D.create(global_position, global_position + _teleport_target_dir)
 		query.exclude = [self]
-		query.collision_mask = 1
+		query.collision_mask = 4  # Wall layer
 		var result: Dictionary = space_state.intersect_ray(query)
 		
 		if result.is_empty():
@@ -424,8 +427,8 @@ func _has_line_of_sight(target: Node2D) -> bool:
 		return false
 	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(global_position, target.global_position, 1)
-	# Only collide with walls (layer 1 = wall tiles on TileMapLayer)
-	query.collision_mask = 1
+	# Only collide with walls (layer 3)
+	query.collision_mask = 4
 	query.exclude = [self, target]
 	var result: Dictionary = space_state.intersect_ray(query)
 	return result.is_empty()
