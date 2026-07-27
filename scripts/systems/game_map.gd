@@ -296,11 +296,13 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	var cam := _player.get_node("Camera2D") as Camera2D
 	if cam:
 		cam.enabled = true
-		cam.make_current()
-		cam.reset_smoothing()
+		cam.make_cu	# Create ability icons
+	_create_ability_icons(_player, is_killer_player)
 	
-	# Set character name for analysis screen
-	_character_name = "Violentgrass" if is_killer_player else "Greengrass"
+	# Connect survivor ability icon signals (flash/lock)
+	_connect_ability_icon_signals(_player)
+	
+	# Create epilepsy-safe overlayentgrass" if is_killer_player else "Greengrass"
 	
 	# Create health bar UI
 	_create_health_bar(_player)
@@ -461,18 +463,15 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		# Icon
 		var icon := TextureRect.new()
 		icon.name = "Icon"
-		icon.texture = load(data["icon"])
-		icon.size = Vector2(56, 56)
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		slot.add_child(icon)
 		
-		# Cooldown overlay (dark)
-		var overlay := ColorRect.new()
-		overlay.name = "CooldownOverlay"
-		overlay.size = Vector2(56, 56)
-		overlay.color = Color(0, 0, 0, 0.6)
-		overlay.visible = false
-		slot.add_child(overlay)
+		# Lock overlay — only for Grass Punch (slot index 1 = E)
+		if i == 1:
+			var lock_overlay := ColorRect.new()
+			lock_overlay.name = "LockOverlay"
+			lock_overlay.size = Vector2(56, 56)
+			lock_overlay.color = Color(0.3, 0.3, 0.3, 0.7)
+			lock_overlay.visible = true  # Start locked
+			slot.add_child(lock_overlay)
 		
 		# Key label
 		var key_label := Label.new()
@@ -480,6 +479,14 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		key_label.text = data["key"]
 		key_label.position = Vector2(2, 36)
 		key_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
+		key_label.add_theme_font_size_override("font_size", 12)
+		key_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		key_label.add_theme_constant_override("shadow_offset_x", 1)
+		key_label.add_theme_constant_override("shadow_offset_y", 1)
+		slot.add_child(key_label)
+		
+		# Store reference for cooldown tracking
+		slot.set_meta("cooldown_var", data["cooldown_var"])override("font_color", Color(1, 1, 1, 0.8))
 		key_label.add_theme_font_size_override("font_size", 12)
 		key_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
 		key_label.add_theme_constant_override("shadow_offset_x", 1)
@@ -496,11 +503,49 @@ func _update_ability_cooldowns() -> void:
 	if not icons or not is_instance_valid(_player):
 		return
 	
-	for slot: Node in icons.get_children():
-		var var_name: String = slot.get_meta("cooldown_var", "")
-		if var_name.is_empty():
-			continue
-		var overlay: ColorRect = slot.get_node_or_null("CooldownOverlay")
+	for slot: Node infunc _connect_ability_icon_signals(player: Node2D) -> void:
+	"""Connect signals for ability icon visual feedback (flash/lock)."""
+	if not is_instance_valid(player):
+		return
+	if player.has_signal("block_unlocked_punch") and not player.block_unlocked_punch.is_connected(_on_punch_unlocked):
+		player.block_unlocked_punch.connect(_on_punch_unlocked)
+	if player.has_signal("punch_locked_changed") and not player.punch_locked_changed.is_connected(_on_punch_locked_changed):
+		player.punch_locked_changed.connect(_on_punch_locked_changed)
+
+
+func _on_punch_unlocked() -> void:
+	"""Flash the Grass Punch icon yellow when unlocked via block."""
+	var icons: Node = $HUD.get_node_or_null("AbilityIcons")
+	if not icons:
+		return
+	var punch_slot: Node = icons.get_child(1) if icons.get_child_count() > 1 else null  # Slot index 1 = Grass Punch
+	if not punch_slot:
+		return
+	var icon: TextureRect = punch_slot.get_node_or_null("Icon")
+	if not icon:
+		return
+	# Flash yellow
+	var orig_mod: Color = icon.modulate
+	icon.modulate = Color(3.0, 3.0, 0.2, 1.0)
+	var tween: Tween = create_tween()
+	tween.tween_property(icon, "modulate", orig_mod, 0.5).set_ease(Tween.EASE_OUT)
+
+
+func _on_punch_locked_changed(locked: bool) -> void:
+	"""Show/hide lock overlay on Grass Punch icon."""
+	var icons: Node = $HUD.get_node_or_null("AbilityIcons")
+	if not icons:
+		return
+	var punch_slot: Node = icons.get_child(1) if icons.get_child_count() > 1 else null
+	if not punch_slot:
+		return
+	var lock_overlay: ColorRect = punch_slot.get_node_or_null("LockOverlay")
+	if lock_overlay:
+		lock_overlay.visible = locked
+
+
+func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, label: Label) -> void:
+	"""Update the health bar when player HP changes.""" overlay: ColorRect = slot.get_node_or_null("CooldownOverlay")
 		if not overlay:
 			continue
 		# Use 'in' operator to check if property exists on the player
