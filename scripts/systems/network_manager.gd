@@ -15,7 +15,7 @@ signal game_started(role: String, player_list: Array)
 signal phase_changed(phase: String, time_remaining: float)
 signal admin_command_result(success: bool, message: String)
 
-const RAILWAY_URL: String = "ws://master-server-production-4e16.up.railway.app:8080"
+const RAILWAY_URL: String = "wss://master-server-production-4e16.up.railway.app"
 const RECONNECT_DELAY: float = 3.0
 const MAX_RECONNECT_ATTEMPTS: int = 5
 
