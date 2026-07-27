@@ -13,9 +13,7 @@ signal chat_message_received(sender: String, text: String)
 signal match_found(match_data: Dictionary)
 signal game_started(role: String, player_list: Array)
 signal phase_changed(phase: String, time_remaining: float)
-signal admin_command_result(success: bool, message: String)
-
-const RAILWAY_URL: String = "wss://master-server-production-4e16.up.railway.app"
+signal admin_command_result(success: bool, mesconst RAILWAY_URL: String = "wss://the-darkness-server.onrender.com"6.up.railway.app"
 const RECONNECT_DELAY: float = 3.0
 const MAX_RECONNECT_ATTEMPTS: int = 5
 
