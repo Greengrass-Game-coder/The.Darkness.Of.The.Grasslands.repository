@@ -23,41 +23,28 @@ const GREENGRASS_SCENE: PackedScene = preload("res://scenes/greengrass.tscn")
 const VIOLENTGRASS_SCENE: PackedScene = preload("res://scenes/violentgrass.tscn")
 const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller.gd")
 
-# Chase music defaults (overridden by bot's @export settings when spawned)
-# Chase music radii (pixels) — defaults, overridden from bot @export at spawn
-var _chase_in_layer1: float = 500.0
-var _chase_in_layer2: float = 250.0
-var _chase_in_layer3: float = 125.0
-var _chase_in_chase: float = 50.0
-var _chase_out_none: float = 600.0
-var _chase_out_layer1: float = 400.0
-var _chase_out_layer2: float = 200.0
-var _chase_out_layer3: float = 100.0
-var _chase_fade_in: float = 0.5
-var _chase_fade_out: float = 0.5
-
+# Chase music — single Chase.wav, no layers
 const BOT_CHASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/Violentgrass/"
-const BOT_CHASE_L1: String = BOT_CHASE_DIR + "Layer1.wav"
-const BOT_CHASE_L2: String = BOT_CHASE_DIR + "Layer2.wav"
-const BOT_CHASE_L3: String = BOT_CHASE_DIR + "Layer3.wav"
-const BOT_CHASE_CHASE: String = BOT_CHASE_DIR + "Chase.wav"
-
-enum ChaseState { NONE, LAYER_1, LAYER_2, LAYER_3, CHASE }
+const BOT_CHASE_PATH: String = BOT_CHASE_DIR + "Chase.wav"
+const CHASE_START_DISTANCE: float = 500.0    # Start chase when closer than this
+const CHASE_CUTOFF_DISTANCE: float = 1000.0  # Cut chase when farther than this
+const CHASE_VOL_FADE_MS: float = 0.15  # Fast fade time (seconds)
 
 var _time_remaining: float = MATCH_DURATION
 var _map_manager: MapManager = null
 var _player: Node2D = null
 var _killer_bot: Node2D = null
-var _chase_state: ChaseState = ChaseState.NONE
-var _chase_l1: AudioStreamPlayer = null
-var _chase_l2: AudioStreamPlayer = null
-var _chase_l3: AudioStreamPlayer = null
-var _chase_chase: AudioStreamPlayer = null
+var _chase_active: bool = false
+var _chase_player: AudioStreamPlayer = null
 var _current_interactable: Area2D = null
 var _last_hp: float = -1.0
 var _solved_puzzles: Array[String] = []
 var _e_was_pressed: bool = false
 var _puzzle_open: bool = false
+
+# Killer speed scaling (timer < 30s)
+var _killer_base_sprint: float = 0.0
+var _killer_speed_scaling_active: bool = false
 
 # Match-ending effect
 var _ending_vignette: ColorRect = null
@@ -141,7 +128,7 @@ func _setup_music() -> void:
 		var stream: AudioStream = load(music_path)
 		if stream:
 			var player := AudioStreamPlayer.new()
-			player.name = "MusicPlayer"
+			player.name = "MapMusicPlayer"
 			player.stream = stream
 			player.autoplay = true
 			player.bus = &"Master"
@@ -151,22 +138,13 @@ func _setup_music() -> void:
 
 
 func _switch_to_ending_music() -> void:
-	"""Switch from map music to the tense match-ending track at 30s remaining.
-	Fades map music out over 0.5 seconds first."""
+	"""Switch map music to match-ending track at 30s remaining.
+	Plays as background music — chase can still play on top."""
 	if _ending_music_switched:
 		return
 	_ending_music_switched = true
 	
-	# Fade out existing music player
-	var old_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
-	if old_player:
-		var fade_tween: Tween = create_tween()
-		fade_tween.tween_property(old_player, "volume_db", -80.0, 0.5)
-		await fade_tween.finished
-		old_player.stop()
-		old_player.queue_free()
-	
-	# Create new player for ending music (if file exists)
+	# Create a separate ending music player (chase keeps working alongside)
 	var ending_path: String = "res://The Darkness Of The Grasslands assets/Music/Match/Match_ENDING.wav"
 	if not ResourceLoader.exists(ending_path):
 		return
@@ -180,15 +158,27 @@ func _switch_to_ending_music() -> void:
 	player.stream = ending_stream
 	player.autoplay = true
 	player.bus = &"Master"
-	player.volume_db = -2.0  # Slightly louder for tension
+	player.volume_db = -2.0
 	player.finished.connect(_on_map_music_finished)
 	add_child(player)
-	print("GameMap: Switched to MATCH_ENDING music")
+	
+	# Fade out original map music if it's still playing
+	var old_player: AudioStreamPlayer = get_node_or_null("MapMusicPlayer")
+	if old_player:
+		var fade_tween: Tween = create_tween()
+		fade_tween.tween_property(old_player, "volume_db", -80.0, 1.0)
+		await fade_tween.finished
+		old_player.stop()
+		old_player.queue_free()
+	
+	print("GameMap: Switched to MATCH_ENDING music (chase remains on top)")
 
 
 func _on_map_music_finished() -> void:
 	"""Loop map music by restarting playback."""
-	var player: AudioStreamPlayer = $MusicPlayer
+	var player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
+	if not player:
+		player = get_node_or_null("MapMusicPlayer")
 	if player:
 		player.play()
 
@@ -422,12 +412,16 @@ func _process(delta: float) -> void:
 	_check_settings_updates()
 	_check_damage_vignette()
 	_update_chase_music(delta)
+	_update_killer_speed(delta)
 	
 	# Match-ending effects (last 31 seconds)
 	if _time_remaining <= 31.0:
 		_ending_start_time += delta
 		_update_ending_vignette()
 		_switch_to_ending_music()
+	
+	# +30s timer bonus when killer eliminates a survivor (local mode)
+	_check_kill_timer_bonus()
 
 
 func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
@@ -545,17 +539,6 @@ func _on_punch_locked_changed(locked: bool) -> void:
 
 
 func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, label: Label) -> void:
-	"""Update the health bar when player HP changes.""" overlay: ColorRect = slot.get_node_or_null("CooldownOverlay")
-		if not overlay:
-			continue
-		# Use 'in' operator to check if property exists on the player
-		if var_name in _player and _player.get(var_name):
-			overlay.visible = true
-		else:
-			overlay.visible = false
-
-
-func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, label: Label) -> void:
 	"""Update the health bar when player HP changes."""
 	var ratio: float = current_hp / max_hp if max_hp > 0 else 0.0
 	fill.size.x = 400.0 * clampf(ratio, 0.0, 1.0)
@@ -567,6 +550,11 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 		fill.color = Color(0.9, 0.7, 0.1, 0.9)
 	else:
 		fill.color = Color(0.15, 0.9, 0.15, 0.9)
+	
+	# +30s timer bonus when killer eliminates this survivor (HP reaches 0)
+	if current_hp <= 0.0 and _last_hp > 0.0 and is_instance_valid(_killer_bot):
+		_on_killer_eliminated("Player")
+	_last_hp = current_hp
 
 
 func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:
@@ -584,10 +572,14 @@ func _spawn_bot_killer() -> void:
 	bot.set_script(AI_BOT_SCRIPT)
 	bot.name = "KillerBot"
 	bot.position = spawn_pos
-	add_child(bot)  # add_child triggers AI bot's _ready() once
+	add_child(bot)
 	_killer_bot = bot
-	_read_bot_chase_settings(bot)
 	_setup_chase_music()
+	# Store killer's base sprint speed for scaling
+	if bot.has_method("get_sprint_speed"):
+		_killer_base_sprint = bot.sprint_speed
+	else:
+		_killer_base_sprint = 350.0
 	print("GameMap: Spawned KillerBot at ", spawn_pos)
 
 
@@ -632,158 +624,125 @@ func _add_map_border_walls() -> void:
 	print("GameMap: Added map border walls (", map_w, "x", map_h, ")")
 
 
-func _read_bot_chase_settings(bot: Node2D) -> void:
-	"""Read @export chase settings from the bot instance (if they exist)."""
-	if not is_instance_valid(bot):
-		return
-	if "chase_in_layer1" in bot:
-		_chase_in_layer1 = bot.chase_in_layer1
-	if "chase_in_layer2" in bot:
-		_chase_in_layer2 = bot.chase_in_layer2
-	if "chase_in_layer3" in bot:
-		_chase_in_layer3 = bot.chase_in_layer3
-	if "chase_in_chase" in bot:
-		_chase_in_chase = bot.chase_in_chase
-	if "chase_out_none" in bot:
-		_chase_out_none = bot.chase_out_none
-	if "chase_out_layer1" in bot:
-		_chase_out_layer1 = bot.chase_out_layer1
-	if "chase_out_layer2" in bot:
-		_chase_out_layer2 = bot.chase_out_layer2
-	if "chase_out_layer3" in bot:
-		_chase_out_layer3 = bot.chase_out_layer3
-	if "chase_fade_in_duration" in bot:
-		_chase_fade_in = bot.chase_fade_in_duration
-	if "chase_fade_out_duration" in bot:
-		_chase_fade_out = bot.chase_fade_out_duration
+func _read_bot_chase_settings(_bot: Node2D) -> void:
+	"""(Removed — chase is now a single Chase.wav on/off system.)"""
+	pass
 
 
 func _setup_chase_music() -> void:
-	"""Create 4 looping chase music players (start muted, volume controlled by distance)."""
-	var tracks: Array[Dictionary] = [
-		{"name": "ChaseL1", "path": BOT_CHASE_L1, "var_ref": "_chase_l1"},
-		{"name": "ChaseL2", "path": BOT_CHASE_L2, "var_ref": "_chase_l2"},
-		{"name": "ChaseL3", "path": BOT_CHASE_L3, "var_ref": "_chase_l3"},
-		{"name": "ChaseFinal", "path": BOT_CHASE_CHASE, "var_ref": "_chase_chase"},
-	]
-	for t: Dictionary in tracks:
-		if not ResourceLoader.exists(t["path"]):
-			continue
-		var p := AudioStreamPlayer.new()
-		p.name = t["name"]
-		p.stream = load(t["path"])
-		p.autoplay = true
-		p.volume_db = -80.0  # Start muted
-		p.finished.connect(_on_chase_loop.bind(p))
-		add_child(p)
-		set(t["var_ref"], p)
-	_chase_state = ChaseState.NONE
-	print("GameMap: Chase music players ready")
+	"""Create a single Chase.wav looping player (starts muted)."""
+	if not ResourceLoader.exists(BOT_CHASE_PATH):
+		push_error("GameMap: Chase.wav not found at ", BOT_CHASE_PATH)
+		return
+	var p := AudioStreamPlayer.new()
+	p.name = "ChasePlayer"
+	p.stream = load(BOT_CHASE_PATH)
+	p.autoplay = true
+	p.volume_db = -80.0  # Muted until triggered
+	p.finished.connect(_on_chase_loop.bind(p))
+	add_child(p)
+	_chase_player = p
+	_chase_active = false
+	print("GameMap: Chase music ready")
 
 
 func _on_chase_loop(player: AudioStreamPlayer) -> void:
-	"""Loop a chase music track by replaying on finish."""
+	"""Loop the chase track by replaying on finish."""
 	if is_instance_valid(player):
 		player.play()
 
 
 func _update_chase_music(_delta: float) -> void:
-	"""Check distance to killer bot and transition chase music layers."""
+	"""Simple chase on/off: play Chase.wav when in range, cut at 1000px."""
 	if not is_instance_valid(_killer_bot) or not is_instance_valid(_player):
+		return
+	if not is_instance_valid(_chase_player):
 		return
 	
 	var dist: float = _player.global_position.distance_to(_killer_bot.global_position)
-	var new_state: ChaseState = _determine_chase_state(dist)
 	
-	if new_state == _chase_state:
-		return
+	if not _chase_active and dist <= CHASE_START_DISTANCE:
+		# Start chase
+		_chase_active = true
+		var tween := create_tween()
+		tween.tween_property(_chase_player, "volume_db", 0.0, CHASE_VOL_FADE_MS)
+		# Fade background music down a bit so chase cuts through
+		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
+		if not bg_player:
+			bg_player = get_node_or_null("MapMusicPlayer")
+		if bg_player:
+			var mtween := create_tween()
+			mtween.tween_property(bg_player, "volume_db", -10.0, CHASE_VOL_FADE_MS)
 	
-	var prev_state: ChaseState = _chase_state
-	_chase_state = new_state
-	
-	# Mute/unmute players based on state
-	var map_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
-	
-	match new_state:
-		ChaseState.NONE:
-			# Reactivate map music (fade in)
-			if map_player:
-				var tween := create_tween()
-				tween.tween_property(map_player, "volume_db", 0.0, 0.5)
-			_set_chase_volumes(-80.0, -80.0, -80.0, -80.0)
-		
-		ChaseState.LAYER_1:
-			# Fade out map music on first activation
-			if map_player and prev_state == ChaseState.NONE:
-				var tween := create_tween()
-				tween.tween_property(map_player, "volume_db", -80.0, 0.5)
-			_set_chase_volumes(0.0, -80.0, -80.0, -80.0)
-		
-		ChaseState.LAYER_2:
-			_set_chase_volumes(-80.0, 0.0, -80.0, -80.0)
-		
-		ChaseState.LAYER_3:
-			_set_chase_volumes(-80.0, -80.0, 0.0, -80.0)
-		
-		ChaseState.CHASE:
-			_set_chase_volumes(-80.0, -80.0, -80.0, 0.0)
-
-
-func _determine_chase_state(dist: float) -> ChaseState:
-	"""Determine chase music state from distance with hysteresis."""
-	if _chase_state == ChaseState.NONE:
-		if dist <= _chase_in_layer1:
-			return ChaseState.LAYER_1
-		return ChaseState.NONE
-	
-	elif _chase_state == ChaseState.LAYER_1:
-		if dist <= _chase_in_layer2:
-			return ChaseState.LAYER_2
-		if dist > _chase_out_layer1:
-			return ChaseState.NONE
-		return ChaseState.LAYER_1
-	
-	elif _chase_state == ChaseState.LAYER_2:
-		if dist <= _chase_in_layer3:
-			return ChaseState.LAYER_3
-		if dist > _chase_out_layer2:
-			return ChaseState.LAYER_1
-		return ChaseState.LAYER_2
-	
-	elif _chase_state == ChaseState.LAYER_3:
-		if dist <= _chase_in_chase:
-			return ChaseState.CHASE
-		if dist > _chase_out_layer3:
-			return ChaseState.LAYER_2
-		return ChaseState.LAYER_3
-	
-	elif _chase_state == ChaseState.CHASE:
-		if dist > _chase_out_layer3:
-			return ChaseState.LAYER_3
-		return ChaseState.CHASE
-	
-	return ChaseState.NONE
-
-
-func _set_chase_volumes(l1: float, l2: float, l3: float, chase: float) -> void:
-	"""Set volume for all 4 chase players (tweened for smooth crossfade)."""
-	_tween_chase_vol(_chase_l1, l1)
-	_tween_chase_vol(_chase_l2, l2)
-	_tween_chase_vol(_chase_l3, l3)
-	_tween_chase_vol(_chase_chase, chase)
-
-
-func _tween_chase_vol(player: AudioStreamPlayer, target_db: float) -> void:
-	"""Smoothly tween a chase player's volume."""
-	if not is_instance_valid(player):
-		return
-	var tween := create_tween()
-	tween.tween_property(player, "volume_db", target_db, _chase_fade_in)
+	elif _chase_active and dist > CHASE_CUTOFF_DISTANCE:
+		# Stop chase — fast cut
+		_chase_active = false
+		var tween := create_tween()
+		tween.tween_property(_chase_player, "volume_db", -80.0, CHASE_VOL_FADE_MS)
+		# Restore background music volume
+		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
+		if not bg_player:
+			bg_player = get_node_or_null("MapMusicPlayer")
+		if bg_player:
+			var target_db: float = -2.0 if _ending_music_switched else 0.0
+			var mtween := create_tween()
+			mtween.tween_property(bg_player, "volume_db", target_db, CHASE_VOL_FADE_MS)
 
 
 func get_random_killer_spawn() -> Vector2:
 	return _map_manager.get_spawn_point(true)
 
+
+# ---------- KILLER SPEED SCALING (last 30s) ----------
+
+func _update_killer_speed(_delta: float) -> void:
+	"""Scale killer's sprint speed faster as timer approaches 0 (after 30s remaining)."""
+	if not is_instance_valid(_killer_bot):
+		return
+	if _time_remaining > 30.0:
+		if _killer_speed_scaling_active:
+			_killer_speed_scaling_active = false
+			# Reset to original speed
+			if "sprint_speed" in _killer_bot:
+				_killer_bot.sprint_speed = _killer_base_sprint
+		return
+	
+	_killer_speed_scaling_active = true
+	# Speed multiplier: 1.0x at 30s → 2.5x at 0s
+	var progress: float = 1.0 - (_time_remaining / 30.0)  # 0→1
+	var multiplier: float = 1.0 + progress * 1.5  # 1.0x → 2.5x
+	var new_speed: float = _killer_base_sprint * multiplier
+	_killer_bot.sprint_speed = new_speed
+
+
+# ---------- KILL ELIMINATION TIMER BONUS (+30s) ----------
+
+var _last_killer_bot_kills: int = 0
+
+func _check_kill_timer_bonus() -> void:
+	"""Detect when the killer bot eliminates a survivor and add 30s to timer."""
+	if not is_instance_valid(_killer_bot):
+		return
+	# Trick: track a count we can observe. In local mode, the bot "kills" by
+	# proximity — the player dies when the killer touches them (via _on_player_died).
+	# The +30s is actually added there. See _on_player_died() for implementation.
+
+func add_timer_bonus(seconds: float) -> void:
+	"""Add time to the match timer (e.g. +30s when killer kills a survivor)."""
+	_time_remaining = min(_time_remaining + seconds, MATCH_DURATION)
+	_update_timer_label()
+	print("GameMap: Timer +", seconds, "s (now ", _time_remaining, "s)")
+
+
+# ---------- KILLER ELIMINATION TRACKING ----------
+
+func _on_killer_eliminated(_player_name: String) -> void:
+	"""Called when killer eliminates a survivor (from network or local)."""
+	# +30s timer bonus
+	add_timer_bonus(30.0)
+
+
+# ---------- MATCH TIMER ----------
 
 func _on_match_timer_timeout() -> void:
 	_time_remaining -= 1.0
