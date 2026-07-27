@@ -178,7 +178,7 @@ animations = [{
 }]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_gg"]
-size = Vector2(40, 50)
+size = Vector2(18.888905, 12.790691)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_f4mb1"]
 animations = [{
@@ -330,18 +330,19 @@ sprint_speed = 350.0
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=852369333]
 scale = Vector2(0.25, 0.25)
 sprite_frames = SubResource("SpriteFrames_gg")
-animation = &"block_impact"
+animation = &"idle"
 autoplay = "idle"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=392062106]
-position = Vector2(-50, -49)
+position = Vector2(-12, 0.9999981)
+scale = Vector2(0.92744184, 1.0595194)
 shape = SubResource("RectangleShape2D_gg")
 
 [node name="StateTimer" type="Timer" parent="." unique_id=1390959033]
 one_shot = true
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=5643798]
-position = Vector2(213, 82)
+position = Vector2(-12, 1)
 position_smoothing_enabled = true
 position_smoothing_speed = 6.0
 

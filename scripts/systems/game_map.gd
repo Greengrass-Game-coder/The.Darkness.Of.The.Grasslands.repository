@@ -94,8 +94,11 @@ func _ready() -> void:
 	_time_remaining = MATCH_DURATION
 	_update_timer_label()
 	
-	# Spawn the player character
+	# Spawn the player character (also spawns killer bot if survivor)
 	spawn_player(GameState.is_killer)
+	
+	# Play killer intro cutscene after spawns are complete
+	call_deferred("_play_killer_cutscene")
 
 
 func _setup_input_actions() -> void:
@@ -667,6 +670,30 @@ func _setup_chase_music() -> void:
 	_chase_player = p
 	_chase_active = false
 	print("GameMap: Chase music ready")
+
+
+func _play_killer_cutscene() -> void:
+	"""Play the Violentgrass killer intro cutscene from PNG frames."""
+	var cutscene := CutscenePlayer.new()
+	cutscene.name = "KillerCutscene"
+	cutscene.fps = 8.0  # 43 frames at 8fps ≈ 5.4 seconds
+	add_child(cutscene)
+	
+	var folder_path: String = "res://The Darkness Of The Grasslands assets/Cutscenes/Killer intros/Violentgrass+killer+intro"
+	var audio_path: String = ""  # No audio yet — user can add later
+	
+	# Pause the match timer while cutscene plays
+	match_timer.paused = true
+	
+	cutscene.play_cutscene(folder_path, audio_path)
+	
+	# Wait for cutscene to finish, then fade out
+	await cutscene.finished
+	await cutscene.fade_out_and_free(0.5)
+	
+	# Unpause and start the match
+	match_timer.paused = false
+	print("GameMap: Killer intro finished, match started")
 
 
 func _on_chase_loop(player: AudioStreamPlayer) -> void:

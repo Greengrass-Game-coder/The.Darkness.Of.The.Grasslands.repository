@@ -115,7 +115,7 @@ animations = [{
 }]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_vg"]
-size = Vector2(28, 34)
+size = Vector2(11.947801, 10.401165)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_xlvmw"]
 animations = [{
@@ -190,10 +190,12 @@ chase_fade_out_duration = 0.0
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=475775191]
 scale = Vector2(0.25, 0.25)
 sprite_frames = SubResource("SpriteFrames_vg")
-animation = &"idle"
+animation = &"idle_up"
 autoplay = "idle"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=624060751]
+position = Vector2(-13.499999, 6.999999)
+scale = Vector2(2.2598302, 2.3074338)
 shape = SubResource("RectangleShape2D_vg")
 
 [node name="StateTimer" type="Timer" parent="." unique_id=2046478376]
@@ -203,4 +205,4 @@ one_shot = true
 z_index = 100
 scale = Vector2(0.25, 0.25)
 sprite_frames = SubResource("SpriteFrames_xlvmw")
-animation = &"hit_down"
+animation = &"teleport_down"
