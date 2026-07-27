@@ -286,22 +286,22 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	var cam := _player.get_node("Camera2D") as Camera2D
 	if cam:
 		cam.enabled = true
-		cam.make_cu	# Create ability icons
+		cam.make_current()
+	
+	# Set character name for analysis screen
+	_character_name = "Violentgrass" if is_killer_player else "Greengrass"
+	
+	# Create ability icons
 	_create_ability_icons(_player, is_killer_player)
 	
 	# Connect survivor ability icon signals (flash/lock)
 	_connect_ability_icon_signals(_player)
-	
-	# Create epilepsy-safe overlayentgrass" if is_killer_player else "Greengrass"
 	
 	# Create health bar UI
 	_create_health_bar(_player)
 	
 	# Create stamina bar UI
 	_create_stamina_bar(_player)
-	
-	# Create ability icons
-	_create_ability_icons(_player, is_killer_player)
 	
 	# Create epilepsy-safe overlay
 	_create_epilepsy_overlay(_player)
@@ -480,14 +480,6 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		slot.add_child(key_label)
 		
 		# Store reference for cooldown tracking
-		slot.set_meta("cooldown_var", data["cooldown_var"])override("font_color", Color(1, 1, 1, 0.8))
-		key_label.add_theme_font_size_override("font_size", 12)
-		key_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
-		key_label.add_theme_constant_override("shadow_offset_x", 1)
-		key_label.add_theme_constant_override("shadow_offset_y", 1)
-		slot.add_child(key_label)
-		
-		# Store reference for cooldown tracking
 		slot.set_meta("cooldown_var", data["cooldown_var"])
 
 
@@ -497,7 +489,38 @@ func _update_ability_cooldowns() -> void:
 	if not icons or not is_instance_valid(_player):
 		return
 	
-	for slot: Node infunc _connect_ability_icon_signals(player: Node2D) -> void:
+	for i in range(icons.get_child_count()):
+		var slot: Node = icons.get_child(i)
+		var data_abilities: Array[Dictionary] = _get_ability_data()
+		if i >= data_abilities.size():
+			continue
+		var cooldown_var_name: String = data_abilities[i]["cooldown_var"]
+		var overlay: ColorRect = slot.get_node_or_null("CooldownOverlay")
+		if not overlay:
+			continue
+		if cooldown_var_name in _player and _player.get(cooldown_var_name):
+			overlay.visible = true
+		else:
+			overlay.visible = false
+
+
+func _get_ability_data() -> Array[Dictionary]:
+	"""Return ability data for the current player character."""
+	var is_killer: bool = _character_name == "Violentgrass"
+	if is_killer:
+		return [
+			{"icon": "", "key": "Q", "cooldown_var": "hit_on_cooldown"},
+			{"icon": "", "key": "R", "cooldown_var": "teleport_on_cooldown"},
+		]
+	else:
+		return [
+			{"icon": "", "key": "Q", "cooldown_var": "block_on_cooldown"},
+			{"icon": "", "key": "E", "cooldown_var": "punch_on_cooldown"},
+			{"icon": "", "key": "R", "cooldown_var": "flower_on_cooldown"},
+		]
+
+
+func _connect_ability_icon_signals(player: Node2D) -> void:
 	"""Connect signals for ability icon visual feedback (flash/lock)."""
 	if not is_instance_valid(player):
 		return

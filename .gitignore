@@ -2,11 +2,15 @@
 .godot/
 .nomedia
 
-# Godot-specific ignores
-.import/
+# Godot-specific ignores - file extension patterns
+*.import
+*.uid
 export.cfg
-export_credentials.cfg
+export_credentials_cfg
 *.tmp
+
+# The external assets folder - NOT part of the repo
+"The Darkness Of The Grasslands assets"/
 
 # Imported translations (automatically generated from CSV files)
 *.translation
@@ -15,5 +19,10 @@ export_credentials.cfg
 .mono/
 data_*/
 mono_crash.*.json
+
+# Ziva
 addons/ziva_agent/
-.godot/
+
+# Editor/OS
+.DS_Store
+Thumbs.db

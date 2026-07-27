@@ -9,7 +9,7 @@ extends Node
 ##
 ## For Railway: select this scene as main, export as Linux headless server.
 
-const SERVER_PORT: int = 8080
+const SERVER_PORT: int = int(OS.get_environment("PORT")) if OS.has_environment("PORT") else 8080
 const MAX_PLAYERS: int = 9  # 1 killer + 8 survivors
 const MATCH_DURATION_ROUND: float = 240.0  # 4 minutes
 const MATCH_DURATION_LMS: float = 195.0  # 3.25 minutes
