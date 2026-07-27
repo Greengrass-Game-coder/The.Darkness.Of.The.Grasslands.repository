@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startComm"./Server/TheDarknessServer.x86_64 --headless"dless",
+    "startCommand": "./Server/TheDarknessServer.x86_64 --headless",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
