@@ -16,13 +16,13 @@ signal puzzle_closed()
 var _current_puzzle: Control = null
 var _current_area: Area2D = null
 var _panel: Panel = null
-var _title_label: Label = null
+var _title_label: Control = null
 var _player_ref: Node2D = null
 var _puzzle_level: int = 1
 var _chosen_type: PuzzleType = PuzzleType.MEMORY
 
 
-func open_puzzle(area: Area2D, player: Node2D, _level: int = 1) -> void:
+func open_puzzle(area: Area2D, player: Node2D, _level: int = 1, forced_type: int = -1) -> void:
 	"""Open a random puzzle overlay, starting at level 1."""
 	if _current_puzzle != null:
 		return
@@ -35,9 +35,12 @@ func open_puzzle(area: Area2D, player: Node2D, _level: int = 1) -> void:
 	if player.has_method("set_physics_process"):
 		player.set_physics_process(false)
 	
-	# Pick random puzzle type
-	var types: Array[PuzzleType] = [PuzzleType.MEMORY, PuzzleType.WIRING, PuzzleType.RHYTHM]
-	_chosen_type = types[randi() % types.size()]
+	# Pick random puzzle type (or use forced type if provided)
+	if forced_type >= 0 and forced_type < PuzzleType.size():
+		_chosen_type = forced_type as PuzzleType
+	else:
+		var types: Array[PuzzleType] = [PuzzleType.MEMORY, PuzzleType.WIRING, PuzzleType.RHYTHM]
+		_chosen_type = types[randi() % types.size()]
 	
 	_start_current_level()
 
@@ -62,38 +65,35 @@ func _build_panel(title: String) -> Panel:
 	style.corner_radius_bottom_right = 8
 	panel.add_theme_stylebox_override("panel", style)
 	
-	# Title
-	var title_lbl := Label.new()
+	# Title (BitmapLabel)
+	var title_lbl := BitmapLabel.new()
 	title_lbl.name = "PuzzleTitle"
-	title_lbl.text = title
+	title_lbl.label_text = title
 	title_lbl.position = Vector2(20, 16)
 	title_lbl.size = Vector2(440, 30)
-	title_lbl.add_theme_color_override("font_color", Color(1, 1, 0.7, 1))
-	title_lbl.add_theme_font_size_override("font_size", 22)
-	title_lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
-	title_lbl.add_theme_constant_override("shadow_offset_x", 1)
-	title_lbl.add_theme_constant_override("shadow_offset_y", 1)
+	title_lbl.font_scale = 0.18
+	title_lbl.font_color = Color(1, 1, 0.7, 1)
 	panel.add_child(title_lbl)
 	_title_label = title_lbl
 	
-	# Difficulty label
-	var diff_lbl := Label.new()
+	# Difficulty label (BitmapLabel)
+	var diff_lbl := BitmapLabel.new()
 	diff_lbl.name = "DiffLabel"
-	diff_lbl.text = "Level %d/5" % _puzzle_level
+	diff_lbl.label_text = "Level %d/5" % _puzzle_level
 	diff_lbl.position = Vector2(20, 44)
 	diff_lbl.size = Vector2(200, 20)
-	diff_lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
-	diff_lbl.add_theme_font_size_override("font_size", 14)
+	diff_lbl.font_scale = 0.12
+	diff_lbl.font_color = Color(0.7, 0.7, 0.7, 1)
 	panel.add_child(diff_lbl)
 	
-	# Close hint
-	var close_hint := Label.new()
+	# Close hint (BitmapLabel)
+	var close_hint := BitmapLabel.new()
 	close_hint.name = "CloseHint"
-	close_hint.text = "[ESC] Cancel"
+	close_hint.label_text = "[ESC] Cancel"
 	close_hint.position = Vector2(380, 44)
 	close_hint.size = Vector2(100, 20)
-	close_hint.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 1))
-	close_hint.add_theme_font_size_override("font_size", 12)
+	close_hint.font_scale = 0.10
+	close_hint.font_color = Color(0.5, 0.5, 0.5, 1)
 	panel.add_child(close_hint)
 	
 	# Add to scene
@@ -211,15 +211,15 @@ func _open_memory_puzzle() -> void:
 		panel.add_child(tile)
 		tiles.append(tile)
 	
-	# Instruction label
-	var instr := Label.new()
+	# Instruction label (BitmapLabel)
+	var instr := BitmapLabel.new()
 	instr.name = "InstrLabel"
-	instr.text = "Watch the sequence..."
+	instr.label_text = "Watch the sequence..."
 	instr.position = Vector2(20, start_y + tile_h + 12)
 	instr.size = Vector2(440, 24)
-	instr.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9, 1))
-	instr.add_theme_font_size_override("font_size", 16)
-	instr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	instr.font_scale = 0.14
+	instr.font_color = Color(0.9, 0.9, 0.9, 1)
+	instr.horizontal_align = 1
 	panel.add_child(instr)
 	
 	_current_puzzle = panel

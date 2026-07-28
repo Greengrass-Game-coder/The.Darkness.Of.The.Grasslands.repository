@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://b0v4w12x7anp5"]
 
-[ext_resource type="Script" uid="uid://cosnm45u2m072" path="res://scripts/ui/shop_layer.gd" id="1_niabj"]
+[ext_resource type="Script" uid="uid://c8b0ol3sub3nj" path="res://scripts/ui/shop_layer.gd" id="1_niabj"]
 [ext_resource type="Texture2D" uid="uid://on8uvcgn3tlk" path="res://The Darkness Of The Grasslands assets/UI/Lobby/Shop and inventory background UI.png" id="2_mj8x6"]
 
 [node name="ShopLayer" type="Control" unique_id=1354609834]
@@ -9,7 +9,6 @@ anchors_preset = 0
 offset_right = 1280.0
 offset_bottom = 720.0
 script = ExtResource("1_niabj")
-card_name_pos = Vector2(80, 304.695)
 
 [node name="EditorBackdrop" type="ColorRect" parent="." unique_id=24893227]
 layout_mode = 0

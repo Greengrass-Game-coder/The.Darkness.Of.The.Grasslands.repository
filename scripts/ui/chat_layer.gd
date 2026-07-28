@@ -20,6 +20,7 @@ var _messages: Array[String] = []
 
 
 func _ready() -> void:
+	process_mode = PROCESS_MODE_ALWAYS
 	_build_ui()
 
 
@@ -61,7 +62,7 @@ func _build_ui() -> void:
 	hide()
 
 
-func _input(event: InputEvent) -> void:
+func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if _is_open:
 			# Chat is open — absorb ALL keyboard input to prevent game movement
@@ -147,15 +148,12 @@ func _rebuild_messages() -> void:
 	
 	# Add each message
 	for msg: String in _messages:
-		var label := Label.new()
-		label.text = msg
-		label.add_theme_font_size_override("font_size", 12)
-		label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9, 1))
-		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
-		label.add_theme_constant_override("shadow_offset_x", 1)
-		label.add_theme_constant_override("shadow_offset_y", 1)
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var label := BitmapLabel.new()
+		label.label_text = msg
+		label.font_scale = 0.10
+		label.font_color = Color(0.9, 0.9, 0.9, 1)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.size.y = 18
 		_message_container.add_child(label)
 	
 	# Auto-scroll to bottom

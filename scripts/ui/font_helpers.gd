@@ -1,6 +1,6 @@
 extends Node
 ## FontHelpers — utility functions for creating BitmapLabel instances
-## with common configurations. Use these instead of Label.new() for
+## with common configurations. Use these instead of BitmapLabel.new() for
 ## game-styled text using Font1 character sprites.
 ##
 ## Usage:  FontHelpers.make_text("Hello", 20, Vector2(100, 100))

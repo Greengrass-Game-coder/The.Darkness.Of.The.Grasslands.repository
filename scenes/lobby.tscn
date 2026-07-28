@@ -326,7 +326,7 @@ shape = SubResource("RectangleShape2D_h7k9m")
 [node name="EvilPotato" type="Area2D" parent="." unique_id=1043538588]
 position = Vector2(750, 330)
 
-[node name="Visual" type="Sprite2D" parent="EvilPotato"]
+[node name="Visual" type="Sprite2D" parent="EvilPotato" unique_id=1676497271]
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("15_potato")
 

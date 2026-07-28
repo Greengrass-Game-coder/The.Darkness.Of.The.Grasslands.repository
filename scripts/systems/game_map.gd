@@ -265,6 +265,8 @@ func _place_markers() -> void:
 		add_child(area)
 	
 	# Puzzles as interactive Area2D triggers
+	# Pre-assign random puzzle types per zone for variety
+	var puzzle_type_names: Array[String] = ["Memory", "Wiring", "Rhythm"]
 	for i in range(_map_manager.puzzle_positions.size()):
 		var pos: Vector2 = _map_manager.puzzle_positions[i]
 		# Shift puzzle to be at the left edge of the purple region
@@ -272,6 +274,9 @@ func _place_markers() -> void:
 		var adjusted_pos := Vector2(pos.x - 56.0, pos.y - 45.0)
 		var area := Area2D.new()
 		area.name = "Puzzle_%d" % i
+		# Assign a random puzzle type to this zone (fixed per match)
+		var ptype: String = puzzle_type_names[randi() % puzzle_type_names.size()]
+		area.set_meta("puzzle_type", ptype)
 		area.position = adjusted_pos
 		area.collision_mask = 1  # Detect player (layer 1)
 		var col := CollisionShape2D.new()
@@ -780,9 +785,12 @@ func _setup_chase_music() -> void:
 		var p := AudioStreamPlayer.new()
 		p.name = "ChaseLayer_%d" % i
 		p.stream = load(file_path)
+		# Enable seamless looping on short WAV layers
+		var sdata = p.stream
+		if sdata is AudioStreamWAV:
+			sdata.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		p.autoplay = true
 		p.volume_db = -80.0  # Muted until triggered
-		p.finished.connect(_on_chase_loop.bind(p))
 		add_child(p)
 		_chase_players.append(p)
 	
@@ -1101,7 +1109,7 @@ func _check_interact_input(_delta: float) -> void:
 
 
 func _open_puzzle_for_area(area: Area2D) -> void:
-	"""Open a random puzzle minigame for this area."""
+	"""Open this zone's pre-assigned puzzle minigame."""
 	if not is_instance_valid(_player) or _puzzle_open:
 		return
 	
@@ -1115,7 +1123,14 @@ func _open_puzzle_for_area(area: Area2D) -> void:
 	# Create puzzle manager and open a puzzle
 	var puz_scene: PuzzleManager = PuzzleManager.new()
 	add_child(puz_scene)
-	puz_scene.open_puzzle(area, _player)
+	# Use the pre-assigned puzzle type stored on this zone
+	var forced_type: int = PuzzleManager.PuzzleType.RHYTHM
+	var zone_type: String = area.get_meta("puzzle_type", "Rhythm")
+	match zone_type:
+		"Memory": forced_type = PuzzleManager.PuzzleType.MEMORY
+		"Wiring": forced_type = PuzzleManager.PuzzleType.WIRING
+		"Rhythm": forced_type = PuzzleManager.PuzzleType.RHYTHM
+	puz_scene.open_puzzle(area, _player, 1, forced_type)
 	puz_scene.puzzle_completed.connect(_on_puzzle_solved)
 	puz_scene.puzzle_closed.connect(_on_puzzle_closed.bind(puz_scene))
 

@@ -40,24 +40,24 @@ func _build_ui() -> void:
 	bg.color = Color(0.1, 0.1, 0.15, 0.85)
 	add_child(bg)
 	
-	# Title
-	var title := Label.new()
+	# Title (BitmapLabel)
+	var title := BitmapLabel.new()
 	title.name = "Title"
-	title.text = "ADMIN PANEL"
+	title.label_text = "ADMIN PANEL"
 	title.position = panel_position + Vector2(8, 8)
 	title.size = Vector2(panel_size.x - 16, 24)
-	title.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3, 1))
-	title.add_theme_font_size_override("font_size", 14)
+	title.font_scale = 0.12
+	title.font_color = Color(0.3, 1.0, 0.3, 1)
 	add_child(title)
 	
-	# Status label
-	var status := Label.new()
+	# Status label (BitmapLabel)
+	var status := BitmapLabel.new()
 	status.name = "StatusLabel"
-	status.text = "Private Server"
+	status.label_text = "Private Server"
 	status.position = panel_position + Vector2(8, 32)
 	status.size = Vector2(panel_size.x - 16, 16)
-	status.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
-	status.add_theme_font_size_override("font_size", 10)
+	status.font_scale = 0.08
+	status.font_color = Color(0.7, 0.7, 0.7, 1)
 	add_child(status)
 	_status_label = status
 	
@@ -91,25 +91,24 @@ func _build_ui() -> void:
 	sep.color = Color(1, 1, 1, 0.2)
 	add_child(sep)
 	
-	# Player list header
-	var pl_header := Label.new()
+	# Player list header (BitmapLabel)
+	var pl_header := BitmapLabel.new()
 	pl_header.name = "PlayerListHeader"
-	pl_header.text = "Connected Players:"
+	pl_header.label_text = "Connected Players:"
 	pl_header.position = panel_position + Vector2(8, 136)
 	pl_header.size = Vector2(panel_size.x - 16, 16)
-	pl_header.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1))
-	pl_header.add_theme_font_size_override("font_size", 10)
+	pl_header.font_scale = 0.08
+	pl_header.font_color = Color(0.8, 0.8, 0.8, 1)
 	add_child(pl_header)
 	
-	# Player list
-	var pl := Label.new()
+	# Player list (BitmapLabel)
+	var pl := BitmapLabel.new()
 	pl.name = "PlayerList"
-	pl.text = "(not connected)"
+	pl.label_text = "(not connected)"
 	pl.position = panel_position + Vector2(8, 156)
 	pl.size = Vector2(panel_size.x - 16, 80)
-	pl.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6, 1))
-	pl.add_theme_font_size_override("font_size", 10)
-	pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pl.font_scale = 0.08
+	pl.font_color = Color(0.6, 0.6, 0.6, 1)
 	add_child(pl)
 	_player_list_label = pl
 	
