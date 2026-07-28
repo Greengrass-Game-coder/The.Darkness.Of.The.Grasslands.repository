@@ -4,7 +4,7 @@ extends CharacterBody2D
 signal hit_landed(target: Node2D, damage: float)
 signal stamina_changed(current: float, max_stamina: float)
 signal teleport_scan_started()  # Emitted when killer starts teleport charge
-signal teleport_target_selected(target_pos: Vector2)  # Emitted when game_map provides a target
+## (teleport_target_selected removed — unused)
 
 enum State { IDLE, WALKING, HITTING, TELEPORT_CHARGING, TELEPORT_CASTING, TELEPORTING, STUNNED }
 enum Direction { DOWN, LEFT, RIGHT, UP }
@@ -251,14 +251,14 @@ func _play_animation(anim: String) -> void:
 		return
 	match anim:
 		"idle":
-			var dir_name: String = ["down", "left", "right", "up"][current_direction]
+			var dir_name: String = ["down", "left", "right", "up"][current_direction as int]
 			var full_anim: String = "idle_" + dir_name
 			if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(full_anim):
 				animated_sprite.play(full_anim)
 			else:
 				animated_sprite.play("idle")  # Fallback to default
 		"walk":
-			var dir_name: String = ["down", "left", "right", "up"][current_direction]
+			var dir_name: String = ["down", "left", "right", "up"][current_direction as int]
 			var full_anim: String = "walk_" + dir_name
 			if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(full_anim):
 				animated_sprite.play(full_anim)

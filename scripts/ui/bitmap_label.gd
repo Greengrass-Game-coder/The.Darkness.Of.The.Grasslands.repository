@@ -14,6 +14,14 @@ enum Context { MENU, MATCH, CHAT }
 			label_text = v
 			queue_redraw()
 
+## Alias for label_text — allows Label API compatibility (Label.text → BitmapLabel.label_text)
+var text: String:
+	get:
+		return label_text
+	set(v):
+		label_text = v
+		queue_redraw()
+
 @export var font_scale: float = 1.0:
 	set(v):
 		font_scale = v

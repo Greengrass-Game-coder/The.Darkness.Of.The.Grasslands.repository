@@ -6,7 +6,7 @@ extends Node
 
 var tiles: Array[ColorRect] = []
 var tile_count: int = 3
-var instruction_label: Label = null
+var instruction_label = null  # Label or BitmapLabel; use duck typing for .text
 var panel_ref: Control = null
 var solved_callback: Callable = Callable()
 var cancelled_callback: Callable = Callable()

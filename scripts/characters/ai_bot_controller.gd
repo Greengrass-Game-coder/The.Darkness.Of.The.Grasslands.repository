@@ -171,7 +171,7 @@ func _physics_process(delta: float) -> void:
 
 # ---------- MOVEMENT ----------
 
-func _ai_move(delta: float) -> void:
+func _ai_move(_delta: float) -> void:
 	if not is_instance_valid(_target):
 		return
 	var dir: Vector2 = _target.global_position - global_position
@@ -190,7 +190,7 @@ func _ai_move(delta: float) -> void:
 	_change_state(State.WALKING)
 
 
-func _ai_strafe(delta: float) -> void:
+func _ai_strafe(_delta: float) -> void:
 	if not is_instance_valid(_target):
 		return
 	var to_target: Vector2 = (_target.global_position - global_position).normalized()

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c1y7w2to5pmfc"]
 
-[ext_resource type="Script" uid="uid://dv2ki01ocluwy" path="res://scripts/ui/inventory_layer.gd" id="1_c2sor"]
+[ext_resource type="Script" uid="uid://chwcaacxb550w" path="res://scripts/ui/inventory_layer.gd" id="1_c2sor"]
 [ext_resource type="Texture2D" uid="uid://on8uvcgn3tlk" path="res://The Darkness Of The Grasslands assets/UI/Lobby/Shop and inventory background UI.png" id="2_4k5lb"]
 
 [node name="InventoryLayer" type="Control"]
