@@ -879,11 +879,11 @@ func _create_leaderboard() -> void:
 	var title := BitmapLabel.new()
 	title.name = "Title"
 	title.label_text = "LEADERBOARD"
-	title.font_scale = 0.2
-	title.char_spacing = 4.0
+	title.font_scale = 0.16
+	title.char_spacing = 3.0
 	title.font_color = Color(1, 1, 0.7, 1)
 	title.position = Vector2(10, 4)
-	title.size = Vector2(180, 28)
+	title.size = Vector2(230, 28)
 	panel.add_child(title)
 	
 	# Separator

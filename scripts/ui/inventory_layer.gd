@@ -79,20 +79,22 @@ func _add_character_card(name_text: String, icon_path: String, status_text: Stri
 	icon.modulate = Color(0.5, 0.5, 0.5, 1)  # Darkened
 	card.add_child(icon)
 	
-	# Name label
-	var name_lbl := Label.new()
-	name_lbl.text = name_text
-	name_lbl.add_theme_font_size_override("font_size", 26)
-	name_lbl.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	# Name label (BitmapLabel)
+	var name_lbl := BitmapLabel.new()
+	name_lbl.label_text = name_text
+	name_lbl.font_scale = 0.22
+	name_lbl.font_color = Color(1, 1, 1, 1)
 	name_lbl.position = card_name_pos
+	name_lbl.size = Vector2(260, 30)
 	card.add_child(name_lbl)
 	
-	# Status label (EQUIPPED)
-	var status_lbl := Label.new()
-	status_lbl.text = status_text
-	status_lbl.add_theme_font_size_override("font_size", 22)
-	status_lbl.add_theme_color_override("font_color", Color(0.5, 1, 0.5, 1))
+	# Status label (EQUIPPED) - BitmapLabel
+	var status_lbl := BitmapLabel.new()
+	status_lbl.label_text = status_text
+	status_lbl.font_scale = 0.18
+	status_lbl.font_color = Color(0.5, 1, 0.5, 1)
 	status_lbl.position = card_status_pos
+	status_lbl.size = Vector2(260, 24)
 	card.add_child(status_lbl)
 	
 	character_container.add_child(card)

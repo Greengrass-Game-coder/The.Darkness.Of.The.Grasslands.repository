@@ -1,10 +1,12 @@
 extends Control
 ## BitmapLabel — renders text using FontManager's cropped character textures.
-## Uses _draw() to render directly (no child sprites).
-## Supports dollar-mode toggle via "$" in text for match/chat.
-## Use as a drop-in replacement for Label.
+## Uses _draw() to render directly.
+## Dollar-mode: "$" in text toggles golden rendering style.
+## Context controls when "$" is visible: "menu" strips it, "match"/"chat" shows it.
 
 class_name BitmapLabel
+
+enum Context { MENU, MATCH, CHAT }
 
 @export var label_text: String = "":
 	set(v):
@@ -37,6 +39,11 @@ class_name BitmapLabel
 		dollar_mode = v
 		queue_redraw()
 
+@export var context: int = Context.MENU:
+	set(v):
+		context = v
+		queue_redraw()
+
 @export var font_color: Color = Color(1, 1, 1, 1):
 	set(v):
 		font_color = v
@@ -59,7 +66,7 @@ func _draw() -> void:
 	if raw.is_empty():
 		return
 
-	var use_dollar: bool = dollar_mode
+	var use_dollar: bool = dollar_mode and context != Context.MENU
 	var dollar_active: bool = false
 	var x: float = 0.0
 	var max_h: float = 0.0
@@ -71,7 +78,7 @@ func _draw() -> void:
 			dollar_active = not dollar_active
 			continue
 
-		var tex = fm.get_char_texture(ch, false)
+		var tex = fm.get_char_texture(ch, dollar_active)
 		if not tex:
 			char_data.append({"tex": null, "w": fm.DEFAULT_CHAR_W * font_scale, "h": fm.DEFAULT_CHAR_H * font_scale, "dollar": dollar_active, "ch": ch})
 			x += fm.DEFAULT_CHAR_W * font_scale + char_spacing
