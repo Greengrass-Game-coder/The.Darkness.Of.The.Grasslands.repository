@@ -66,6 +66,10 @@ var _total_damage_taken: float = 0.0
 var _total_damage_dealt: float = 0.0
 var _character_name: String = "Greengrass"
 
+# Damage tracking for VFX
+var _last_known_hp: float = -1.0
+var _last_damage_time: float = -10.0  # When last damage was taken (for screen shake cooldown)
+
 
 func _ready() -> void:
 	# Ensure input actions are registered
@@ -503,12 +507,32 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		key_label.add_theme_constant_override("shadow_offset_y", 1)
 		slot.add_child(key_label)
 		
+		# Cooldown overlay (dark + countdown text)
+		var cd_overlay := ColorRect.new()
+		cd_overlay.name = "CooldownOverlay"
+		cd_overlay.size = Vector2(56, 56)
+		cd_overlay.color = Color(0.0, 0.0, 0.0, 0.6)
+		cd_overlay.visible = false
+		slot.add_child(cd_overlay)
+		
+		var cd_label := Label.new()
+		cd_label.name = "CooldownLabel"
+		cd_label.size = Vector2(56, 56)
+		cd_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cd_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cd_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+		cd_label.add_theme_font_size_override("font_size", 20)
+		cd_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		cd_label.add_theme_constant_override("shadow_offset_x", 1)
+		cd_label.add_theme_constant_override("shadow_offset_y", 1)
+		cd_overlay.add_child(cd_label)
+		
 		# Store reference for cooldown tracking
 		slot.set_meta("cooldown_var", data["cooldown_var"])
 
 
 func _update_ability_cooldowns() -> void:
-	"""Update cooldown overlays by checking player variables."""
+	"""Update cooldown overlays with countdown numbers."""
 	var icons: Node = $HUD.get_node_or_null("AbilityIcons")
 	if not icons or not is_instance_valid(_player):
 		return
@@ -522,10 +546,25 @@ func _update_ability_cooldowns() -> void:
 		var overlay: ColorRect = slot.get_node_or_null("CooldownOverlay")
 		if not overlay:
 			continue
-		if cooldown_var_name in _player and _player.get(cooldown_var_name):
-			overlay.visible = true
+		
+		var is_on_cd: bool = cooldown_var_name in _player and _player.get(cooldown_var_name)
+		overlay.visible = is_on_cd
+		
+		# Update countdown label
+		if is_on_cd:
+			var cd_label: Label = overlay.get_node_or_null("CooldownLabel")
+			if cd_label:
+				# Try to get the actual cooldown timer variable
+				var timer_var: String = "_" + cooldown_var_name.trim_suffix("_on_cooldown") + "_cd_timer"
+				if timer_var in _player:
+					var remaining: float = _player.get(timer_var)
+					cd_label.text = str(ceili(remaining))
+				else:
+					cd_label.text = ""
 		else:
-			overlay.visible = false
+			var cd_label: Label = overlay.get_node_or_null("CooldownLabel")
+			if cd_label:
+				cd_label.text = ""
 
 
 func _get_ability_data() -> Array[Dictionary]:
@@ -590,6 +629,17 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 	var ratio: float = current_hp / max_hp if max_hp > 0 else 0.0
 	fill.size.x = 400.0 * clampf(ratio, 0.0, 1.0)
 	label.text = "%d / %d" % [current_hp, max_hp]
+	
+	# Damage VFX: screen shake + red flash when HP drops
+	if _last_known_hp >= 0 and current_hp < _last_known_hp:
+		var dmg: float = _last_known_hp - current_hp
+		_total_damage_taken += dmg
+		_trigger_screen_shake(clampf(dmg * 0.2, 2.0, 8.0), 0.25)
+		_trigger_vignette()
+		_last_damage_time = _time_remaining
+	
+	_last_known_hp = current_hp
+	
 	# Color shifts from green to red as HP drops
 	if ratio < 0.3:
 		fill.color = Color(0.9, 0.15, 0.15, 0.9)
@@ -626,6 +676,9 @@ func _spawn_bot_killer() -> void:
 	add_child(bot)
 	_killer_bot = bot
 	_setup_chase_music()
+	# Connect killer hit signal for damage tracking
+	if bot.has_signal("hit_landed") and not bot.hit_landed.is_connected(_on_killer_hit_landed):
+		bot.hit_landed.connect(_on_killer_hit_landed)
 	# Store killer's base sprint speed for scaling
 	if bot.has_method("get_sprint_speed"):
 		_killer_base_sprint = bot.sprint_speed
@@ -1115,6 +1168,11 @@ func _apply_epilepsy_mode() -> void:
 		_epilepsy_overlay.color = Color(0.5, 0.5, 0.5, 0.2) if enabled else Color(0.5, 0.5, 0.5, 0.0)
 
 
+func _on_killer_hit_landed(target: Node2D, damage: float) -> void:
+	"""Track when killer lands a hit (for stats and VFX)."""
+	print("GameMap: Killer landed hit for %.1f damage on %s" % [damage, target.name])
+
+
 func _trigger_vignette() -> void:
 	"""Flash a subtle dark vignette when taking damage."""
 	if not is_instance_valid(_vignette_overlay):
@@ -1125,6 +1183,37 @@ func _trigger_vignette() -> void:
 	_vignette_overlay.color = Color(0, 0, 0, target_alpha)
 	var tween := create_tween()
 	tween.tween_property(_vignette_overlay, "color", Color(0, 0, 0, 0), 0.8).set_ease(Tween.EASE_OUT)
+
+
+func _trigger_screen_shake(intensity: float = 5.0, duration: float = 0.2) -> void:
+	"""Apply a brief screen shake by offsetting the player's Camera2D."""
+	if not is_instance_valid(_player):
+		return
+	var cam: Camera2D = _player.get_node_or_null("Camera2D")
+	if not cam:
+		return
+	# Store original offset if not already shaking
+	if not cam.get("_shake_tween"):
+		var orig: Vector2 = cam.offset
+		# Use a tween to apply a decaying random shake
+		var tween: Tween = create_tween()
+		cam.set("_shake_tween", tween)
+		var elapsed: float = 0.0
+		var shake_step := func():
+			if not is_instance_valid(cam):
+				return
+			elapsed += 0.033
+			var decay: float = max(1.0 - elapsed / duration, 0.0)
+			cam.offset = orig + Vector2(
+				randf_range(-intensity, intensity) * decay,
+				randf_range(-intensity, intensity) * decay
+			)
+			if elapsed < duration:
+				tween.tween_interval(0.033).tween_callback(shake_step)
+			else:
+				cam.offset = orig
+				cam.set("_shake_tween", null)
+		tween.tween_callback(shake_step)
 
 
 func _check_settings_updates() -> void:

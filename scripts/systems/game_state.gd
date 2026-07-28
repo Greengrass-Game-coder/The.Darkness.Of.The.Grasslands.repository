@@ -29,20 +29,20 @@ var epilepsy_safe_mode: bool = true
 var player_rings: Dictionary = {}
 
 func set_player_rings(player_name: String, rings: int) -> void:
-    player_rings[player_name] = rings
+	player_rings[player_name] = rings
 
 func get_player_rings(player_name: String) -> int:
-    return player_rings.get(player_name, 0)
+	return player_rings.get(player_name, 0)
 
 func get_players_sorted_by_rings() -> Array[String]:
-    """Return player names sorted by rings (descending)."""
-    var names: Array[String] = []
-    for pname: String in player_rings:
-        names.append(pname)
-    names.sort_custom(func(a: String, b: String) -> bool:
-        return player_rings.get(a, 0) > player_rings.get(b, 0)
-    )
-    return names
+	"""Return player names sorted by rings (descending)."""
+	var names: Array[String] = []
+	for pname: String in player_rings:
+		names.append(pname)
+	names.sort_custom(func(a: String, b: String) -> bool:
+		return player_rings.get(a, 0) > player_rings.get(b, 0)
+	)
+	return names
 
 ## Match-end analysis state (passed from game_map to lobby)
 var show_analysis: bool = false

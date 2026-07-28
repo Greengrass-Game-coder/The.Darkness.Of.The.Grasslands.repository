@@ -63,14 +63,16 @@ func _build_ui() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if (event.keycode == KEY_T or event.keycode == KEY_SLASH) and not _is_open:
+		if _is_open:
+			# Chat is open — absorb ALL keyboard input to prevent game movement
+			if event.keycode == KEY_ESCAPE:
+				_close_chat()
+			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_T or event.keycode == KEY_SLASH:
 			# Open chat
 			_open_chat()
 			if event.keycode == KEY_SLASH:
 				_chat_input.text = "/"
-			get_viewport().set_input_as_handled()
-		elif event.keycode == KEY_ESCAPE and _is_open:
-			_close_chat()
 			get_viewport().set_input_as_handled()
 
 

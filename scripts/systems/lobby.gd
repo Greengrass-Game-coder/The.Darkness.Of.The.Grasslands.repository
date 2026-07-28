@@ -93,6 +93,7 @@ func _ready() -> void:
 	interact_prompt.hide()
 	flower_prompt.hide()
 	potato_prompt.hide()
+	_start_potato_flying()
 	dialogue_ui.hide()
 	_setup_screenshot_prank()
 	_setup_shop_inventory()
@@ -461,6 +462,19 @@ func _on_flower_area_exited(_body: Node2D) -> void:
 
 
 # ------------------ Evil Potato NPC ------------------
+
+func _start_potato_flying() -> void:
+	"""Make the Evil Potato hover up and down with a gentle bob."""
+	if not is_instance_valid(evil_potato_area):
+		return
+	var sprite: Sprite2D = evil_potato_area.get_node_or_null("Visual")
+	if not sprite:
+		return
+	var orig_y: float = sprite.position.y
+	var tween: Tween = create_tween().set_loops()
+	tween.tween_property(sprite, "position", Vector2(sprite.position.x, orig_y - 20.0), 1.5).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(sprite, "position", Vector2(sprite.position.x, orig_y), 1.5).set_ease(Tween.EASE_IN_OUT)
+
 
 func _on_potato_area_entered(_body: Node2D) -> void:
 	potato_prompt.show()

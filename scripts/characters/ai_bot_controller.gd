@@ -45,6 +45,21 @@ func _ready() -> void:
 	current_stamina = INF
 	_patrol_dir = _random_dir()
 	_strafing_dir = 1.0 if randf() > 0.5 else -1.0
+	
+	# Give bot a distinct purple tint to distinguish from player killers
+	modulate = Color(1.0, 0.8, 1.0, 1.0)
+	
+	# Add a "KILLER BOT" label above the character
+	var label := Label.new()
+	label.name = "BotLabel"
+	label.text = "KILLER BOT"
+	label.position = Vector2(-30, -50)
+	label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5, 1.0))
+	label.add_theme_font_size_override("font_size", 10)
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+	label.add_theme_constant_override("shadow_offset_x", 1)
+	label.add_theme_constant_override("shadow_offset_y", 1)
+	add_child(label)
 
 
 func _input(_event: InputEvent) -> void:

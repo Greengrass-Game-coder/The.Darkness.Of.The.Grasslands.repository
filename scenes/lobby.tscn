@@ -14,6 +14,7 @@
 [ext_resource type="Shader" uid="uid://c5napiqqfb1yy" path="res://assets/shaders/circular_infade.gdshader" id="12_shader"]
 [ext_resource type="Script" uid="uid://bf2wbxx0rjf5y" path="res://scripts/ui/dialogue_ui.gd" id="13_dlg"]
 [ext_resource type="Resource" path="res://resources/browngrass_dialogue.tres" id="14_brown"]
+[ext_resource type="Texture2D" uid="uid://d4npt062xo73y" path="res://The Darkness Of The Grasslands assets/Characters/Lobby/the flying Evil potato! [but not really evil].png" id="15_potato"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_1lb40"]
 animations = [{
@@ -325,23 +326,9 @@ shape = SubResource("RectangleShape2D_h7k9m")
 [node name="EvilPotato" type="Area2D" parent="." unique_id=1043538588]
 position = Vector2(750, 330)
 
-[node name="Visual" type="ColorRect" parent="EvilPotato" unique_id=313416095]
-offset_left = -32.0
-offset_top = -32.0
-offset_right = 32.0
-offset_bottom = 32.0
-color = Color(0.45, 0.25, 0.1, 0.9)
-
-[node name="PotatoEmoji" type="Label" parent="EvilPotato/Visual" unique_id=159678175]
-layout_mode = 0
-offset_left = -16.0
-offset_top = -16.0
-offset_right = 16.0
-offset_bottom = 16.0
-theme_override_font_sizes/font_size = 28
-text = "🥔"
-horizontal_alignment = 1
-vertical_alignment = 1
+[node name="Visual" type="Sprite2D" parent="EvilPotato"]
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("15_potato")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="EvilPotato" unique_id=1791675736]
 scale = Vector2(4, 4)
