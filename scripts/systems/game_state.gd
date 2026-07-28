@@ -25,8 +25,22 @@ var selected_killer: String = "Violentgrass"
 var hide_leaderboard: bool = false
 var epilepsy_safe_mode: bool = true
 
+## Money tracking per player
+var player_money: int = 0
+
 ## Rings (Killer chance) tracking per player
 var player_rings: Dictionary = {}
+
+func add_money(amount: int) -> void:
+	"""Add to the player's money."""
+	player_money += amount
+
+func spend_money(amount: int) -> bool:
+	"""Spend money if available. Returns true if successful."""
+	if player_money >= amount:
+		player_money -= amount
+		return true
+	return false
 
 func set_player_rings(player_name: String, rings: int) -> void:
 	player_rings[player_name] = rings

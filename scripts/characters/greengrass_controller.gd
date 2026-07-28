@@ -77,6 +77,9 @@ var heal_ticks_remaining: int = 7
 
 var _slow_active: bool = false
 var _slow_timer: float = 0.0
+
+var _stamina_exhausted: bool = false
+var _exhaustion_timer: float = 0.0
 const SLOW_MULTIPLIER: float = 0.5
 
 var _block_cd_timer: float = 0.0
@@ -149,6 +152,12 @@ func _physics_process(delta: float) -> void:
 		if heal_tick_timer <= 0:
 			_tick_heal_over_time()
 
+	# Stamina exhaustion countdown
+	if _stamina_exhausted:
+		_exhaustion_timer -= delta
+		if _exhaustion_timer <= 0:
+			_stamina_exhausted = false
+
 
 # ---------- SIZE ----------
 
@@ -173,12 +182,15 @@ func _handle_movement(delta: float) -> void:
 	input_dir.y = Input.get_axis("move_up", "move_down")
 
 	is_sprinting = Input.is_action_pressed("sprint")
-	if is_sprinting and input_dir != Vector2.ZERO and current_stamina > 0.0:
+	if is_sprinting and input_dir != Vector2.ZERO and current_stamina > 0.0 and not _stamina_exhausted:
 		current_stamina -= sprint_stamina_drain * delta
-		if current_stamina < 0.0:
+		if current_stamina <= 0.0:
 			current_stamina = 0.0
-		is_sprinting = true
-		_stamina_regen_timer = stamina_regen_delay
+			_stamina_exhausted = true
+			_exhaustion_timer = 3.0
+			is_sprinting = false
+		else:
+			_stamina_regen_timer = stamina_regen_delay
 	else:
 		is_sprinting = false
 
@@ -616,12 +628,12 @@ func _find_nearest_ally() -> Node:
 func _tick_heal_over_time() -> void:
 	if not heal_over_time_active:
 		return
-	if healing_ally == null or not is_instance_valid(healing_ally):
-		heal_over_time_active = false
-		return
+	if not is_instance_valid(healing_ally):
+		healing_ally = self
 
 	var tick_heal: float = spare_flower_heal / 7.0
 	_apply_heal(tick_heal, "spare_flower", healing_ally)
+	healed.emit(tick_heal, "spare_flower")
 	heal_ticks_remaining -= 1
 
 	if heal_ticks_remaining <= 0:

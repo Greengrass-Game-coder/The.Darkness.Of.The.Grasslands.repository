@@ -22,6 +22,7 @@ const MATCH_DURATION: float = 240.0  # 4 minutes
 const GREENGRASS_SCENE: PackedScene = preload("res://scenes/greengrass.tscn")
 const VIOLENTGRASS_SCENE: PackedScene = preload("res://scenes/violentgrass.tscn")
 const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller.gd")
+const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_survivor_bot_controller.gd")
 
 # Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
 const BOT_CHASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/Violentgrass/"
@@ -36,6 +37,7 @@ var _time_remaining: float = MATCH_DURATION
 var _map_manager: MapManager = null
 var _player: Node2D = null
 var _killer_bot: Node2D = null
+var _survivor_bots: Array[Node2D] = []
 var _chase_layers_enabled: Array[bool] = [false, false, false, false]  # Active state per layer
 var _chase_players: Array[AudioStreamPlayer] = []
 var _chase_active_layer: int = -1  # Highest active layer index
@@ -73,6 +75,7 @@ var _last_damage_time: float = -10.0  # When last damage was taken (for screen s
 
 # BitmapLabel references
 var _bitmap_timer: BitmapLabel = null
+var _timer_flash_red: float = 0.0  # Timer turns red when decreasing
 
 
 func _ready() -> void:
@@ -363,9 +366,11 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	# Create match-ending vignette
 	_create_ending_vignette()
 	
-	# Spawn bot killer if player is survivor
+	# Spawn bot killer if survivor, or survivor bots if killer
 	if not is_killer_player:
 		_spawn_bot_killer()
+	else:
+		_spawn_survivor_bots()
 	
 	# Track damage dealt via punch signal
 	if _player.has_signal("punch_landed") and not _player.punch_landed.is_connected(_on_player_attacked):
@@ -480,6 +485,10 @@ func _process(delta: float) -> void:
 	
 	# +30s timer bonus when killer eliminates a survivor (local mode)
 	_check_kill_timer_bonus()
+	
+	# Decrease timer flash (puzzle reward red flash)
+	if _timer_flash_red > 0.0:
+		_timer_flash_red -= delta
 	
 	# Death sequence fade
 	if _death_active:
@@ -699,6 +708,33 @@ func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorR
 	fill.color.a = 0.5 if ratio < 0.2 else 0.9  # Dim when low
 
 
+func _spawn_survivor_bots() -> void:
+	"""Spawn AI-controlled survivor bots that do puzzles."""
+	var survivor_spawns: Array[Vector2] = _map_manager.survivor_spawns if _map_manager else []
+	if survivor_spawns.is_empty():
+		var mid: Vector2 = Vector2(512, 384)
+		var offsets: Array[Vector2] = [Vector2(-200, -200), Vector2(200, -200), Vector2(-200, 200), Vector2(200, 200)]
+		for i in range(min(4, offsets.size())):
+			_bots_create_survivor(mid + offsets[i], "SurvivorBot_%d" % i)
+	else:
+		var count: int = min(4, survivor_spawns.size())
+		for i in range(count):
+			_bots_create_survivor(survivor_spawns[i], "SurvivorBot_%d" % i)
+	print("GameMap: Spawned %d survivor bots" % _survivor_bots.size())
+
+
+func _bots_create_survivor(spawn_pos: Vector2, name_str: String) -> void:
+	"""Create and configure a single survivor bot."""
+	var bot: Node2D = GREENGRASS_SCENE.instantiate()
+	bot.set_script(AI_SURVIVOR_BOT_SCRIPT)
+	bot.name = name_str
+	bot.position = spawn_pos
+	add_child(bot)
+	if bot.has_signal("bot_solved_puzzle"):
+		bot.bot_solved_puzzle.connect(_on_bot_solved_puzzle)
+	_survivor_bots.append(bot)
+
+
 func _spawn_bot_killer() -> void:
 	"""Spawn an AI-controlled killer bot at a killer spawn point."""
 	var spawn_pos: Vector2 = _map_manager.get_spawn_point(true)
@@ -848,13 +884,35 @@ func _on_chase_loop(player: AudioStreamPlayer) -> void:
 
 
 func _update_chase_music(_delta: float) -> void:
-	"""4-layer chase: Layer1 (distant) → Layer2 → Layer3 → Chase (intense)."""
-	if not is_instance_valid(_killer_bot) or not is_instance_valid(_player):
+	"""Update chase music based on player-killer or bot-killer to nearest survivor."""
+	# Determine chase source: player (if killer) or bot (if survivor)
+	var is_player_killer: bool = _character_name == "Violentgrass"
+	var chase_source: Node2D = null
+	if is_player_killer and is_instance_valid(_player):
+		chase_source = _player
+	elif is_instance_valid(_killer_bot):
+		chase_source = _killer_bot
+	
+	if not is_instance_valid(chase_source):
+		_silence_all_chase()
 		return
 	if _chase_players.is_empty():
 		return
 	
-	var dist: float = _player.global_position.distance_to(_killer_bot.global_position)
+	# Measure distance to nearest survivor
+	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
+	var closest_dist: float = INF
+	for s in survivors:
+		if is_instance_valid(s):
+			var d: float = chase_source.global_position.distance_to(s.global_position)
+			if d < closest_dist:
+				closest_dist = d
+	
+	if closest_dist == INF:
+		_silence_all_chase()
+		return
+	
+	var dist: float = closest_dist
 	
 	# Determine which layer should be active based on distance
 	var target_layer: int = -1  # -1 = no chase (too far)
@@ -900,6 +958,15 @@ func _update_chase_music(_delta: float) -> void:
 			var target_bg_db: float = CHASE_MAP_DUCK_DB if is_chasing else (-2.0 if _ending_music_switched else 0.0)
 			var mtween := create_tween()
 			mtween.tween_property(bg_player, "volume_db", target_bg_db, CHASE_VOL_FADE_MS)
+
+
+func _silence_all_chase() -> void:
+	"""Silence all chase layers."""
+	for i in range(_chase_players.size()):
+		var player: AudioStreamPlayer = _chase_players[i]
+		if is_instance_valid(player):
+			player.volume_db = -80.0
+	_chase_active_layer = -1
 
 
 # ---------- TELEPORT MINI-MAP ----------
@@ -1136,9 +1203,26 @@ func _open_puzzle_for_area(area: Area2D) -> void:
 
 
 func _on_puzzle_solved(area: Area2D) -> void:
-	"""Handle puzzle solved — mark complete, change appearance."""
+	"""Handle puzzle solved — rewards + timer deduction."""
 	var area_name: String = area.name
 	_solved_puzzles.append(area_name)
+	
+	# Rewards: $15 and 2 rings per puzzle
+	var gs = Engine.get_singleton("GameState") if Engine.has_singleton("GameState") else null
+	if gs != null:
+		gs.add_money(15)
+		var username: String = ""
+		if "logged_in_username" in gs:
+			username = gs.logged_in_username
+		if username != "":
+			var current_rings: int = gs.get_player_rings(username)
+			gs.set_player_rings(username, current_rings + 2)
+		print("GameMap: Puzzle reward — +$15, +2 rings")
+	
+	# Decrease match timer by 15 seconds (flash red)
+	_time_remaining = max(0.0, _time_remaining - 15.0)
+	_timer_flash_red = 1.0
+	_update_timer_label()
 	
 	# Show success text
 	var prompt: Label = area.get_node_or_null("InteractPrompt")
@@ -1151,6 +1235,13 @@ func _on_puzzle_solved(area: Area2D) -> void:
 		rect.color = Color(0.2, 0.8, 0.2, 0.5)
 	
 	print("GameMap: Puzzle solved at ", area.position)
+
+
+func _on_bot_solved_puzzle(area_name: String, area_ref: Area2D) -> void:
+	"""Handle a survivor bot solving a puzzle."""
+	if not is_instance_valid(area_ref):
+		return
+	_on_puzzle_solved(area_ref)
 
 
 func _on_puzzle_closed(puz_scene: PuzzleManager) -> void:
@@ -1362,6 +1453,17 @@ func _update_timer_label() -> void:
 	timer_label.text = txt
 	if is_instance_valid(_bitmap_timer):
 		_bitmap_timer.label_text = txt
+	
+	# Flash red when timer is being decreased (puzzle deduction)
+	if _timer_flash_red > 0.0:
+		var red_alpha: float = min(_timer_flash_red * 2.0, 1.0)
+		timer_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2, red_alpha))
+		if is_instance_valid(_bitmap_timer):
+			_bitmap_timer.font_color = Color(1.0, 0.2, 0.2, red_alpha)
+	else:
+		timer_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+		if is_instance_valid(_bitmap_timer):
+			_bitmap_timer.font_color = Color(1, 1, 1, 1)
 
 
 # ---------- MATCH STATS ----------

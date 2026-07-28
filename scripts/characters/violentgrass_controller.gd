@@ -75,6 +75,10 @@ var _teleport_anim_timer: float = 0.0
 var _teleport_reversing: bool = false
 var _teleport_target_dir: Vector2 = Vector2.ZERO
 
+# Stamina exhaustion
+var _stamina_exhausted: bool = false
+var _exhaustion_timer: float = 0.0
+
 
 func _ready() -> void:
 	current_hp = max_hp
@@ -124,6 +128,12 @@ func _physics_process(delta: float) -> void:
 		State.STUNNED:
 			_handle_stunned(delta)
 	
+	# Stamina exhaustion countdown
+	if _stamina_exhausted:
+		_exhaustion_timer -= delta
+		if _exhaustion_timer <= 0:
+			_stamina_exhausted = false
+
 	_update_cooldowns(delta)
 
 
@@ -151,12 +161,15 @@ func _handle_movement(delta: float) -> void:
 	
 	# Stamina management — Sprint Limit: 110 (killers, slightly faster than survivors)
 	is_sprinting = Input.is_action_pressed("sprint")
-	if is_sprinting and input_dir != Vector2.ZERO and current_stamina > 0.0:
+	if is_sprinting and input_dir != Vector2.ZERO and current_stamina > 0.0 and not _stamina_exhausted:
 		current_stamina -= sprint_stamina_drain * delta
-		if current_stamina < 0.0:
+		if current_stamina <= 0.0:
 			current_stamina = 0.0
-		is_sprinting = true
-		_stamina_regen_timer = stamina_regen_delay
+			_stamina_exhausted = true
+			_exhaustion_timer = 3.0
+			is_sprinting = false
+		else:
+			_stamina_regen_timer = stamina_regen_delay
 	else:
 		is_sprinting = false
 	
