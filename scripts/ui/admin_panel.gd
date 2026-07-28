@@ -122,9 +122,10 @@ func _on_double_trouble_toggled(button_pressed: bool) -> void:
 	double_trouble_toggled.emit(button_pressed)
 	
 	# Send admin command to server
-	if NetworkManager.connected:
+	var nm = Engine.get_singleton("NetworkManager")
+	if is_instance_valid(nm) and nm.connected:
 		var cmd: String = "Gamemode select Double trouble" if button_pressed else "Gamemode normal"
-		NetworkManager.send_admin_command(cmd)
+		nm.send_admin_command(cmd)
 
 
 func _on_force_killer_toggled(button_pressed: bool) -> void:
@@ -132,8 +133,9 @@ func _on_force_killer_toggled(button_pressed: bool) -> void:
 	_force_killer_btn.text = "Force Next Killer: ON" if button_pressed else "Force Next Killer: OFF"
 	force_killer_toggled.emit(button_pressed)
 	
-	if button_pressed and NetworkManager.connected:
-		NetworkManager.send_admin_command("Force next killer")
+	var nm2 = Engine.get_singleton("NetworkManager")
+	if button_pressed and is_instance_valid(nm2) and nm2.connected:
+		nm2.send_admin_command("Force next killer")
 
 
 func update_player_list(players: Array) -> void:

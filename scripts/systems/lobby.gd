@@ -124,12 +124,16 @@ func _on_chat_sent(text: String, is_admin: bool) -> void:
 	
 	# "G ..." commands: forward to server if connected
 	if is_admin and GameState.connected_to_server:
-		NetworkManager.send_admin_command(text.trim_prefix("G "))
+		var nm: Node = Engine.get_singleton("NetworkManager")
+		if is_instance_valid(nm) and nm.has_method("send_admin_command"):
+			nm.send_admin_command(text.trim_prefix("G "))
 		return
 	
 	# Normal chat: forward to server if connected
 	if GameState.connected_to_server:
-		NetworkManager.send_chat(text)
+		var nm: Node = Engine.get_singleton("NetworkManager")
+		if is_instance_valid(nm) and nm.has_method("send_chat"):
+			nm.send_chat(text)
 	else:
 		# Local echo for offline mode
 		var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
@@ -876,7 +880,11 @@ func _update_leaderboard_entries() -> void:
 	var players: Array[String] = GameState.get_players_sorted_by_rings()
 	
 	# Always include the local player (if not already in list)
-	var local_name: String = AuthManager.current_username if AuthManager.is_logged_in() else "You"
+	var local_name: String = "You"
+	if Engine.has_singleton("AuthManager"):
+		var am = Engine.get_singleton("AuthManager")
+		if am.is_logged_in():
+			local_name = am.current_username
 	if local_name not in players:
 		players.insert(0, local_name)
 	

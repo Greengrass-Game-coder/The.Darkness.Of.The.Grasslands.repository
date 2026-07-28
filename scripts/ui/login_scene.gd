@@ -28,13 +28,15 @@ func _ready() -> void:
 	_detect_steam_and_prefill()
 	
 	# If already logged in (e.g. returning from match), skip login
-	if AuthManager.is_logged_in():
-		status_label.text = "Welcome back, %s!" % AuthManager.current_username
+	var am = Engine.get_singleton("AuthManager")
+	if is_instance_valid(am) and am.is_logged_in():
+		status_label.text = "Welcome back, %s!" % am.current_username
 		status_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3, 1))
 		loading_indicator.show()
 		# Connect to server if not already
-		if not NetworkManager.connected:
-			NetworkManager.connect_to_server()
+		var nm = Engine.get_singleton("NetworkManager")
+		if is_instance_valid(nm) and not nm.connected:
+			nm.connect_to_server()
 		# Small delay then go to queue screen
 		await get_tree().create_timer(0.6).timeout
 		_on_login_successful()
@@ -46,8 +48,10 @@ func _ready() -> void:
 	# Connect signals
 	login_button.pressed.connect(_on_login_pressed)
 	password_input.text_submitted.connect(_on_password_submitted)
-	AuthManager.login_succeeded.connect(_on_auth_succeeded)
-	AuthManager.login_failed.connect(_on_auth_failed)
+	var am2 = Engine.get_singleton("AuthManager")
+	if is_instance_valid(am2):
+		am2.login_succeeded.connect(_on_auth_succeeded)
+		am2.login_failed.connect(_on_auth_failed)
 
 
 func _detect_steam_and_prefill() -> void:
@@ -94,7 +98,9 @@ func _attempt_login() -> void:
 	status_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
 	login_button.disabled = true
 	
-	AuthManager.login(username, password)
+	var am3 = Engine.get_singleton("AuthManager")
+	if is_instance_valid(am3) and am3.has_method("login"):
+		am3.login(username, password)
 
 
 func _on_auth_succeeded(username: String, _is_admin: bool) -> void:
@@ -105,7 +111,9 @@ func _on_auth_succeeded(username: String, _is_admin: bool) -> void:
 	loading_indicator.show()
 	
 	# Connect to server
-	NetworkManager.connect_to_server()
+	var nm2 = Engine.get_singleton("NetworkManager")
+	if is_instance_valid(nm2) and nm2.has_method("connect_to_server"):
+		nm2.connect_to_server()
 	
 	# Small delay then transition
 	await get_tree().create_timer(0.8).timeout

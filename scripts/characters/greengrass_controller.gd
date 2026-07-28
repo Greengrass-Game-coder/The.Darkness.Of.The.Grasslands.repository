@@ -38,6 +38,13 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var ally_detect_radius: float = 300.0
 @export var punch_range: float = 80.0
 
+# ---------- SIZE ----------
+@export var size_mult: float = 1.0:
+	set(value):
+		size_mult = value
+		_apply_size()
+
+
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var state_timer: Timer = $StateTimer
 @onready var ability_vfx: AnimatedSprite2D = $AbilityVFX
@@ -75,6 +82,8 @@ const SLOW_MULTIPLIER: float = 0.5
 var _block_cd_timer: float = 0.0
 var _punch_cd_timer: float = 0.0
 var _flower_cd_timer: float = 0.0
+var _base_col_scale: Vector2 = Vector2.ONE
+var _base_sprite_scale: float = 0.25
 
 
 func _ready() -> void:
@@ -82,6 +91,13 @@ func _ready() -> void:
 	current_stamina = max_stamina
 	_change_state(State.IDLE)
 	add_to_group("survivors")
+	# Save base scales for size_mult adjustments
+	var cs: CollisionShape2D = $CollisionShape2D
+	if is_instance_valid(cs):
+		_base_col_scale = cs.scale
+	if is_instance_valid(animated_sprite):
+		_base_sprite_scale = animated_sprite.scale.x
+	_apply_size()
 	# Collision: survivor on layer 1, only collide with walls (layer 3)
 	# Killer collision removed to prevent body-blocking the killer (asymmetric: killer pushes through)
 	collision_layer = 1
@@ -132,6 +148,23 @@ func _physics_process(delta: float) -> void:
 		heal_tick_timer -= delta
 		if heal_tick_timer <= 0:
 			_tick_heal_over_time()
+
+
+# ---------- SIZE ----------
+
+func _apply_size() -> void:
+	"""Apply size_mult to sprite, VFX, and collision shape."""
+	if not is_inside_tree():
+		return
+	if is_instance_valid(animated_sprite):
+		animated_sprite.scale = Vector2(_base_sprite_scale * size_mult, _base_sprite_scale * size_mult)
+	if is_instance_valid(ability_vfx):
+		ability_vfx.scale = Vector2(_base_sprite_scale * size_mult, _base_sprite_scale * size_mult)
+	var cs2: CollisionShape2D = $CollisionShape2D
+	if is_instance_valid(cs2):
+		cs2.scale = _base_col_scale * size_mult
+	# Scale punch range proportionally
+	punch_range = 80.0 * size_mult
 
 
 func _handle_movement(delta: float) -> void:

@@ -27,6 +27,13 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var teleport_cooldown: float = 15.0
 @export var teleport_range: float = 400.0
 
+# ---------- SIZE ----------
+@export var size_mult: float = 1.0:
+	set(value):
+		size_mult = value
+		_apply_size()
+
+
 # ---------- CHASE MUSIC SETTINGS ----------
 # Proximity radii (pixels) — which layer plays at each distance
 @export var chase_in_layer1: float = 500.0    # Enter Layer 1
@@ -58,6 +65,8 @@ var hit_on_cooldown: bool = false
 var teleport_on_cooldown: bool = false
 var _hit_cd_timer: float = 0.0
 var _teleport_cd_timer: float = 0.0
+var _base_col_scale: Vector2 = Vector2.ONE  # Saved collision shape scale at init
+var _base_sprite_scale: float = 0.25
 
 # Teleport charge animation state
 const TELEPORT_FRAME_TIME: float = 1.0 / 14.0  # 14 fps
@@ -72,6 +81,13 @@ func _ready() -> void:
 	current_stamina = max_stamina
 	_change_state(State.IDLE)
 	add_to_group("killers")
+	# Save base scales for size_mult adjustments
+	var cs: CollisionShape2D = $CollisionShape2D
+	if is_instance_valid(cs):
+		_base_col_scale = cs.scale
+	if is_instance_valid(animated_sprite):
+		_base_sprite_scale = animated_sprite.scale.x
+	_apply_size()
 	# Collision: killer on layer 2, only collide with survivor (layer 1) + walls (layer 3)
 	collision_layer = 2
 	collision_mask = 1 | 4  # layer 1 (survivor) + layer 3 (walls)
@@ -109,6 +125,23 @@ func _physics_process(delta: float) -> void:
 			_handle_stunned(delta)
 	
 	_update_cooldowns(delta)
+
+
+# ---------- SIZE ----------
+
+func _apply_size() -> void:
+	"""Apply size_mult to sprite, VFX, and collision shape."""
+	if not is_inside_tree():
+		return
+	if is_instance_valid(animated_sprite):
+		animated_sprite.scale = Vector2(_base_sprite_scale * size_mult, _base_sprite_scale * size_mult)
+	if is_instance_valid(ability_vfx):
+		ability_vfx.scale = Vector2(_base_sprite_scale * size_mult, _base_sprite_scale * size_mult)
+	var cs2: CollisionShape2D = $CollisionShape2D
+	if is_instance_valid(cs2):
+		cs2.scale = _base_col_scale * size_mult
+	# Scale hit range proportionally
+	hit_range = 120.0 * size_mult
 
 
 func _handle_movement(delta: float) -> void:

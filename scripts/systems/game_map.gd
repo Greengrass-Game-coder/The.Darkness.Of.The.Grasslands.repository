@@ -26,10 +26,11 @@ const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controlle
 # Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
 const BOT_CHASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/Violentgrass/"
 const CHASE_LAYER_FILES: Array[String] = ["Layer1.wav", "Layer2.wav", "Layer3.wav", "Chase.wav"]
-const CHASE_ENTER_DIST: Array[float] = [800.0, 500.0, 300.0, 150.0]   # When each layer starts
-const CHASE_EXIT_DIST: Array[float]  = [900.0, 600.0, 400.0, 200.0]   # When each layer stops (hysteresis)
-const CHASE_LAYER_VOLUME: Array[float] = [-15.0, -10.0, -5.0, 0.0]    # Volume per layer (Layer1 quiet, Chase loud)
+const CHASE_ENTER_DIST: Array[float] = [600.0, 350.0, 200.0, 100.0]   # When each layer starts
+const CHASE_EXIT_DIST: Array[float]  = [700.0, 450.0, 300.0, 150.0]   # When each layer stops (hysteresis)
+const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
+const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
 
 var _time_remaining: float = MATCH_DURATION
 var _map_manager: MapManager = null
@@ -731,7 +732,7 @@ func _add_map_border_walls() -> void:
 
 
 func _read_bot_chase_settings(_bot: Node2D) -> void:
-	"""(Removed — chase is now a single Chase.wav on/off system.)"""
+	"""(Reading from bot chase settings is now unused — game_map uses its own CHASE_ENTER/EXIT_DIST constants.)"""
 	pass
 
 
@@ -854,13 +855,13 @@ func _update_chase_music(_delta: float) -> void:
 				var tween := create_tween()
 				tween.tween_property(_chase_players[target_layer], "volume_db", CHASE_LAYER_VOLUME[target_layer], CHASE_VOL_FADE_MS)
 		
-		# Duck background music if any chase layer active
+		# Duck background music deeply when chase active (-18dB instead of just -10dB)
 		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
 		if not bg_player:
 			bg_player = get_node_or_null("MapMusicPlayer")
 		if bg_player:
 			var is_chasing: bool = target_layer >= 0
-			var target_bg_db: float = -10.0 if is_chasing else (-2.0 if _ending_music_switched else 0.0)
+			var target_bg_db: float = CHASE_MAP_DUCK_DB if is_chasing else (-2.0 if _ending_music_switched else 0.0)
 			var mtween := create_tween()
 			mtween.tween_property(bg_player, "volume_db", target_bg_db, CHASE_VOL_FADE_MS)
 
@@ -1337,11 +1338,15 @@ func _on_map_chat_sent(text: String, is_admin: bool) -> void:
 		return
 	
 	if is_admin and GameState.connected_to_server:
-		NetworkManager.send_admin_command(text.trim_prefix("G "))
+		var nm: Node = Engine.get_singleton("NetworkManager")
+		if is_instance_valid(nm) and nm.has_method("send_admin_command"):
+			nm.send_admin_command(text.trim_prefix("G "))
 		return
 	
 	if GameState.connected_to_server:
-		NetworkManager.send_chat(text)
+		var nm: Node = Engine.get_singleton("NetworkManager")
+		if is_instance_valid(nm) and nm.has_method("send_chat"):
+			nm.send_chat(text)
 	else:
 		var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
 		if chat_layer:

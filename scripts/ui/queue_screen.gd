@@ -24,9 +24,10 @@ func _ready() -> void:
 	GameState.game_phase = "IN_QUEUE"
 	
 	# Listen for match found
-	if NetworkManager.has_signal("match_found"):
-		if not NetworkManager.match_found.is_connected(_on_match_found):
-			NetworkManager.match_found.connect(_on_match_found)
+	var nm: Node = Engine.get_singleton("NetworkManager")
+	if is_instance_valid(nm) and nm.has_signal("match_found"):
+		if not nm.match_found.is_connected(_on_match_found):
+			nm.match_found.connect(_on_match_found)
 
 
 func _build_ui() -> void:
@@ -108,9 +109,10 @@ func _build_ui() -> void:
 	_cancel_btn = cancel_btn
 	
 	# Listen for queue updates from NetworkManager
-	if NetworkManager.has_signal("player_list_updated"):
-		if not NetworkManager.player_list_updated.is_connected(_on_queue_player_list):
-			NetworkManager.player_list_updated.connect(_on_queue_player_list)
+	var nm2 = Engine.get_singleton("NetworkManager")
+	if is_instance_valid(nm2) and nm2.has_signal("player_list_updated"):
+		if not nm2.player_list_updated.is_connected(_on_queue_player_list):
+			nm2.player_list_updated.connect(_on_queue_player_list)
 	
 	# If match is in progress, auto-join
 	if GameState.match_in_progress:
@@ -136,7 +138,9 @@ func _on_join_pressed() -> void:
 	_status_label.text = "Searching\nJoining queue..."
 	GameState.game_phase = "IN_QUEUE"
 	
-	NetworkManager.join_queue()
+	var nm3 = Engine.get_singleton("NetworkManager")
+	if is_instance_valid(nm3) and nm3.has_method("join_queue"):
+		nm3.join_queue()
 	queue_joined.emit()
 
 
@@ -148,7 +152,9 @@ func _on_cancel_pressed() -> void:
 	_status_label.text = "Ready to play.\nSearching for opponents..."
 	GameState.match_in_progress = false
 	
-	NetworkManager.leave_queue()
+	var nm4 = Engine.get_singleton("NetworkManager")
+	if is_instance_valid(nm4) and nm4.has_method("leave_queue"):
+		nm4.leave_queue()
 	queue_left.emit()
 
 
