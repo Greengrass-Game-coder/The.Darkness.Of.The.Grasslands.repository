@@ -1,7 +1,7 @@
 extends Node
 
 ## WebSocket client that connects to the Render-hosted game server.
-## Autoload — accessible globally as NetworkManager.
+## Autoload - accessible globally as NetworkManager.
 
 signal connected_to_server()
 signal disconnected_from_server()

@@ -1185,6 +1185,25 @@ func _trigger_vignette() -> void:
 	tween.tween_property(_vignette_overlay, "color", Color(0, 0, 0, 0), 0.8).set_ease(Tween.EASE_OUT)
 
 
+func _apply_shake(progress: float, cam: Camera2D, intensity: float) -> void:
+	"""Apply a decaying random shake offset to the camera."""
+	if not is_instance_valid(cam):
+		return
+	var orig: Vector2 = cam.get("_shake_orig") if cam.get("_shake_orig") != null else Vector2.ZERO
+	var decay: float = 1.0 - progress
+	cam.offset = orig + Vector2(
+		randf_range(-intensity, intensity) * decay,
+		randf_range(-intensity, intensity) * decay
+	)
+
+
+func _end_shake(cam: Camera2D) -> void:
+	"""Restore camera offset after shake ends."""
+	if is_instance_valid(cam):
+		var orig: Vector2 = cam.get("_shake_orig") if cam.get("_shake_orig") != null else Vector2.ZERO
+		cam.offset = orig
+
+
 func _trigger_screen_shake(intensity: float = 5.0, duration: float = 0.2) -> void:
 	"""Apply a brief screen shake by offsetting the player's Camera2D."""
 	if not is_instance_valid(_player):
@@ -1192,28 +1211,12 @@ func _trigger_screen_shake(intensity: float = 5.0, duration: float = 0.2) -> voi
 	var cam: Camera2D = _player.get_node_or_null("Camera2D")
 	if not cam:
 		return
-	# Store original offset if not already shaking
-	if not cam.get("_shake_tween"):
-		var orig: Vector2 = cam.offset
-		# Use a tween to apply a decaying random shake
-		var tween: Tween = create_tween()
-		cam.set("_shake_tween", tween)
-		var elapsed: float = 0.0
-		var shake_step := func():
-			if not is_instance_valid(cam):
-				return
-			elapsed += 0.033
-			var decay: float = max(1.0 - elapsed / duration, 0.0)
-			cam.offset = orig + Vector2(
-				randf_range(-intensity, intensity) * decay,
-				randf_range(-intensity, intensity) * decay
-			)
-			if elapsed < duration:
-				tween.tween_interval(0.033).tween_callback(shake_step)
-			else:
-				cam.offset = orig
-				cam.set("_shake_tween", null)
-		tween.tween_callback(shake_step)
+	# Use tween_method to apply decaying random shake over duration
+	cam.set("_shake_elapsed", 0.0)
+	cam.set("_shake_orig", cam.offset)
+	var tween: Tween = create_tween()
+	tween.tween_method(_apply_shake.bind(cam, intensity), 0.0, 1.0, duration).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(_end_shake.bind(cam))
 
 
 func _check_settings_updates() -> void:

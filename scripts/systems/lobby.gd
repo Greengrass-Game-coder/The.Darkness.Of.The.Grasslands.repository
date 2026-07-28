@@ -8,11 +8,11 @@ signal countdown_finished()
 @export var sprint_multiplier: float = 2.5
 
 # HUD button positions — editable in inspector
-@export var shop_button_pos: Vector2 = Vector2(16, 436)
+@export var shop_button_pos: Vector2 = Vector2(16, 200)
 @export var shop_button_size: Vector2 = Vector2(64, 64)
-@export var inventory_button_pos: Vector2 = Vector2(16, 500)
+@export var inventory_button_pos: Vector2 = Vector2(16, 270)
 @export var inventory_button_size: Vector2 = Vector2(64, 64)
-@export var settings_button_pos: Vector2 = Vector2(16, 564)
+@export var settings_button_pos: Vector2 = Vector2(16, 340)
 @export var settings_button_size: Vector2 = Vector2(64, 64)
 
 @onready var lobby_music: AudioStreamPlayer2D = $"../LobbyMusic"
@@ -790,8 +790,8 @@ var _toggle_arrow: Button = null
 var _leaderboard_entries: Array[Button] = []
 var _info_popup: Control = null
 
-@export var leaderboard_pos: Vector2 = Vector2(1000, 80)
-@export var leaderboard_size: Vector2 = Vector2(200, 200)
+@export var leaderboard_pos: Vector2 = Vector2(774, 80)
+@export var leaderboard_size: Vector2 = Vector2(250, 200)
 @export var leaderboard_arrow_pos: Vector2 = Vector2(-24, 80)
 
 func _create_leaderboard() -> void:
@@ -908,7 +908,7 @@ func _on_leaderboard_entry_pressed(player_name: String) -> void:
 
 
 func _show_player_info_popup(player_name: String) -> void:
-	"""Create an info popup with player details."""
+	"""Create an info popup positioned under the leaderboard."""
 	# Remove existing popup if any
 	if is_instance_valid(_info_popup):
 		_info_popup.queue_free()
@@ -919,14 +919,15 @@ func _show_player_info_popup(player_name: String) -> void:
 	
 	var popup := Control.new()
 	popup.name = "PlayerInfoPopup"
-	popup.position = Vector2(800, 80)
-	popup.size = Vector2(220, 200)
+	# Position directly under the leaderboard (leaderboard is at Y=80, size 200)
+	popup.position = Vector2(774, 280)
+	popup.size = Vector2(200, 180)
 	hud.add_child(popup)
 	_info_popup = popup
 	
 	# Background
 	var bg := ColorRect.new()
-	bg.size = Vector2(220, 200)
+	bg.size = Vector2(200, 180)
 	bg.color = Color(0.05, 0.05, 0.05, 0.85)
 	popup.add_child(bg)
 	
@@ -963,7 +964,7 @@ func _show_player_info_popup(player_name: String) -> void:
 	# Close button
 	var close_btn := Button.new()
 	close_btn.text = "X"
-	close_btn.position = Vector2(190, 4)
+	close_btn.position = Vector2(172, 4)
 	close_btn.size = Vector2(24, 24)
 	close_btn.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
 	close_btn.pressed.connect(_close_player_info_popup)
