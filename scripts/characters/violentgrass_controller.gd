@@ -3,6 +3,8 @@ extends CharacterBody2D
 
 signal hit_landed(target: Node2D, damage: float)
 signal stamina_changed(current: float, max_stamina: float)
+signal teleport_scan_started()  # Emitted when killer starts teleport charge
+signal teleport_target_selected(target_pos: Vector2)  # Emitted when game_map provides a target
 
 enum State { IDLE, WALKING, HITTING, TELEPORT_CHARGING, TELEPORT_CASTING, TELEPORTING, STUNNED }
 enum Direction { DOWN, LEFT, RIGHT, UP }
@@ -296,6 +298,9 @@ func _start_teleport_charge() -> void:
 	if teleport_on_cooldown:
 		return
 	
+	# Emit scan signal so game_map shows the teleport mini-map
+	teleport_scan_started.emit()
+	
 	teleport_on_cooldown = true
 	_teleport_cd_timer = teleport_cooldown
 	_change_state(State.TELEPORT_CHARGING)
@@ -323,6 +328,43 @@ func _execute_teleport_release() -> void:
 	var mouse_pos: Vector2 = get_global_mouse_position()
 	_teleport_target_dir = mouse_pos - global_position
 	_change_state(State.TELEPORT_CASTING)
+
+
+func teleport_to_position(target_pos: Vector2) -> void:
+	"""Public method: teleport directly to a target position (called by game_map mini-map)."""
+	if not is_instance_valid(self):
+		return
+	
+	var delta_dir: Vector2 = target_pos - global_position
+	var distance: float = delta_dir.length()
+	
+	# Clamp to max range
+	if distance > teleport_range:
+		delta_dir = delta_dir.normalized() * teleport_range
+	
+	if distance > 0.0:
+		var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+		var query := PhysicsRayQueryParameters2D.create(global_position, global_position + delta_dir)
+		query.exclude = [self]
+		query.collision_mask = 4  # Wall layer
+		var result: Dictionary = space_state.intersect_ray(query)
+		
+		if result.is_empty():
+			global_position += delta_dir
+		else:
+			var hit_pos: Vector2 = result.position
+			var approach_dir: Vector2 = (hit_pos - global_position).normalized()
+			global_position = hit_pos - approach_dir * 16.0
+		
+		# Visual effect shift
+		modulate = Color(0.7, 0.3, 0.9, 0.5)
+		get_tree().create_timer(0.3).timeout.connect(_end_teleport_visual)
+	
+	_change_state(State.TELEPORTING)
+	_hide_vfx()
+	
+	# 2.5 second stun — no movement, no abilities
+	take_stun(2.5)
 
 
 func _do_teleport_move() -> void:

@@ -28,9 +28,13 @@ signal countdown_finished()
 @onready var font_swap_timer: Timer = $"../ScaryOverlay/FontSwapTimer"
 @onready var red_flower_area: Area2D = $"../RedFlower"
 @onready var flower_prompt: Label = $"../RedFlower/FlowerPrompt"
+@onready var evil_potato_area: Area2D = $"../EvilPotato"
+@onready var potato_prompt: Label = $"../EvilPotato/PotatoPrompt"
 
 @onready var browngrass_dialogue: DialogueLine = preload("res://resources/browngrass_dialogue.tres")
 @onready var flower_dialogue: DialogueLine = preload("res://resources/flower_dialogue.tres")
+@onready var evil_potato_dialogue: DialogueLine = preload("res://resources/evil_potato_dialogue.tres")
+@onready var evil_potato_dialogue_repeat: DialogueLine = preload("res://resources/evil_potato_dialogue_repeat.tres")
 
 
 var infade_tween: Tween
@@ -41,6 +45,7 @@ var _time_remaining: float = 0.0
 var _last_direction: Direction = Direction.DOWN
 var _brown_state: int = 0  # 0=first, 1=returned (left early), 2=finished
 var _flower_dialogue_done: bool = false
+var _potato_dialogue_done: bool = false
 
 var _scare_active: bool = false
 var _e_pressed_last_frame: bool = false
@@ -81,17 +86,68 @@ func _ready() -> void:
 	red_flower_area.body_entered.connect(_on_flower_area_entered)
 	red_flower_area.body_exited.connect(_on_flower_area_exited)
 	
+	# Evil Potato signals
+	evil_potato_area.body_entered.connect(_on_potato_area_entered)
+	evil_potato_area.body_exited.connect(_on_potato_area_exited)
+	
 	interact_prompt.hide()
 	flower_prompt.hide()
+	potato_prompt.hide()
 	dialogue_ui.hide()
 	_setup_screenshot_prank()
 	_setup_shop_inventory()
 	_create_leaderboard()
+	_setup_chat()
 	countdown_finished.connect(_on_lobby_countdown_finished)
 	
 	# Show match-end analysis if returning from a match
 	if GameState.show_analysis:
 		_show_match_analysis()
+
+
+func _setup_chat() -> void:
+	"""Create ChatLayer instance and connect its signals."""
+	var chat := ChatLayer.new()
+	chat.name = "ChatLayer"
+	chat.chat_sent.connect(_on_chat_sent)
+	add_child(chat)
+
+
+func _on_chat_sent(text: String, is_admin: bool) -> void:
+	"""Handle a chat message sent from ChatLayer."""
+	# Handle "G" or "G help" locally (show all admin commands)
+	var trimmed: String = text.strip_edges().to_lower()
+	if trimmed == "g" or trimmed == "g help":
+		_show_admin_help()
+		return
+	
+	# "G ..." commands: forward to server if connected
+	if is_admin and GameState.connected_to_server:
+		NetworkManager.send_admin_command(text.trim_prefix("G "))
+		return
+	
+	# Normal chat: forward to server if connected
+	if GameState.connected_to_server:
+		NetworkManager.send_chat(text)
+	else:
+		# Local echo for offline mode
+		var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+		if chat_layer:
+			chat_layer.add_system_message("Chat sent (offline): %s" % text)
+
+
+func _show_admin_help() -> void:
+	"""Display all available admin commands in chat."""
+	var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+	if not chat_layer:
+		return
+	chat_layer.add_system_message("=== ADMIN COMMANDS ===")
+	chat_layer.add_system_message("G end / G round - End current round")
+	chat_layer.add_system_message("G kill <name> - Eliminate player")
+	chat_layer.add_system_message("G force / G next - Force next killer")
+	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
+	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
+	chat_layer.add_system_message("=====================")
 
 
 func _on_music_finished() -> void:
@@ -404,6 +460,16 @@ func _on_flower_area_exited(_body: Node2D) -> void:
 	flower_prompt.hide()
 
 
+# ------------------ Evil Potato NPC ------------------
+
+func _on_potato_area_entered(_body: Node2D) -> void:
+	potato_prompt.show()
+
+
+func _on_potato_area_exited(_body: Node2D) -> void:
+	potato_prompt.hide()
+
+
 # ------------------ E Key + Dialogue ------------------
 
 func _process(delta: float) -> void:
@@ -445,6 +511,14 @@ func _process(delta: float) -> void:
 			flower_prompt.hide()
 			_ensure_dialogue_connect()
 			dialogue_ui.start_dialogue_with(flower_dialogue)
+		elif potato_prompt.visible:
+			potato_prompt.hide()
+			_ensure_dialogue_connect()
+			if _potato_dialogue_done:
+				dialogue_ui.start_dialogue_with(evil_potato_dialogue_repeat)
+			else:
+				_potato_dialogue_done = true
+				dialogue_ui.start_dialogue_with(evil_potato_dialogue)
 	elif not Input.is_key_pressed(KEY_E):
 		_e_pressed_last_frame = false
 
@@ -699,13 +773,15 @@ func _hide_match_analysis() -> void:
 var _leaderboard_panel: Control = null
 var _leaderboard_visible: bool = true
 var _toggle_arrow: Button = null
+var _leaderboard_entries: Array[Button] = []
+var _info_popup: Control = null
 
 @export var leaderboard_pos: Vector2 = Vector2(1000, 80)
 @export var leaderboard_size: Vector2 = Vector2(200, 200)
 @export var leaderboard_arrow_pos: Vector2 = Vector2(-24, 80)
 
 func _create_leaderboard() -> void:
-	"""Create a collapsible leaderboard panel in the HUD."""
+	"""Create a collapsible leaderboard panel in the HUD with clickable entries."""
 	var hud: CanvasLayer = $"../HUD"
 	if not hud:
 		return
@@ -746,18 +822,15 @@ func _create_leaderboard() -> void:
 	sep.color = Color(1, 1, 1, 0.3)
 	panel.add_child(sep)
 	
-	# Placeholder entry — local player
-	var entry := Label.new()
-	entry.name = "Entry_0"
-	entry.text = "  You"
-	entry.position = Vector2(10, 42)
-	entry.size = Vector2(180, 22)
-	entry.add_theme_color_override("font_color", Color(0.6, 1, 0.6, 1))
-	entry.add_theme_font_size_override("font_size", 14)
-	entry.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
-	entry.add_theme_constant_override("shadow_offset_x", 1)
-	entry.add_theme_constant_override("shadow_offset_y", 1)
-	panel.add_child(entry)
+	# Entry container (will hold player rows)
+	var entry_container := VBoxContainer.new()
+	entry_container.name = "EntryContainer"
+	entry_container.position = Vector2(10, 42)
+	entry_container.size = Vector2(180, 150)
+	panel.add_child(entry_container)
+	
+	# Populate entries
+	_update_leaderboard_entries()
 	
 	# Toggle arrow button on the left edge
 	var arrow := Button.new()
@@ -772,6 +845,121 @@ func _create_leaderboard() -> void:
 	_toggle_arrow = arrow
 	
 	_update_leaderboard_visibility()
+
+
+func _update_leaderboard_entries() -> void:
+	"""Rebuild player entries from GameState player_rings."""
+	var container: VBoxContainer = _leaderboard_panel.get_node_or_null("EntryContainer")
+	if not container:
+		return
+	
+	# Clear existing entries
+	for child: Node in container.get_children():
+		child.queue_free()
+	_leaderboard_entries.clear()
+	
+	# Get sorted player list
+	var players: Array[String] = GameState.get_players_sorted_by_rings()
+	
+	# Always include the local player (if not already in list)
+	var local_name: String = AuthManager.current_username if AuthManager.is_logged_in() else "You"
+	if local_name not in players:
+		players.insert(0, local_name)
+	
+	# Create clickable entry for each player
+	for pname: String in players:
+		var rings: int = GameState.get_player_rings(pname)
+		var is_self: bool = pname == local_name
+		var entry := Button.new()
+		entry.name = "Entry_%s" % pname
+		entry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		entry.size.y = 22
+		entry.text = "  %s — R:%d" % [pname, rings]
+		entry.add_theme_color_override("font_color", Color(0.6, 1.0, 0.6, 1) if is_self else Color(1, 1, 1, 1))
+		entry.add_theme_font_size_override("font_size", 13)
+		entry.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		entry.add_theme_constant_override("shadow_offset_x", 1)
+		entry.add_theme_constant_override("shadow_offset_y", 1)
+		entry.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		entry.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+		entry.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+		entry.pressed.connect(_on_leaderboard_entry_pressed.bind(pname))
+		container.add_child(entry)
+		_leaderboard_entries.append(entry)
+
+
+func _on_leaderboard_entry_pressed(player_name: String) -> void:
+	"""Show info popup for the clicked player."""
+	_show_player_info_popup(player_name)
+
+
+func _show_player_info_popup(player_name: String) -> void:
+	"""Create an info popup with player details."""
+	# Remove existing popup if any
+	if is_instance_valid(_info_popup):
+		_info_popup.queue_free()
+	
+	var hud: CanvasLayer = $"../HUD"
+	if not hud:
+		return
+	
+	var popup := Control.new()
+	popup.name = "PlayerInfoPopup"
+	popup.position = Vector2(800, 80)
+	popup.size = Vector2(220, 200)
+	hud.add_child(popup)
+	_info_popup = popup
+	
+	# Background
+	var bg := ColorRect.new()
+	bg.size = Vector2(220, 200)
+	bg.color = Color(0.05, 0.05, 0.05, 0.85)
+	popup.add_child(bg)
+	
+	# Title
+	var title := Label.new()
+	title.text = "  " + player_name
+	title.position = Vector2(8, 8)
+	title.size = Vector2(200, 24)
+	title.add_theme_color_override("font_color", Color(1, 1, 0.7, 1))
+	title.add_theme_font_size_override("font_size", 16)
+	popup.add_child(title)
+	
+	# Stats
+	var stats: Array[String] = [
+		"Rings: %d" % GameState.get_player_rings(player_name),
+		"Killer: Violentgrass",
+		"Survivor: Greengrass",
+		"Playtime: --",
+		"Wins (Killer): --",
+		"Wins (Survivor): --",
+	]
+	
+	var y_offset: float = 38.0
+	for stat: String in stats:
+		var stat_label := Label.new()
+		stat_label.text = "  " + stat
+		stat_label.position = Vector2(8, y_offset)
+		stat_label.size = Vector2(200, 20)
+		stat_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1))
+		stat_label.add_theme_font_size_override("font_size", 13)
+		popup.add_child(stat_label)
+		y_offset += 22.0
+	
+	# Close button
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.position = Vector2(190, 4)
+	close_btn.size = Vector2(24, 24)
+	close_btn.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
+	close_btn.pressed.connect(_close_player_info_popup)
+	popup.add_child(close_btn)
+
+
+func _close_player_info_popup() -> void:
+	if is_instance_valid(_info_popup):
+		_info_popup.queue_free()
+		_info_popup = null
 
 
 func _toggle_leaderboard() -> void:
@@ -796,13 +984,13 @@ func _update_leaderboard_visibility() -> void:
 	var bg: ColorRect = _leaderboard_panel.get_node_or_null("Bg")
 	var title: Label = _leaderboard_panel.get_node_or_null("Title")
 	var sep: ColorRect = _leaderboard_panel.get_node_or_null("Sep")
-	var entry: Label = _leaderboard_panel.get_node_or_null("Entry_0")
+	var entry_container: VBoxContainer = _leaderboard_panel.get_node_or_null("EntryContainer")
 	
 	if _leaderboard_visible:
 		if bg: bg.visible = true
 		if title: title.visible = true
 		if sep: sep.visible = true
-		if entry: entry.visible = true
+		if entry_container: entry_container.visible = true
 		if _toggle_arrow:
 			_toggle_arrow.text = "<"
 			_toggle_arrow.position = leaderboard_arrow_pos
@@ -810,7 +998,7 @@ func _update_leaderboard_visibility() -> void:
 		if bg: bg.visible = false
 		if title: title.visible = false
 		if sep: sep.visible = false
-		if entry: entry.visible = false
+		if entry_container: entry_container.visible = false
 		if _toggle_arrow:
 			_toggle_arrow.text = ">"
 			_toggle_arrow.position = leaderboard_arrow_pos

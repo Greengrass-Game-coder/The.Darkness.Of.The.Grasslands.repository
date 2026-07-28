@@ -128,6 +128,7 @@ func _spawn_note() -> void:
 	panel_ref.add_child(note)
 	_notes.append(note)
 	_spawned_count += 1
+	_next_note_index += 1
 
 
 func _check_end_condition() -> void:

@@ -14,10 +14,13 @@ config/name="The Darkness Of The Grasslands"
 run/main_scene="uid://dxhksv6ivmaii"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+"#run/main_sceneisin[run]sectionbelowconfig/features"=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
 
 GameState="*res://scripts/systems/game_state.gd"
+AuthManager="*res://scripts/systems/auth_manager.gd"
+NetworkManager="*res://scripts/systems/network_manager.gd"
 
 [display]
 
@@ -51,4 +54,4 @@ renderer/rendering_method.mobile="gl_compatibility"
 
 [run]
 
-main_scene="res://scenes/lobby.tscn"
+main_scene="res://scenes/login.tscn"

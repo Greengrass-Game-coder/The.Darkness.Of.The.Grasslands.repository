@@ -23,19 +23,21 @@ const GREENGRASS_SCENE: PackedScene = preload("res://scenes/greengrass.tscn")
 const VIOLENTGRASS_SCENE: PackedScene = preload("res://scenes/violentgrass.tscn")
 const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller.gd")
 
-# Chase music — single Chase.wav, no layers
+# Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
 const BOT_CHASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/Violentgrass/"
-const BOT_CHASE_PATH: String = BOT_CHASE_DIR + "Chase.wav"
-const CHASE_START_DISTANCE: float = 500.0    # Start chase when closer than this
-const CHASE_CUTOFF_DISTANCE: float = 1000.0  # Cut chase when farther than this
-const CHASE_VOL_FADE_MS: float = 0.15  # Fast fade time (seconds)
+const CHASE_LAYER_FILES: Array[String] = ["Layer1.wav", "Layer2.wav", "Layer3.wav", "Chase.wav"]
+const CHASE_ENTER_DIST: Array[float] = [800.0, 500.0, 300.0, 150.0]   # When each layer starts
+const CHASE_EXIT_DIST: Array[float]  = [900.0, 600.0, 400.0, 200.0]   # When each layer stops (hysteresis)
+const CHASE_LAYER_VOLUME: Array[float] = [-15.0, -10.0, -5.0, 0.0]    # Volume per layer (Layer1 quiet, Chase loud)
+const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
 
 var _time_remaining: float = MATCH_DURATION
 var _map_manager: MapManager = null
 var _player: Node2D = null
 var _killer_bot: Node2D = null
-var _chase_active: bool = false
-var _chase_player: AudioStreamPlayer = null
+var _chase_layers_enabled: Array[bool] = [false, false, false, false]  # Active state per layer
+var _chase_players: Array[AudioStreamPlayer] = []
+var _chase_active_layer: int = -1  # Highest active layer index
 var _current_interactable: Area2D = null
 var _last_hp: float = -1.0
 var _solved_puzzles: Array[String] = []
@@ -45,6 +47,14 @@ var _puzzle_open: bool = false
 # Killer speed scaling (timer < 30s)
 var _killer_base_sprint: float = 0.0
 var _killer_speed_scaling_active: bool = false
+
+# Death sequence state
+var _death_active: bool = false
+var _death_overlay: ColorRect = null
+var _death_fade_progress: float = 0.0
+
+# Teleport mini-map
+var _teleport_minimap: Control = null
 
 # Match-ending effect
 var _ending_vignette: ColorRect = null
@@ -96,6 +106,9 @@ func _ready() -> void:
 	
 	# Spawn the player character (also spawns killer bot if survivor)
 	spawn_player(GameState.is_killer)
+	
+	# Setup chat system
+	_setup_chat()
 	
 	# Play killer intro cutscene after spawns are complete
 	call_deferred("_play_killer_cutscene")
@@ -320,6 +333,10 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	if _player.has_signal("punch_landed") and not _player.punch_landed.is_connected(_on_player_attacked):
 		_player.punch_landed.connect(_on_player_attacked)
 	
+	# Connect teleport scan signal for killer mini-map
+	if _player.has_signal("teleport_scan_started") and not _player.teleport_scan_started.is_connected(_on_killer_teleport_scan):
+		_player.teleport_scan_started.connect(_on_killer_teleport_scan)
+	
 	print("GameMap: Spawned ", _character_name, " at ", spawn_pos)
 
 
@@ -425,6 +442,10 @@ func _process(delta: float) -> void:
 	
 	# +30s timer bonus when killer eliminates a survivor (local mode)
 	_check_kill_timer_bonus()
+	
+	# Death sequence fade
+	if _death_active:
+		_update_death_fade(delta)
 
 
 func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
@@ -577,9 +598,13 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 	else:
 		fill.color = Color(0.15, 0.9, 0.15, 0.9)
 	
-	# +30s timer bonus when killer eliminates this survivor (HP reaches 0)
-	if current_hp <= 0.0 and _last_hp > 0.0 and is_instance_valid(_killer_bot):
-		_on_killer_eliminated("Player")
+	# Death sequence: when survivor HP reaches 0
+	if current_hp <= 0.0 and _last_hp > 0.0:
+		# +30s timer bonus if bot killer exists
+		if is_instance_valid(_killer_bot):
+			_on_killer_eliminated("Player")
+		# Start death sequence
+		_start_death_sequence()
 	_last_hp = current_hp
 
 
@@ -658,20 +683,29 @@ func _read_bot_chase_settings(_bot: Node2D) -> void:
 
 
 func _setup_chase_music() -> void:
-	"""Create a single Chase.wav looping player (starts muted)."""
-	if not ResourceLoader.exists(BOT_CHASE_PATH):
-		push_error("GameMap: Chase.wav not found at ", BOT_CHASE_PATH)
-		return
-	var p := AudioStreamPlayer.new()
-	p.name = "ChasePlayer"
-	p.stream = load(BOT_CHASE_PATH)
-	p.autoplay = true
-	p.volume_db = -80.0  # Muted until triggered
-	p.finished.connect(_on_chase_loop.bind(p))
-	add_child(p)
-	_chase_player = p
-	_chase_active = false
-	print("GameMap: Chase music ready")
+	"""Create 4 chase layer players (Layer1-3 + Chase), all muted until triggered."""
+	_chase_players.clear()
+	_chase_layers_enabled = [false, false, false, false]
+	_chase_active_layer = -1
+	
+	for i: int in CHASE_LAYER_FILES.size():
+		var file_name: String = CHASE_LAYER_FILES[i]
+		var file_path: String = BOT_CHASE_DIR + file_name
+		if not ResourceLoader.exists(file_path):
+			push_error("GameMap: Chase layer file not found: ", file_path)
+			continue
+		
+		var p := AudioStreamPlayer.new()
+		p.name = "ChaseLayer_%d" % i
+		p.stream = load(file_path)
+		p.autoplay = true
+		p.volume_db = -80.0  # Muted until triggered
+		p.finished.connect(_on_chase_loop.bind(p))
+		add_child(p)
+		_chase_players.append(p)
+	
+	var loaded: int = _chase_players.size()
+	print("GameMap: Chase music ready — %d layers loaded" % loaded)
 
 
 func _play_killer_cutscene() -> void:
@@ -724,40 +758,161 @@ func _on_chase_loop(player: AudioStreamPlayer) -> void:
 
 
 func _update_chase_music(_delta: float) -> void:
-	"""Simple chase on/off: play Chase.wav when in range, cut at 1000px."""
+	"""4-layer chase: Layer1 (distant) → Layer2 → Layer3 → Chase (intense)."""
 	if not is_instance_valid(_killer_bot) or not is_instance_valid(_player):
 		return
-	if not is_instance_valid(_chase_player):
+	if _chase_players.is_empty():
 		return
 	
 	var dist: float = _player.global_position.distance_to(_killer_bot.global_position)
 	
-	if not _chase_active and dist <= CHASE_START_DISTANCE:
-		# Start chase
-		_chase_active = true
-		var tween := create_tween()
-		tween.tween_property(_chase_player, "volume_db", 0.0, CHASE_VOL_FADE_MS)
-		# Fade background music down a bit so chase cuts through
-		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
-		if not bg_player:
-			bg_player = get_node_or_null("MapMusicPlayer")
-		if bg_player:
-			var mtween := create_tween()
-			mtween.tween_property(bg_player, "volume_db", -10.0, CHASE_VOL_FADE_MS)
+	# Determine which layer should be active based on distance
+	var target_layer: int = -1  # -1 = no chase (too far)
+	for i: int in range(CHASE_ENTER_DIST.size() - 1, -1, -1):
+		if dist <= CHASE_ENTER_DIST[i]:
+			target_layer = i
 	
-	elif _chase_active and dist > CHASE_CUTOFF_DISTANCE:
-		# Stop chase — fast cut
-		_chase_active = false
-		var tween := create_tween()
-		tween.tween_property(_chase_player, "volume_db", -80.0, CHASE_VOL_FADE_MS)
-		# Restore background music volume
+	# Apply hysteresis: if currently at a layer, use EXIT distance to leave
+	if _chase_active_layer >= 0 and target_layer < _chase_active_layer:
+		# Check if we've exceeded the exit distance for the current layer
+		if dist > CHASE_EXIT_DIST[_chase_active_layer]:
+			target_layer = _chase_active_layer - 1
+	
+	# Clamp target_layer: if no layers match, set to -1
+	if target_layer < -1:
+		target_layer = -1
+	
+	# Handle layer transitions
+	if target_layer != _chase_active_layer:
+		var old_layer: int = _chase_active_layer
+		_chase_active_layer = target_layer
+		
+		# Mute all players first
+		for i: int in _chase_players.size():
+			if is_instance_valid(_chase_players[i]):
+				_chase_layers_enabled[i] = false
+				var tween := create_tween()
+				tween.tween_property(_chase_players[i], "volume_db", -80.0, CHASE_VOL_FADE_MS)
+		
+		# Unmute the target layer if any
+		if target_layer >= 0 and target_layer < _chase_players.size():
+			_chase_layers_enabled[target_layer] = true
+			if is_instance_valid(_chase_players[target_layer]):
+				var tween := create_tween()
+				tween.tween_property(_chase_players[target_layer], "volume_db", CHASE_LAYER_VOLUME[target_layer], CHASE_VOL_FADE_MS)
+		
+		# Duck background music if any chase layer active
 		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
 		if not bg_player:
 			bg_player = get_node_or_null("MapMusicPlayer")
 		if bg_player:
-			var target_db: float = -2.0 if _ending_music_switched else 0.0
+			var is_chasing: bool = target_layer >= 0
+			var target_bg_db: float = -10.0 if is_chasing else (-2.0 if _ending_music_switched else 0.0)
 			var mtween := create_tween()
-			mtween.tween_property(bg_player, "volume_db", target_db, CHASE_VOL_FADE_MS)
+			mtween.tween_property(bg_player, "volume_db", target_bg_db, CHASE_VOL_FADE_MS)
+
+
+# ---------- TELEPORT MINI-MAP ----------
+
+func _on_killer_teleport_scan() -> void:
+	"""Show mini-map overlay when killer activates teleport scan."""
+	if not is_instance_valid(_killer_bot):
+		return
+	_show_teleport_minimap()
+
+
+func _show_teleport_minimap() -> void:
+	"""Create a mini-map overlay showing all survivor positions as dots."""
+	if is_instance_valid(_teleport_minimap):
+		_teleport_minimap.queue_free()
+	
+	var minimap := Control.new()
+	minimap.name = "TeleportMiniMap"
+	minimap.size = get_viewport().get_visible_rect().size
+	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
+	$HUD.add_child(minimap)
+	_teleport_minimap = minimap
+	
+	# Dark background
+	var bg := ColorRect.new()
+	bg.size = minimap.size
+	bg.color = Color(0, 0, 0, 0.7)
+	minimap.add_child(bg)
+	
+	# Determine map bounds from map manager
+	var map_size: Vector2 = _map_manager.blueprint_size if _map_manager else Vector2(1024, 768)
+	# Display area for the mini-map (centered, 300x225)
+	var mm_w: float = 300.0
+	var mm_h: float = 225.0
+	var mm_x: float = (minimap.size.x - mm_w) * 0.5
+	var mm_y: float = (minimap.size.y - mm_h) * 0.5
+	
+	# Mini-map background
+	var mm_bg := ColorRect.new()
+	mm_bg.position = Vector2(mm_x, mm_y)
+	mm_bg.size = Vector2(mm_w, mm_h)
+	mm_bg.color = Color(0.08, 0.08, 0.08, 0.9)
+	minimap.add_child(mm_bg)
+	
+	# Title
+	var title := Label.new()
+	title.text = "TELEPORT TARGET"
+	title.position = Vector2(mm_x, mm_y - 28)
+	title.size = Vector2(mm_w, 24)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color(1, 1, 0.7, 1))
+	title.add_theme_font_size_override("font_size", 18)
+	minimap.add_child(title)
+	
+	# Find all survivors
+	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
+	
+	for s: Node in survivors:
+		if not is_instance_valid(s):
+			continue
+		# Map survivor world position to mini-map position
+		var world_pos: Vector2 = s.global_position
+		var mm_pos: Vector2 = Vector2(
+			mm_x + (world_pos.x / map_size.x) * mm_w,
+			mm_y + (world_pos.y / map_size.y) * mm_h
+		)
+		
+		# Create clickable dot for this survivor
+		var dot := Button.new()
+		dot.name = "Dot_%s" % s.name
+		dot.position = mm_pos - Vector2(8, 8)
+		dot.size = Vector2(16, 16)
+		dot.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
+		dot.add_theme_font_size_override("font_size", 14)
+		dot.text = "●"
+		dot.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		dot.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+		dot.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+		dot.pressed.connect(_on_minimap_dot_pressed.bind(world_pos))
+		minimap.add_child(dot)
+	
+	# Close button
+	var close_btn := Button.new()
+	close_btn.text = "X CANCEL"
+	close_btn.position = Vector2(mm_x + mm_w - 80, mm_y + mm_h + 8)
+	close_btn.size = Vector2(80, 28)
+	close_btn.add_theme_color_override("font_color", Color(1, 0.5, 0.5, 1))
+	close_btn.pressed.connect(_close_teleport_minimap)
+	minimap.add_child(close_btn)
+
+
+func _on_minimap_dot_pressed(world_pos: Vector2) -> void:
+	"""Teleport killer to the clicked survivor position."""
+	if is_instance_valid(_killer_bot) and _killer_bot.has_method("teleport_to_position"):
+		_killer_bot.teleport_to_position(world_pos)
+	_close_teleport_minimap()
+
+
+func _close_teleport_minimap() -> void:
+	"""Remove the teleport mini-map overlay."""
+	if is_instance_valid(_teleport_minimap):
+		_teleport_minimap.queue_free()
+		_teleport_minimap = null
 
 
 func get_random_killer_spawn() -> Vector2:
@@ -1072,9 +1227,94 @@ func _update_timer_label() -> void:
 
 # ---------- MATCH STATS ----------
 
+# ---------- CHAT SYSTEM ----------
+
+func _setup_chat() -> void:
+	"""Create ChatLayer instance and connect its signals."""
+	var chat := ChatLayer.new()
+	chat.name = "ChatLayer"
+	chat.chat_sent.connect(_on_map_chat_sent)
+	add_child(chat)
+
+
+func _on_map_chat_sent(text: String, is_admin: bool) -> void:
+	"""Handle a chat message sent from ChatLayer in game map."""
+	var trimmed: String = text.strip_edges().to_lower()
+	if trimmed == "g" or trimmed == "g help":
+		_show_map_admin_help()
+		return
+	
+	if is_admin and GameState.connected_to_server:
+		NetworkManager.send_admin_command(text.trim_prefix("G "))
+		return
+	
+	if GameState.connected_to_server:
+		NetworkManager.send_chat(text)
+	else:
+		var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+		if chat_layer:
+			chat_layer.add_system_message("Chat sent (offline): %s" % text)
+
+
+func _show_map_admin_help() -> void:
+	"""Display all available admin commands in chat."""
+	var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+	if not chat_layer:
+		return
+	chat_layer.add_system_message("=== ADMIN COMMANDS ===")
+	chat_layer.add_system_message("G end / G round - End current round")
+	chat_layer.add_system_message("G kill <name> - Eliminate player")
+	chat_layer.add_system_message("G force / G next - Force next killer")
+	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
+	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
+	chat_layer.add_system_message("=====================")
+
+
 func _on_player_attacked(_stunned: bool) -> void:
 	"""Track attacks when player lands a punch."""
 	_total_damage_dealt += 1.0
+
+
+# ---------- DEATH SEQUENCE ----------
+
+func _start_death_sequence() -> void:
+	"""Start the 5-second death fade-out sequence."""
+	if _death_active:
+		return
+	_death_active = true
+	_death_fade_progress = 0.0
+	
+	# Disable player physics (can't move)
+	if is_instance_valid(_player):
+		_player.set_physics_process(false)
+		# Greying out the player
+		_player.modulate = Color(0.6, 0.6, 0.6, 1.0)
+	
+	# Create fade overlay on top of everything
+	_death_overlay = ColorRect.new()
+	_death_overlay.name = "DeathOverlay"
+	_death_overlay.color = Color(0.15, 0.15, 0.15, 0.0)  # Start transparent
+	_death_overlay.size = get_viewport().get_visible_rect().size
+	_death_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$HUD.add_child(_death_overlay)
+	
+	print("GameMap: Death sequence started — fading out over 5 seconds")
+
+
+func _update_death_fade(delta: float) -> void:
+	"""Advance the death fade progress."""
+	_death_fade_progress += delta / 5.0  # Complete over 5 seconds
+	var alpha: float = clampf(_death_fade_progress, 0.0, 1.0)
+	# Fade from transparent to 85% grey
+	if is_instance_valid(_death_overlay):
+		_death_overlay.color = Color(0.15, 0.15, 0.15, alpha * 0.85)
+	
+	# After 5 seconds, end match
+	if _death_fade_progress >= 1.0:
+		_death_active = false
+		if is_instance_valid(_death_overlay):
+			_death_overlay.queue_free()
+		_end_match()
 
 
 func _end_match() -> void:

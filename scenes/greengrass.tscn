@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bjm1oxo20kc6j"]
 
-[ext_resource type="Script" uid="uid://c6o6u0boh4nkr" path="res://scripts/characters/greengrass_controller.gd" id="1_7nksj"]
+[ext_resource type="Script" uid="uid://bvuq0plxgdvf6" path="res://scripts/characters/greengrass_controller.gd" id="1_7nksj"]
 [ext_resource type="Texture2D" uid="uid://dc5l768f6m0kq" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING DOWN/WALKING_DOWN_frame_00000.png" id="2_d0"]
 [ext_resource type="Texture2D" uid="uid://dod25yfq4srrr" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING DOWN/WALKING_DOWN_frame_00001.png" id="2_d1"]
 [ext_resource type="Texture2D" uid="uid://dn5vj1cl7c516" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_0.png" id="2_ejb6i"]
@@ -350,4 +350,4 @@ position_smoothing_speed = 6.0
 z_index = 100
 scale = Vector2(0.25, 0.25)
 sprite_frames = SubResource("SpriteFrames_f4mb1")
-animation = &"block_down"
+animation = &"punch_charge_down"
