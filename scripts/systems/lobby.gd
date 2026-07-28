@@ -15,6 +15,9 @@ signal countdown_finished()
 @export var settings_button_pos: Vector2 = Vector2(16, 340)
 @export var settings_button_size: Vector2 = Vector2(64, 64)
 
+# Role toggle
+@export var role_toggle_pos: Vector2 = Vector2(820, 660)
+
 @onready var lobby_music: AudioStreamPlayer2D = $"../LobbyMusic"
 @onready var countdown_label: Label = %CountdownLabel
 @onready var timer: Timer = $"../CountdownTimer"
@@ -104,6 +107,7 @@ func _ready() -> void:
 	_setup_shop_inventory()
 	_create_leaderboard()
 	_setup_chat()
+	_setup_role_toggle()
 	countdown_finished.connect(_on_lobby_countdown_finished)
 	
 	# Show match-end analysis if returning from a match
@@ -417,9 +421,44 @@ func _toggle_hud_buttons(show_buttons: bool) -> void:
 		set_btn.visible = show_buttons
 
 
+func _setup_role_toggle() -> void:
+	"""Create a killer/survivor role toggle button."""
+	var hud: CanvasLayer = $"../HUD"
+	if not hud:
+		return
+	
+	var btn := Button.new()
+	btn.name = "RoleToggle"
+	btn.size = Vector2(140, 32)
+	btn.position = role_toggle_pos
+	
+	if GameState.is_killer:
+		btn.text = "ROLE: KILLER"
+		btn.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
+	else:
+		btn.text = "ROLE: SURVIVOR"
+		btn.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	
+	btn.toggle_mode = true
+	btn.button_pressed = GameState.is_killer
+	btn.pressed.connect(_on_role_toggle_pressed.bind(btn))
+	hud.add_child(btn)
+
+
+func _on_role_toggle_pressed(btn: Button) -> void:
+	"""Toggle killer/survivor role."""
+	GameState.is_killer = btn.button_pressed
+	if GameState.is_killer:
+		btn.text = "ROLE: KILLER"
+		btn.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
+	else:
+		btn.text = "ROLE: SURVIVOR"
+		btn.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	print("Lobby: Role toggled — is_killer = ", GameState.is_killer)
+
+
 func _on_lobby_countdown_finished() -> void:
-	# Transition directly to game map (it was pre-loaded by the loading screen)
-	GameState.is_killer = false  # Player plays as survivor
+	# Transition directly to game map (uses role toggle state)
 	get_tree().change_scene_to_file("res://scenes/game_map.tscn")
 
 

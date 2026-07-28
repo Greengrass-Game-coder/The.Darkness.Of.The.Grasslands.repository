@@ -5,7 +5,7 @@ extends GreengrassController
 ## - Moves toward unsolved puzzle zones and "solves" them
 ## - Runs away from the killer when close
 
-signal bot_solved_puzzle(area_name: String, area_ref: Area2D)
+signal bot_solved_puzzle(_area_name: String, area_ref: Area2D)
 
 # AI params
 @export var flee_range: float = 500.0
@@ -15,7 +15,6 @@ signal bot_solved_puzzle(area_name: String, area_ref: Area2D)
 
 var _target_killer: Node2D = null
 var _target_puzzle: Area2D = null
-var _puzzle_positions: Array[Vector2] = []
 var _solved_names: Array[String] = []
 var _patrol_dir: Vector2 = Vector2.RIGHT
 var _patrol_timer: float = 0.0
@@ -23,7 +22,6 @@ var _solving: bool = false
 var _solve_timer: float = 0.0
 var _current_target_puzzle: Area2D = null
 var _fleeing: bool = false
-var _stuck_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -139,9 +137,9 @@ func _ai_go_to_puzzle(delta: float) -> void:
 		return
 	
 	var dir: Vector2 = _target_puzzle.global_position - global_position
-	var dist: float = dir.length()
+	var dist_to_puzzle: float = dir.length()
 	
-	if dist <= puzzle_approach_range:
+	if dist_to_puzzle <= puzzle_approach_range:
 		_solving = true
 		_solve_timer = solve_time
 		_current_target_puzzle = _target_puzzle
@@ -150,7 +148,7 @@ func _ai_go_to_puzzle(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	
-	var use_sprint: bool = dist > 200.0 and not _stamina_exhausted
+	var use_sprint: bool = dist_to_puzzle > 200.0 and not _stamina_exhausted
 	var speed: float = sprint_speed if use_sprint else move_speed
 	
 	if use_sprint:
@@ -180,7 +178,7 @@ func _ai_flee(delta: float) -> void:
 		return
 	
 	var away_dir: Vector2 = global_position - _target_killer.global_position
-	var dist: float = global_position.distance_to(_target_killer.global_position)
+	var _dist: float = global_position.distance_to(_target_killer.global_position)
 	
 	var strafe: Vector2 = Vector2(-away_dir.y, away_dir.x).normalized()
 	var strafe_amount: float = 0.3 if randf() < 0.02 else 0.15

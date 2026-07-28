@@ -932,7 +932,7 @@ func _update_chase_music(_delta: float) -> void:
 	
 	# Handle layer transitions
 	if target_layer != _chase_active_layer:
-		var old_layer: int = _chase_active_layer
+		var _old_layer: int = _chase_active_layer
 		_chase_active_layer = target_layer
 		
 		# Mute all players first
@@ -1100,8 +1100,6 @@ func _update_killer_speed(_delta: float) -> void:
 
 # ---------- KILL ELIMINATION TIMER BONUS (+30s) ----------
 
-var _last_killer_bot_kills: int = 0
-
 func _check_kill_timer_bonus() -> void:
 	"""Detect when the killer bot eliminates a survivor and add 30s to timer."""
 	if not is_instance_valid(_killer_bot):
@@ -1237,7 +1235,7 @@ func _on_puzzle_solved(area: Area2D) -> void:
 	print("GameMap: Puzzle solved at ", area.position)
 
 
-func _on_bot_solved_puzzle(area_name: String, area_ref: Area2D) -> void:
+func _on_bot_solved_puzzle(_area_name: String, area_ref: Area2D) -> void:
 	"""Handle a survivor bot solving a puzzle."""
 	if not is_instance_valid(area_ref):
 		return
