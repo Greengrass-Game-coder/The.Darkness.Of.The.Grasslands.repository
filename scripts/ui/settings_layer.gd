@@ -40,7 +40,7 @@ const SECTIONS: Array[Dictionary] = [
 		"items": [
 			{"label": "Fullscreen", "type": "action", "action_name": "fullscreen"},
 			{"label": "VSync", "type": "action", "action_name": "vsync"},
-			{"label": "Resolution Scale", "type": "slider", "bus": ""},
+			# Resolution Scale removed — slider did nothing (empty bus name)
 		]
 	},
 	{

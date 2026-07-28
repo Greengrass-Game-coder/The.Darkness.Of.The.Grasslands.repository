@@ -138,7 +138,7 @@ func _load_accounts() -> Dictionary:
 	"""Load accounts from encrypted file."""
 	if not FileAccess.file_exists(ACCOUNTS_FILE):
 		return {}
-	var file: FileAccess = FileAccess.open_encrypted_with_pass(ACCOUNTS_FILE, FileAccess.READ, ENCRYPTION_KEY)
+	var file: FileAccess = FileAccess.open_encrypted(ACCOUNTS_FILE, FileAccess.READ, ENCRYPTION_KEY.to_utf8_buffer())
 	if not file:
 		push_warning("AuthManager: Could not open accounts file (may not exist yet).")
 		return {}
@@ -152,7 +152,7 @@ func _load_accounts() -> Dictionary:
 
 func _save_accounts(accounts: Dictionary) -> void:
 	"""Save accounts to encrypted file."""
-	var file: FileAccess = FileAccess.open_encrypted_with_pass(ACCOUNTS_FILE, FileAccess.WRITE, ENCRYPTION_KEY)
+	var file: FileAccess = FileAccess.open_encrypted(ACCOUNTS_FILE, FileAccess.WRITE, ENCRYPTION_KEY.to_utf8_buffer())
 	if not file:
 		push_error("AuthManager: Could not write accounts file.")
 		return

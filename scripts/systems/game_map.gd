@@ -340,7 +340,7 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	add_child(_player)
 	
 	# Enable camera on the player
-	var cam := _player.get_node("Camera2D") as Camera2D
+	var cam := _player.get_node_or_null("Camera2D") as Camera2D
 	if cam:
 		cam.enabled = true
 		cam.make_current()

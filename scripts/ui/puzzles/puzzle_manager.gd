@@ -147,9 +147,9 @@ func _on_puzzle_round_solved() -> void:
 		if _title_label:
 			_title_label.text = "Level %d/5 Complete!" % (_puzzle_level - 1)
 		
-		var diff_lbl: Label = _panel.get_node_or_null("DiffLabel")
-		if diff_lbl:
-			diff_lbl.text = "Next: Level %d/5" % _puzzle_level
+		var diff_lbl = _panel.get_node_or_null("DiffLabel")
+		if diff_lbl and diff_lbl.has_method("set"):
+			diff_lbl.label_text = "Next: Level %d/5" % _puzzle_level
 		
 		# Clean up old puzzle controller children
 		for child in get_children():
