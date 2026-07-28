@@ -71,6 +71,9 @@ var _character_name: String = "Greengrass"
 var _last_known_hp: float = -1.0
 var _last_damage_time: float = -10.0  # When last damage was taken (for screen shake cooldown)
 
+# BitmapLabel references
+var _bitmap_timer: BitmapLabel = null
+
 
 func _ready() -> void:
 	# Ensure input actions are registered
@@ -115,9 +118,34 @@ func _ready() -> void:
 	# Setup chat system
 	_setup_chat()
 	
+	# Replace HUD labels with BitmapLabel versions
+	_replace_hud_labels()
+	
 	# Play killer intro cutscene after spawns are complete
 	call_deferred("_play_killer_cutscene")
 
+
+func _replace_hud_labels() -> void:
+	"""Replace key HUD Label nodes with BitmapLabel versions using Font1."""
+	if not Engine.has_singleton("FontManager"):
+		return
+	
+	# Replace timer label
+	if is_instance_valid(timer_label):
+		var parent := timer_label.get_parent()
+		if parent:
+			var bl := BitmapLabel.new()
+			bl.name = "BmpTimer"
+			bl.label_text = timer_label.text
+			bl.font_scale = 0.25
+			bl.char_spacing = 4.0
+			bl.horizontal_align = timer_label.horizontal_alignment
+			bl.font_color = Color(1, 1, 1, 1)
+			bl.position = timer_label.position
+			bl.size = timer_label.size
+			timer_label.visible = false
+			parent.add_child(bl)
+			_bitmap_timer = bl
 
 func _setup_input_actions() -> void:
 	"""Register missing input actions at runtime."""
@@ -1315,7 +1343,10 @@ func _update_timer_label() -> void:
 	var total_seconds: int = int(_time_remaining)
 	var minutes: int = int(total_seconds / 60.0)
 	var seconds: int = total_seconds % 60
-	timer_label.text = "%02d:%02d" % [minutes, seconds]
+	var txt: String = "%02d:%02d" % [minutes, seconds]
+	timer_label.text = txt
+	if is_instance_valid(_bitmap_timer):
+		_bitmap_timer.label_text = txt
 
 
 # ---------- MATCH STATS ----------

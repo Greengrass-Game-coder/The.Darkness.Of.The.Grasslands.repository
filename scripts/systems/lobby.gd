@@ -57,6 +57,10 @@ var _settings_layer: SettingsLayer = null
 var _analysis_overlay: CanvasLayer = null
 var _analysis_timer: float = 0.0
 
+# BitmapLabel references (Font1 sprite text replacements)
+var _bitmap_countdown: BitmapLabel = null
+var _bitmap_comeback: BitmapLabel = null
+
 const SHOP_LAYER_SCENE: String = "res://scenes/shop_layer.tscn"
 const INVENTORY_LAYER_SCENE: String = "res://scenes/inventory_layer.tscn"
 const SETTINGS_LAYER_SCENE: String = "res://scenes/settings_layer.tscn"
@@ -69,6 +73,7 @@ const NOTIF_FOCUS_IN = NOTIFICATION_WM_WINDOW_FOCUS_IN
 
 func _ready() -> void:
 	_time_remaining = countdown_duration
+	_replace_labels_with_bitmap()
 	_update_label()
 	timer.start(1.0)
 	
@@ -154,6 +159,41 @@ func _show_admin_help() -> void:
 	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
 	chat_layer.add_system_message("=====================")
 
+
+func _replace_labels_with_bitmap() -> void:
+	"""Hide scene Labels and create BitmapLabel replacements for key text."""
+	if not Engine.has_singleton("FontManager"):
+		return
+	# Replace CountdownLabel (Intermission text) with BitmapLabel
+	if is_instance_valid(countdown_label):
+		countdown_label.visible = false
+		var bl := BitmapLabel.new()
+		bl.name = "BmpCountdown"
+		bl.label_text = countdown_label.text
+		bl.font_scale = 0.35
+		bl.char_spacing = 6.0
+		bl.horizontal_align = 1
+		bl.font_color = Color(1, 1, 1, 1)
+		bl.position = Vector2(0, 4)
+		bl.size = Vector2(1024, 40)
+		countdown_label.get_parent().add_child(bl)
+		_bitmap_countdown = bl
+	
+	# Replace COME BACK label with BitmapLabel
+	if is_instance_valid(come_back_label):
+		var bl2 := BitmapLabel.new()
+		bl2.name = "BmpComeBack"
+		bl2.label_text = "COME BACK."
+		bl2.font_scale = 0.7
+		bl2.char_spacing = 12.0
+		bl2.horizontal_align = 1
+		bl2.vertical_align = 1
+		bl2.font_color = Color(1, 0, 0, 1)
+		bl2.position = Vector2(0, 0)
+		bl2.size = Vector2(1024, 768)
+		bl2.visible = false
+		come_back_label.get_parent().add_child(bl2)
+		_bitmap_comeback = bl2
 
 func _on_music_finished() -> void:
 	lobby_music.play()
@@ -395,6 +435,9 @@ func _trigger_scare() -> void:
 		return
 	_scare_active = true
 	scary_overlay.show()
+	# Show BitmapLabel "COME BACK" if available, else scene Label
+	if is_instance_valid(_bitmap_comeback):
+		_bitmap_comeback.visible = true
 	come_back_label.show()
 	font_swap_timer.start(0.5)
 	if infade_tween and infade_tween.is_valid():
@@ -422,6 +465,11 @@ func _on_font_swap_timer_timeout() -> void:
 	come_back_label.add_theme_color_override("font_outline_color", Color(0.8 + randf() * 0.2, 0.0, 0.0, 1.0))
 	var shake_offset: Vector2 = Vector2(randi() % 5 - 2, randi() % 5 - 2)
 	come_back_label.set_position(shake_offset)
+	# Also update BitmapLabel version
+	if is_instance_valid(_bitmap_comeback):
+		_bitmap_comeback.font_scale = 0.6 + randi() % 5 * 0.05
+		_bitmap_comeback.font_color = Color(0.9 + randf() * 0.1, 0.0, 0.0, 1.0)
+		_bitmap_comeback.position = shake_offset
 
 
 func _restore_focus() -> void:
@@ -438,6 +486,11 @@ func _restore_focus() -> void:
 	come_back_label.add_theme_font_size_override("font_size", 56)
 	come_back_label.add_theme_constant_override("outline_size", 10)
 	come_back_label.add_theme_color_override("font_outline_color", Color(1, 0, 0, 1))
+	if is_instance_valid(_bitmap_comeback):
+		_bitmap_comeback.visible = false
+		_bitmap_comeback.position = Vector2.ZERO
+		_bitmap_comeback.font_scale = 0.7
+		_bitmap_comeback.font_color = Color(1, 1, 1, 1)
 
 
 # ------------------ Brown NPC ------------------
@@ -584,7 +637,10 @@ func _on_countdown_timer_timeout() -> void:
 
 func _update_label() -> void:
 	var seconds: int = ceili(_time_remaining)
-	countdown_label.text = "Intermission: %d left." % seconds
+	var txt: String = "Intermission: %d left." % seconds
+	countdown_label.text = txt
+	if is_instance_valid(_bitmap_countdown):
+		_bitmap_countdown.label_text = txt
 
 
 # ------------------ Animation ------------------
@@ -819,17 +875,15 @@ func _create_leaderboard() -> void:
 	bg.color = Color(0.1, 0.1, 0.1, 0.75)
 	panel.add_child(bg)
 	
-	# Title
-	var title := Label.new()
+	# Title (BitmapLabel)
+	var title := BitmapLabel.new()
 	title.name = "Title"
-	title.text = "LEADERBOARD"
-	title.position = Vector2(10, 8)
-	title.size = Vector2(180, 24)
-	title.add_theme_color_override("font_color", Color(1, 1, 0.7, 1))
-	title.add_theme_font_size_override("font_size", 16)
-	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
-	title.add_theme_constant_override("shadow_offset_x", 1)
-	title.add_theme_constant_override("shadow_offset_y", 1)
+	title.label_text = "LEADERBOARD"
+	title.font_scale = 0.2
+	title.char_spacing = 4.0
+	title.font_color = Color(1, 1, 0.7, 1)
+	title.position = Vector2(10, 4)
+	title.size = Vector2(180, 28)
 	panel.add_child(title)
 	
 	# Separator
@@ -1007,7 +1061,7 @@ func _update_leaderboard_visibility() -> void:
 	_leaderboard_panel.visible = true
 	
 	var bg: ColorRect = _leaderboard_panel.get_node_or_null("Bg")
-	var title: Label = _leaderboard_panel.get_node_or_null("Title")
+	var title = _leaderboard_panel.get_node_or_null("Title")
 	var sep: ColorRect = _leaderboard_panel.get_node_or_null("Sep")
 	var entry_container: VBoxContainer = _leaderboard_panel.get_node_or_null("EntryContainer")
 	
