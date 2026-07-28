@@ -326,6 +326,9 @@ animations = [{
 [node name="Greengrass" type="CharacterBody2D" unique_id=681448495]
 script = ExtResource("1_7nksj")
 sprint_speed = 350.0
+parry_window = 2.5
+normal_stun = 2.5
+parry_stun = 6.0
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=852369333]
 scale = Vector2(0.25, 0.25)
@@ -335,7 +338,7 @@ autoplay = "idle"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=392062106]
 position = Vector2(-12, 0.9999981)
-scale = Vector2(0.92744184, 1.0595194)
+scale = Vector2(3.5674431, 6.419521)
 shape = SubResource("RectangleShape2D_gg")
 
 [node name="StateTimer" type="Timer" parent="." unique_id=1390959033]

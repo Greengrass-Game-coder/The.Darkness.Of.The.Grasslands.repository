@@ -82,9 +82,10 @@ func _ready() -> void:
 	current_stamina = max_stamina
 	_change_state(State.IDLE)
 	add_to_group("survivors")
-	# Collision: survivor on layer 1, only collide with killer (layer 2) + walls (layer 3)
+	# Collision: survivor on layer 1, only collide with walls (layer 3)
+	# Killer collision removed to prevent body-blocking the killer (asymmetric: killer pushes through)
 	collision_layer = 1
-	collision_mask = 2 | 4  # layer 2 (killer) + layer 3 (walls)
+	collision_mask = 4  # only walls (layer 3)
 	hp_changed.emit(current_hp, max_hp)
 	stamina_changed.emit(current_stamina, max_stamina)
 	_setup_ability_vfx_frames()
