@@ -978,8 +978,10 @@ func _close_player_info_popup() -> void:
 
 
 func _toggle_leaderboard() -> void:
-	"""Toggle the leaderboard panel open/closed."""
+	"""Toggle the leaderboard panel open/closed with animated arrow slide."""
 	_leaderboard_visible = not _leaderboard_visible
+	# Close info popup when toggling
+	_close_player_info_popup()
 	_update_leaderboard_visibility()
 
 
@@ -1008,7 +1010,9 @@ func _update_leaderboard_visibility() -> void:
 		if entry_container: entry_container.visible = true
 		if _toggle_arrow:
 			_toggle_arrow.text = "<"
-			_toggle_arrow.position = leaderboard_arrow_pos
+			# Slide arrow back to the left edge of the panel
+			var tw: Tween = create_tween()
+			tw.tween_property(_toggle_arrow, "position", leaderboard_arrow_pos, 0.15).set_ease(Tween.EASE_OUT)
 	else:
 		if bg: bg.visible = false
 		if title: title.visible = false
@@ -1016,4 +1020,7 @@ func _update_leaderboard_visibility() -> void:
 		if entry_container: entry_container.visible = false
 		if _toggle_arrow:
 			_toggle_arrow.text = ">"
-			_toggle_arrow.position = leaderboard_arrow_pos
+			# Slide arrow to the right edge of the panel (so it sits at the screen edge)
+			var collapsed_pos: Vector2 = Vector2(leaderboard_size.x - 24, leaderboard_arrow_pos.y)
+			var tw: Tween = create_tween()
+			tw.tween_property(_toggle_arrow, "position", collapsed_pos, 0.15).set_ease(Tween.EASE_OUT)
