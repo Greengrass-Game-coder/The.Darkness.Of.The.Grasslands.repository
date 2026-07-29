@@ -1200,8 +1200,8 @@ func _open_puzzle_for_area(area: Area2D) -> void:
 	puz_scene.puzzle_closed.connect(_on_puzzle_closed.bind(puz_scene))
 
 
-func _on_puzzle_solved(area: Area2D) -> void:
-	"""Handle puzzle solved — rewards + timer deduction."""
+func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
+	"""Handle puzzle solved — rewards + timer deduction (3.25s per puzzle level)."""
 	var area_name: String = area.name
 	_solved_puzzles.append(area_name)
 	
@@ -1217,8 +1217,9 @@ func _on_puzzle_solved(area: Area2D) -> void:
 			gs.set_player_rings(username, current_rings + 2)
 		print("GameMap: Puzzle reward — +$15, +2 rings")
 	
-	# Decrease match timer by 15 seconds (flash red)
-	_time_remaining = max(0.0, _time_remaining - 15.0)
+	# Decrease match timer by 3.25 seconds per puzzle level (flash red)
+	var deduction: float = 3.25 * puzzle_level
+	_time_remaining = max(0.0, _time_remaining - deduction)
 	_timer_flash_red = 1.0
 	_update_timer_label()
 	
@@ -1236,10 +1237,11 @@ func _on_puzzle_solved(area: Area2D) -> void:
 
 
 func _on_bot_solved_puzzle(_area_name: String, area_ref: Area2D) -> void:
-	"""Handle a survivor bot solving a puzzle."""
+	"""Handle a survivor bot solving a puzzle (default level 1 deduction)."""
 	if not is_instance_valid(area_ref):
 		return
-	_on_puzzle_solved(area_ref)
+	# Bot solves at level 1 by default; level tracking could be enhanced later
+	_on_puzzle_solved(area_ref, 1)
 
 
 func _on_puzzle_closed(puz_scene: PuzzleManager) -> void:

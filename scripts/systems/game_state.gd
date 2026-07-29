@@ -3,6 +3,9 @@ extends Node
 ## Whether the local player is playing as the killer
 var is_killer: bool = false
 
+## Player avatar type for cosmetic selection in lobby
+var avatar_type: String = "Lobby Person"
+
 ## Authentication and network state
 var logged_in_username: String = ""
 var is_admin: bool = false

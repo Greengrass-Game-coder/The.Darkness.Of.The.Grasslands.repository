@@ -1,7 +1,8 @@
 extends Node
 
-## WebSocket client that connects to the Render-hosted game server.
+## WebSocket client that connects to the game server.
 ## Autoload - accessible globally as NetworkManager.
+## Uses EnvironmentConfig to toggle between Dev (ngrok) and Production (Render).
 
 signal connected_to_server()
 signal disconnected_from_server()
@@ -15,7 +16,19 @@ signal game_started(role: String, player_list: Array)
 signal phase_changed(phase: String, time_remaining: float)
 signal admin_command_result(success: bool, message: String)
 
-const SERVER_URL: String = "wss://the-darkness-server.onrender.com"
+## Returns the active server URL from EnvironmentConfig
+func _get_server_url() -> String:
+	var env = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
+	if env and env.has_method("get_ws_url"):
+		return env.get_ws_url()
+	return "wss://the-darkness-server.onrender.com"
+
+## Returns the active HTTP wake-up URL from EnvironmentConfig
+func _get_http_url() -> String:
+	var env = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
+	if env and env.has_method("get_http_url"):
+		return env.get_http_url()
+	return "https://the-darkness-server.onrender.com"
 const RECONNECT_DELAY: float = 3.0
 const MAX_RECONNECT_ATTEMPTS: int = 5
 
@@ -50,8 +63,9 @@ func _wake_server() -> void:
 	if _waking_server or _wake_done:
 		return
 	_waking_server = true
-	print("NetworkManager: Waking server at ", SERVER_URL)
-	_http.request(SERVER_URL)
+	var wake_url: String = _get_http_url()
+	print("NetworkManager: Waking server at ", wake_url)
+	_http.request(wake_url)
 
 
 func _on_wake_response(_result: int, _response_code: int, _headers: Array, _body: PackedByteArray) -> void:
@@ -92,7 +106,7 @@ func _do_connect() -> void:
 
 	socket = WebSocketMultiplayerPeer.new()
 	var player_name: String = GameState.logged_in_username if not GameState.logged_in_username.is_empty() else "Player"
-	var url: String = SERVER_URL + "?player_name=" + player_name.uri_encode()
+	var url: String = _get_server_url() + "?player_name=" + player_name.uri_encode()
 	var err: int = socket.create_client(url)
 
 	if err != OK:
@@ -102,7 +116,7 @@ func _do_connect() -> void:
 	multiplayer.multiplayer_peer = socket
 	_connect_signals()
 	reconnect_attempts = 0
-	print("NetworkManager: Connecting to ", SERVER_URL)
+	print("NetworkManager: Connecting to ", _get_server_url())
 
 
 func _connect_signals() -> void:

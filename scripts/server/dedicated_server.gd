@@ -142,7 +142,8 @@ func _on_peer_connected(peer_id: int) -> void:
 		"max_hp": 100.0,
 		"alive": true,
 		"in_queue": false,
-		"room_code": ""
+		"room_code": "",
+		"avatar_type": "Lobby Person"
 	}
 	_broadcast_player_list()
 
@@ -272,6 +273,8 @@ func _handle_client_message(peer_id: int, data: Dictionary) -> void:
 			_handle_leave_queue(peer_id)
 		"chat":
 			_handle_chat(peer_id, data.get("text", ""), data.get("admin", false))
+		"request_avatar_change":
+			_handle_avatar_change(peer_id, data.get("avatar_type", "Lobby Person"))
 		"create_private":
 			_handle_create_private(peer_id, data.get("code", ""))
 		"join_private":

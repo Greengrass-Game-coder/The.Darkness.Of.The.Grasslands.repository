@@ -10,7 +10,7 @@ const SCRIPT_RHYTHM: GDScript = preload("res://scripts/ui/puzzles/rhythm_puzzle_
 
 enum PuzzleType { MEMORY, WIRING, RHYTHM }
 
-signal puzzle_completed(puzzle_area: Area2D)
+signal puzzle_completed(puzzle_area: Area2D, puzzle_level: int)
 signal puzzle_closed()
 
 var _current_puzzle: Control = null
@@ -119,7 +119,7 @@ func _close_puzzle(solved: bool = false) -> void:
 	_title_label = null
 	
 	if solved and _current_area != null:
-		puzzle_completed.emit(_current_area)
+		puzzle_completed.emit(_current_area, _puzzle_level)
 	
 	puzzle_closed.emit()
 	_current_area = null
