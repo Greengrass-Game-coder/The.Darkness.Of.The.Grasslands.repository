@@ -131,6 +131,45 @@ func _on_chat_sent(text: String, is_admin: bool) -> void:
 		_show_admin_help()
 		return
 	
+	# "G setenv dev/prod" — toggle environment locally
+	# "G env" — show current environment
+	if trimmed == "g env" or trimmed == "g environment":
+		var env_config = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
+		var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+		if not chat_layer:
+			return
+		if not env_config:
+			chat_layer.add_system_message("EnvironmentConfig not available")
+			return
+		var env_name: String = env_config.get_environment_name(env_config.environment)
+		var ws_url: String = env_config.get_ws_url()
+		chat_layer.add_system_message("Environment: " + env_name)
+		chat_layer.add_system_message("WebSocket: " + ws_url)
+		return
+	
+	if trimmed.begins_with("g setenv ") or trimmed.begins_with("g env "):
+		var env_arg: String = trimmed.split(" ")[-1]
+		var env_config = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
+		if not env_config:
+			var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+			if chat_layer:
+				chat_layer.add_system_message("ERROR: EnvironmentConfig not found")
+			return
+		if env_arg == "dev" or env_arg == "development":
+			env_config.set_dev()
+			var msg: String = "Switched to DEV environment (ngrok tunnel)"
+			var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+			if chat_layer: chat_layer.add_system_message(msg)
+		elif env_arg == "prod" or env_arg == "production":
+			env_config.set_prod()
+			var msg: String = "Switched to PRODUCTION environment (Render live)"
+			var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+			if chat_layer: chat_layer.add_system_message(msg)
+		else:
+			var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+			if chat_layer: chat_layer.add_system_message("Usage: G setenv dev | G setenv prod")
+		return
+	
 	# "G ..." commands: forward to server if connected
 	if is_admin and GameState.connected_to_server:
 		var nm: Node = Engine.get_singleton("NetworkManager")
@@ -161,6 +200,8 @@ func _show_admin_help() -> void:
 	chat_layer.add_system_message("G force / G next - Force next killer")
 	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
 	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
+	chat_layer.add_system_message("G setenv dev | G setenv prod - Toggle ngrok / Render")
+	chat_layer.add_system_message("G env - Show current environment")
 	chat_layer.add_system_message("=====================")
 
 
