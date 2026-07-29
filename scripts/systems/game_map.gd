@@ -130,7 +130,8 @@ func _ready() -> void:
 
 func _replace_hud_labels() -> void:
 	"""Replace key HUD Label nodes with BitmapLabel versions using Font1."""
-	if not Engine.has_singleton("FontManager"):
+	var _fm_node = get_node_or_null("/root/FontManager")
+	if not is_instance_valid(_fm_node):
 		return
 	
 	# Replace timer label

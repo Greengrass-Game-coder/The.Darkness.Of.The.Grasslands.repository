@@ -8,6 +8,8 @@ class_name BitmapLabel
 
 enum Context { MENU, MATCH, CHAT }
 
+var _fm_connected: bool = false
+
 @export var label_text: String = "":
 	set(v):
 		if v != label_text:
@@ -57,6 +59,25 @@ var text: String:
 		font_color = v
 		queue_redraw()
 
+func _try_connect_fm() -> void:
+	"""Connect to FontManager via /root path (Engine.get_singleton may not work for custom autoloads)."""
+	if _fm_connected:
+		return
+	var fm = get_node_or_null("/root/FontManager")
+	if not is_instance_valid(fm):
+		return
+	if fm.has_signal("fonts_loaded") and not fm.fonts_loaded.is_connected(_on_fonts_loaded):
+		fm.fonts_loaded.connect(_on_fonts_loaded)
+		_fm_connected = true
+		if fm.is_ready and not label_text.is_empty():
+			queue_redraw()
+
+
+func _on_fonts_loaded() -> void:
+	"""FontManager finished loading — redraw if we have text."""
+	queue_redraw()
+
+
 func set_text(t: String) -> void:
 	label_text = t
 
@@ -64,10 +85,11 @@ func get_text() -> String:
 	return label_text
 
 func _draw() -> void:
-	if not Engine.has_singleton("FontManager"):
-		return
-	var fm = Engine.get_singleton("FontManager")
-	if not fm.is_ready:
+	# Try connecting to FontManager signal if not done yet
+	_try_connect_fm()
+	
+	var fm = get_node_or_null("/root/FontManager")
+	if not is_instance_valid(fm) or not fm.is_ready:
 		return
 
 	var raw: String = label_text

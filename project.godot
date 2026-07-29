@@ -22,6 +22,7 @@ GameState="*res://scripts/systems/game_state.gd"
 AuthManager="*res://scripts/systems/auth_manager.gd"
 NetworkManager="*res://scripts/systems/network_manager.gd"
 FontManager="*res://scripts/systems/font_manager.gd"
+EnvironmentConfig="*res://scripts/systems/environment_config.gd"
 
 [display]
 

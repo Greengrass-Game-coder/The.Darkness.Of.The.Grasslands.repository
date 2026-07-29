@@ -205,14 +205,24 @@ func _show_admin_help() -> void:
 	chat_layer.add_system_message("=====================")
 
 
+var _fm_retries: int = 0
+
 func _replace_labels_with_bitmap() -> void:
 	"""Hide scene Labels and create BitmapLabel replacements for key text."""
-	if not Engine.has_singleton("FontManager"):
+	# Use get_node(/root/FontManager) instead of Engine.get_singleton()
+	# (custom autoload singletons may not work via Engine API in Godot 4.7.1)
+	var fm_check: Node = get_node_or_null("/root/FontManager")
+	if not is_instance_valid(fm_check):
+		_fm_retries += 1
+		if _fm_retries < 60:
+			call_deferred("_replace_labels_with_bitmap")
 		return
+	# FontManager found via /root/ — proceed with label replacement
 	# Replace CountdownLabel (Intermission text) with BitmapLabel
 	if is_instance_valid(countdown_label):
 		countdown_label.visible = false
 		var bl := BitmapLabel.new()
+		bl.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		bl.name = "BmpCountdown"
 		bl.label_text = countdown_label.text
 		bl.font_scale = 0.35
@@ -221,16 +231,20 @@ func _replace_labels_with_bitmap() -> void:
 		bl.font_color = Color(1, 1, 1, 1)
 		bl.position = Vector2(0, 4)
 		bl.size = Vector2(1024, 40)
+		# Pixel font countdown replacement complete
 		countdown_label.get_parent().add_child(bl)
 		_bitmap_countdown = bl
+		# BitmapLabel countdown created successfully
 	
 	# Replace COME BACK label with BitmapLabel
 	if is_instance_valid(come_back_label):
+		come_back_label.visible = false
 		var bl2 := BitmapLabel.new()
+		bl2.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		bl2.name = "BmpComeBack"
 		bl2.label_text = "COME BACK."
-		bl2.font_scale = 0.7
-		bl2.char_spacing = 12.0
+		bl2.font_scale = 3.0
+		bl2.char_spacing = 8.0
 		bl2.horizontal_align = 1
 		bl2.vertical_align = 1
 		bl2.font_color = Color(1, 0, 0, 1)
