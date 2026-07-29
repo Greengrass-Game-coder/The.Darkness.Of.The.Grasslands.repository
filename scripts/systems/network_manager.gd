@@ -59,7 +59,15 @@ func _setup_wake_up() -> void:
 
 
 func _wake_server() -> void:
-	"""Send an HTTP GET to wake the Render free-tier server from sleep."""
+	"""Send an HTTP GET to wake a free-tier server from sleep.
+	Only fires in PRODUCTION mode (Render). DEV mode skips this."""
+	# Skip wake-up in DEV mode (local/ngrok — no sleep)
+	var env = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
+	if env and env.has_method("is_dev") and env.is_dev():
+		print("NetworkManager: DEV mode — skipping server wake-up")
+		_wake_done = true
+		_do_connect()
+		return
 	if _waking_server or _wake_done:
 		return
 	_waking_server = true

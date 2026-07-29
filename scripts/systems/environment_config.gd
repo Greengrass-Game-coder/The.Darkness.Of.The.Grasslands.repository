@@ -12,8 +12,8 @@ enum Environment {
 	DEV          # Local/ngrok tunnel
 }
 
-## Toggle this to switch environments
-@export var environment: int = Environment.PRODUCTION:
+## Toggle this to switch environments (defaults to DEV for local/ngrok)
+@export var environment: int = Environment.DEV:
 	set(v):
 		environment = v
 		environment_changed.emit(v)
