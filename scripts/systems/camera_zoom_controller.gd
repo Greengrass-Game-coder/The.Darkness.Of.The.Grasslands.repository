@@ -134,3 +134,27 @@ func set_zoom(level: float, animated: bool = true) -> void:
 		if _camera:
 			_camera.zoom = Vector2(_target_zoom, _target_zoom)
 	_show_zoom_indicator(_target_zoom)
+
+
+## Map zoom — zoom out to show the entire map, centered on a position
+@export var map_zoom: float = 0.45  # Zoom level to show the full map (lower = more zoomed out)
+
+func zoom_to_map_view() -> void:
+	"""Zoom out to show the full map — camera stays on player, but at map_zoom the whole map is visible."""
+	if not is_instance_valid(_camera):
+		return
+	_target_zoom = map_zoom
+	_current_zoom = _target_zoom
+	_camera.zoom = Vector2(_target_zoom, _target_zoom)
+	_camera.position_smoothing_enabled = false
+
+
+## Restore normal zoom and follow the parent character
+func restore_normal_zoom() -> void:
+	"""Restore zoom to default and re-enable camera smoothing."""
+	if not is_instance_valid(_camera):
+		return
+	_target_zoom = default_zoom
+	_camera.position_smoothing_enabled = true
+	_camera.position_smoothing_speed = 6.0
+	_show_zoom_indicator(_target_zoom)

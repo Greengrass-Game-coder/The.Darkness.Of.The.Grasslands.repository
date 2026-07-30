@@ -445,9 +445,9 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	if _player.has_signal("punch_landed") and not _player.punch_landed.is_connected(_on_player_attacked):
 		_player.punch_landed.connect(_on_player_attacked)
 	
-	# Connect teleport scan signal for killer mini-map
-	if _player.has_signal("teleport_scan_started") and not _player.teleport_scan_started.is_connected(_on_killer_teleport_scan):
-		_player.teleport_scan_started.connect(_on_killer_teleport_scan)
+	# Connect teleport zoom signal for killer map-view
+	if _player.has_signal("teleport_zoom_started") and not _player.teleport_zoom_started.is_connected(_on_teleport_zoom_started):
+		_player.teleport_zoom_started.connect(_on_teleport_zoom_started)
 	
 	# Connect teleported signal for sound + indicator
 	if _player.has_signal("teleported") and not _player.teleported.is_connected(_on_player_teleported):
@@ -456,6 +456,12 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	# Connect teleport cancel to close mini-map
 	if _player.has_signal("teleport_cancelled") and not _player.teleport_cancelled.is_connected(_close_teleport_minimap):
 		_player.teleport_cancelled.connect(_close_teleport_minimap)
+	
+	# Connect teleport zoom signals for camera map-view
+	if _player.has_signal("teleport_zoom_started") and not _player.teleport_zoom_started.is_connected(_on_teleport_zoom_started):
+		_player.teleport_zoom_started.connect(_on_teleport_zoom_started)
+	if _player.has_signal("teleport_zoom_ended") and not _player.teleport_zoom_ended.is_connected(_on_teleport_zoom_ended):
+		_player.teleport_zoom_ended.connect(_on_teleport_zoom_ended)
 	
 	# Re-assert player camera (bots spawned above may have tried to steal it)
 	if is_instance_valid(cam):
@@ -1257,20 +1263,62 @@ func _silence_all_chase() -> void:
 	_chase_active_layer = -1
 
 
-# ---------- TELEPORT CIRCLES (screen-edge indicators) ----------
+# ---------- TELEPORT ZOOM (map-view circles) ----------
+# Variables for survivor visibility management
+var _survivors_hidden: Array[Node] = []  # Survivors hidden during teleport scan
 
-func _on_killer_teleport_scan() -> void:
-	"""Show screen-edge teleport indicators.
-	Works for both human killers (GameState.is_killer) and AI bot killers."""
+func _on_teleport_zoom_started() -> void:
+	"""Zoom camera to full-map view, hide survivors, and show teleport circles."""
+	# Only works for the human killer (not AI bot)
 	var gs_t = get_node_or_null("/root/GameState")
-	if (gs_t != null and gs_t.is_killer) or is_instance_valid(_killer_bot):
+	if gs_t != null and gs_t.is_killer:
+		_zoom_to_map_view()
+		_hide_survivors_for_teleport()
 		_show_teleport_circles()
 
 
+func _on_teleport_zoom_ended() -> void:
+	"""Restore camera, show survivors, and close teleport overlay."""
+	_restore_camera_view()
+	_show_survivors_after_teleport()
+	_close_teleport_minimap()
+
+
+func _zoom_to_map_view() -> void:
+	"""Zoom the camera out to show the entire map on screen."""
+	var zoom_ctrl: Node = _player.get_node_or_null("ZoomController")
+	if is_instance_valid(zoom_ctrl) and zoom_ctrl.has_method("zoom_to_map_view"):
+		zoom_ctrl.zoom_to_map_view()
+
+
+func _restore_camera_view() -> void:
+	"""Restore the camera to normal zoom and follow mode."""
+	var zoom_ctrl: Node = _player.get_node_or_null("ZoomController")
+	if is_instance_valid(zoom_ctrl) and zoom_ctrl.has_method("restore_normal_zoom"):
+		zoom_ctrl.restore_normal_zoom()
+
+
+func _hide_survivors_for_teleport() -> void:
+	"""Hide all survivors from the killer's view during teleport scan."""
+	_survivors_hidden.clear()
+	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
+	for s: Node in survivors:
+		if is_instance_valid(s) and s.visible:
+			s.visible = false
+			_survivors_hidden.append(s)
+
+
+func _show_survivors_after_teleport() -> void:
+	"""Restore visibility of all survivors hidden during teleport scan."""
+	for s: Node in _survivors_hidden:
+		if is_instance_valid(s):
+			s.visible = true
+	_survivors_hidden.clear()
+
+
 func _show_teleport_circles() -> void:
-	"""Show clickable screen-edge circles — 2 per survivor (real + decoy).
-	Circles are positioned at the edge of the killer's camera viewport,
-	pointing toward each target position. Killer clicks to teleport."""
+	"""Show clickable circles on the zoomed-out map at world positions.
+	3 targets per survivor: near (200-400px offset), direct (on survivor), and decoy."""
 	_close_teleport_minimap()
 	_teleport_circles.clear()
 	_teleport_marker_buttons.clear()
@@ -1279,20 +1327,23 @@ func _show_teleport_circles() -> void:
 	# Generate a red circle texture for all markers
 	var marker_tex: Texture2D = _make_teleport_marker_texture(48, 20)
 	
-	# Gather target positions: 2 per survivor (real-area + decoy)
+	# Gather target positions: 3 per survivor (near + direct + decoy)
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
 	for s: Node in survivors:
 		if not is_instance_valid(s):
 			continue
 		var real_pos: Vector2 = s.global_position
 		
-		# Target 1: far from survivor (200-400px offset — full-distance teleport)
+		# Target 1: near survivor (200-400px offset)
 		var offset1: Vector2 = Vector2(randf_range(-400, 400), randf_range(-400, 400))
 		if offset1.length() < 200.0:
 			offset1 = offset1.normalized() * 200.0
 		_teleport_marker_targets.append(real_pos + offset1)
 		
-		# Target 2: decoy at a random map position
+		# Target 2: directly on the survivor
+		_teleport_marker_targets.append(real_pos)
+		
+		# Target 3: decoy at a random map position
 		_teleport_marker_targets.append(_get_random_map_position())
 	
 	# Create a CanvasLayer overlay for the screen-space markers
@@ -1342,7 +1393,7 @@ func _show_teleport_circles() -> void:
 
 
 func _make_teleport_marker_texture(size: int, radius: float) -> Texture2D:
-	"""Generate a red circle texture for screen-edge teleport markers."""
+	"""Generate a red circle texture for teleport markers."""
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	var cx: float = size * 0.5
@@ -1353,18 +1404,16 @@ func _make_teleport_marker_texture(size: int, radius: float) -> Texture2D:
 			var dy: float = y - cy
 			var dist: float = sqrt(dx * dx + dy * dy)
 			if dist <= radius:
-				# Red circle with soft gradient
 				var t: float = dist / radius
 				var alpha: float = 1.0 - t * 0.3
 				img.set_pixel(x, y, Color(1, 0.2, 0.2, alpha))
-			# Bright ring at edge
 			if abs(dist - radius) < 2.0 and dist > 0:
 				img.set_pixel(x, y, Color(1, 0.5, 0.5, 1.0))
 	return ImageTexture.create_from_image(img)
 
 
 func _update_teleport_markers() -> void:
-	"""Reposition each screen-edge marker to point toward its target.
+	"""Position each marker at the screen position of its world target.
 	Called every frame from _process while markers are active."""
 	if not _teleport_markers_active:
 		return
@@ -1372,11 +1421,6 @@ func _update_teleport_markers() -> void:
 	var camera: Camera2D = get_viewport().get_camera_2d()
 	if not is_instance_valid(camera):
 		return
-	
-	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
-	var cam_pos: Vector2 = camera.global_position
-	var margin: float = 60.0  # Pixels from viewport edge
-	var half: Vector2 = viewport_size * 0.5
 	
 	for i in range(_teleport_marker_buttons.size()):
 		var btn: Button = _teleport_marker_buttons[i]
@@ -1386,23 +1430,14 @@ func _update_teleport_markers() -> void:
 			continue
 		
 		var target_pos: Vector2 = _teleport_marker_targets[i]
-		var dir: Vector2 = (target_pos - cam_pos).normalized()
-		
-		# Project direction to viewport edge (with margin)
-		var safe_rect: Vector2 = half - Vector2(margin, margin)
-		var s_x: float = safe_rect.x / abs(dir.x) if dir.x != 0.0 else INF
-		var s_y: float = safe_rect.y / abs(dir.y) if dir.y != 0.0 else INF
-		var s: float = min(s_x, s_y)
-		var edge_pos: Vector2 = half + dir * s
-		
-		btn.position = edge_pos - btn.size * 0.5
-		
-		# Show/hide if direction has no meaningful component
-		btn.visible = s > 0.0
+		# Convert world position to screen position using camera canvas transform
+		var screen_pos: Vector2 = camera.get_canvas_transform() * target_pos
+		btn.position = screen_pos - btn.size * 0.5
+		btn.visible = true
 
 
 func _on_teleport_marker_pressed(index: int) -> void:
-	"""Handle click on a screen-edge marker — teleport killer to that target."""
+	"""Handle click on a teleport marker — teleport killer to that target."""
 	if index < 0 or index >= _teleport_marker_targets.size():
 		return
 	var target_pos: Vector2 = _teleport_marker_targets[index]

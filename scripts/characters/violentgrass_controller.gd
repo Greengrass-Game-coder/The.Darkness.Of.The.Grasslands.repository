@@ -6,6 +6,8 @@ signal stamina_changed(current: float, max_stamina: float)
 signal teleport_scan_started()  # Emitted when killer starts teleport charge
 signal teleport_cancelled()  # Emitted when killer cancels teleport charge
 signal teleported(new_position: Vector2)  # Emitted when teleport completes (at destination)
+signal teleport_zoom_started()  # Emitted to request camera zoom-out + map view
+signal teleport_zoom_ended()   # Emitted to restore normal camera view
 ## (teleport_target_selected removed — unused)
 
 enum State { IDLE, WALKING, HITTING, TELEPORT_CHARGING, TELEPORT_CASTING, TELEPORTING, STUNNED }
@@ -78,6 +80,11 @@ var _teleport_anim_frame: int = 0
 var _teleport_anim_timer: float = 0.0
 var _teleport_reversing: bool = false
 var _teleport_target_dir: Vector2 = Vector2.ZERO
+
+# Teleport reverse VFX playback (plays when arriving at destination)
+var _teleport_reverse_playing: bool = false
+var _teleport_reverse_frame: int = 0
+var _teleport_reverse_timer: float = 0.0
 
 # Stamina exhaustion
 var _stamina_exhausted: bool = false
@@ -248,8 +255,21 @@ func _handle_teleport_casting(_delta: float) -> void:
 	velocity = Vector2.ZERO
 
 
-func _handle_teleporting(_delta: float) -> void:
+func _handle_teleporting(delta: float) -> void:
 	velocity = Vector2.ZERO
+	# Reverse teleport VFX playback (frames 6→0)
+	if _teleport_reverse_playing:
+		_teleport_reverse_timer += delta
+		while _teleport_reverse_timer >= TELEPORT_FRAME_TIME:
+			_teleport_reverse_timer -= TELEPORT_FRAME_TIME
+			_teleport_reverse_frame -= 1
+			if _teleport_reverse_frame < 0:
+				_teleport_reverse_playing = false
+				_hide_vfx()
+				if current_state == State.TELEPORTING:
+					_change_state(State.IDLE)
+				return
+			ability_vfx.frame = _teleport_reverse_frame
 
 
 func _handle_stunned(_delta: float) -> void:
@@ -356,15 +376,17 @@ func _on_ability_vfx_finished() -> void:
 # ---------- TELEPORT CHARGE & CAST ----------
 
 func _start_teleport_charge() -> void:
-	"""Start teleport scan — edge circles appear. Press E again to cancel. Move freely."""
+	"""Start teleport scan — zoom out to map view shows circles. Press E again to cancel."""
 	if current_state != State.IDLE and current_state != State.WALKING:
 		return
 	if teleport_on_cooldown:
 		return
 	
 	_teleport_scan_active = true
+	_hide_vfx()
 	
-	# Emit scan signal so game_map shows the teleport circles at screen edges
+	# Emit zoom request so game_map zoomes out + shows circles
+	teleport_zoom_started.emit()
 	teleport_scan_started.emit()
 
 
@@ -388,6 +410,7 @@ func _cancel_teleport_charge() -> void:
 	teleport_on_cooldown = true
 	_teleport_cd_timer = TELEPORT_COOLDOWN_CANCEL
 	teleport_cancelled.emit()
+	teleport_zoom_ended.emit()
 
 
 func teleport_to_position(target_pos: Vector2) -> void:
@@ -428,8 +451,13 @@ func teleport_to_position(target_pos: Vector2) -> void:
 	# Emit teleported signal so game_map can play sound + show indicator
 	teleported.emit(global_position)
 	
+	# Restore camera view
+	teleport_zoom_ended.emit()
+	
+	# Play reverse teleport VFX (arrival effect)
+	_play_teleport_vfx_reverse()
+	
 	_change_state(State.TELEPORTING)
-	_hide_vfx()
 	
 	# 2.5 second stun — no movement, no abilities
 	take_stun(2.5)
@@ -598,6 +626,20 @@ func _end_stun() -> void:
 	modulate = Color.WHITE
 	if current_state == State.STUNNED:
 		_change_state(State.IDLE)
+
+
+# ---------- TELEPORT REVERSE VFX ----------
+
+func _play_teleport_vfx_reverse() -> void:
+	"""Play the teleport VFX in reverse (frames 7→1) as an arrival effect."""
+	if not ability_vfx.sprite_frames or not ability_vfx.sprite_frames.has_animation("teleport"):
+		return
+	_teleport_reverse_playing = true
+	_teleport_reverse_frame = 6  # 0-indexed, last frame (frame 7 in 1-indexed)
+	_teleport_reverse_timer = 0.0
+	ability_vfx.visible = true
+	ability_vfx.frame = _teleport_reverse_frame
+	ability_vfx.stop()  # Don't play forward
 
 
 # ---------- DAMAGE ----------
