@@ -214,7 +214,10 @@ func _handle_movement(delta: float) -> void:
 
 
 func _handle_hitting(_delta: float) -> void:
-	velocity = Vector2.ZERO
+	# Movement is allowed while hitting — don't lock the killer in place
+	move_and_slide()
+	# Hitting state persists for hit animation duration, then falls back to IDLE
+	# The cooldown prevents spam, not the state lock
 
 
 func _handle_teleport_charging(delta: float) -> void:
@@ -486,26 +489,30 @@ func use_hit() -> void:
 	if hit_on_cooldown:
 		return
 	
-	hit_on_cooldown = true
-	_hit_cd_timer = hit_cooldown
-	_change_state(State.HITTING)
-	_play_animation("hit")
-	
 	# Check if we hit a survivor in range WITH line-of-sight
 	var target := _find_survivor_in_range()
-	if target != null and _has_line_of_sight(target):
-		_ping_hit(target)
-		hit_landed.emit(target, hit_damage)
-		# Check if target is blocking
-		if target.has_method("on_block_hit"):
-			if target.on_block_hit():
-				# Block absorbed — unlocks their punch
-				pass
-			else:
-				# Apply damage
-				var absorption: float = target.get_block_absorption() if target.has_method("get_block_absorption") else 0.0
-				var final_damage: float = hit_damage * (1.0 - absorption)
-				_apply_damage(target, final_damage)
+	if target == null or not _has_line_of_sight(target):
+		# Hit NO ONE → no cooldown penalty, no state change, just visual + sound
+		_play_animation("hit")
+		return
+	
+	# Hit connects — apply cooldown and damage (movement continues; no state lock)
+	hit_on_cooldown = true
+	_hit_cd_timer = hit_cooldown
+	_play_animation("hit")
+	
+	_ping_hit(target)
+	hit_landed.emit(target, hit_damage)
+	# Check if target is blocking
+	if target.has_method("on_block_hit"):
+		if target.on_block_hit():
+			# Block absorbed — unlocks their punch
+			pass
+		else:
+			# Apply damage
+			var absorption: float = target.get_block_absorption() if target.has_method("get_block_absorption") else 0.0
+			var final_damage: float = hit_damage * (1.0 - absorption)
+			_apply_damage(target, final_damage)
 
 
 func find_survivors_in_range() -> Array[Node2D]:
