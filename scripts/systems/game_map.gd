@@ -89,6 +89,9 @@ var _ending_red_active: bool = false
 var _ending_red_flash_timer: float = 0.0
 var _ending_red_show_left: bool = true
 
+# Guard to prevent double lobby redirect
+var _match_ending_lobby: bool = false
+
 # Match stats
 var _total_damage_taken: float = 0.0
 var _total_damage_dealt: float = 0.0
@@ -148,6 +151,7 @@ func _ready() -> void:
 	# Start match timer
 	match_timer.start(1.0)
 	_time_remaining = MATCH_DURATION
+	_match_ending_lobby = false
 	_update_timer_label()
 	
 	# Determine if this player should be the killer based on rings
@@ -623,6 +627,12 @@ func _process(delta: float) -> void:
 		if not _ending_screen_created:
 			_create_match_ending_screen()
 		_update_match_ending_screen(delta)
+	
+	# HARD FALLBACK: force lobby redirect when timer hits 0 for both killer and survivor
+	if _time_remaining <= 0.0 and not _match_ending_lobby:
+		_match_ending_lobby = true
+		_end_match()
+		return
 	
 	# Update AI difficulty scaling
 	_update_ai_difficulty()
@@ -1609,8 +1619,10 @@ func _check_all_survivors_eliminated() -> void:
 	if player_hp <= 0.0:
 		print("GameMap: All survivors eliminated — ending match")
 		match_timer.stop()
-		match_ended.emit()
-		_end_match()
+		if not _match_ending_lobby:
+			_match_ending_lobby = true
+			match_ended.emit()
+			_end_match()
 
 
 # ---------- MATCH TIMER ----------
@@ -1623,9 +1635,11 @@ func _on_match_timer_timeout() -> void:
 		_time_remaining = 0.0
 		_update_timer_label()
 		match_timer.stop()
-		match_ended.emit()
-		print("GameMap: Match ended!")
-		_end_match()
+		if not _match_ending_lobby:
+			_match_ending_lobby = true
+			match_ended.emit()
+			print("GameMap: Match ended!")
+			_end_match()
 
 
 # ---------- PUZZLE INTERACTION ----------
@@ -1963,7 +1977,7 @@ func _create_match_ending_screen() -> void:
 	
 	var red_left := ColorRect.new()
 	red_left.name = "EndingRedLeft"
-	red_left.color = Color(1, 0, 0, 0.85)
+	red_left.color = Color(1, 0, 0, 0.5)
 	red_left.position = Vector2(0, 0)
 	red_left.size = Vector2(view_size.x * 0.5, view_size.y)
 	red_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1973,7 +1987,7 @@ func _create_match_ending_screen() -> void:
 	
 	var red_right := ColorRect.new()
 	red_right.name = "EndingRedRight"
-	red_right.color = Color(1, 0, 0, 0.85)
+	red_right.color = Color(1, 0, 0, 0.5)
 	red_right.position = Vector2(view_size.x * 0.5, 0)
 	red_right.size = Vector2(view_size.x * 0.5, view_size.y)
 	red_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
