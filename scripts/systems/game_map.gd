@@ -600,6 +600,9 @@ func _process(delta: float) -> void:
 	
 	# Animated timer bonus count-up (red, tick-by-tick)
 	if _bonus_target > 0.0:
+		# Track if timer crosses ending threshold during bonus animation
+		var was_in_ending: bool = _time_remaining <= 31.0
+		
 		_bonus_tick_timer += delta
 		var tick_speed: float = 0.15  # ~6.7 ticks per second
 		while _bonus_tick_timer >= tick_speed and _time_remaining < _bonus_target:
@@ -607,6 +610,11 @@ func _process(delta: float) -> void:
 			_time_remaining = min(_time_remaining + 1.0, _bonus_target)
 			_timer_flash_red = 0.3  # Keep red while counting up
 			_update_timer_label()
+		
+		# If timer crossed from ≤31 to >31 during animation → restore map music
+		if was_in_ending and _time_remaining > 31.0 and _ending_music_switched:
+			_restore_map_music()
+		
 		if _time_remaining >= _bonus_target:
 			_bonus_target = 0.0
 			_bonus_tick_timer = 0.0
@@ -618,8 +626,8 @@ func _process(delta: float) -> void:
 	_update_chase_music(delta)
 	_update_killer_speed(delta)
 	
-	# Match-ending effects (last 31 seconds)
-	if _time_remaining <= 31.0:
+	# Match-ending effects (last 31 seconds) — skip during bonus animation
+	if _time_remaining <= 31.0 and _bonus_target <= 0.0:
 		_ending_start_time += delta
 		_update_ending_vignette()
 		_switch_to_ending_music()
@@ -1581,9 +1589,56 @@ func add_timer_bonus(seconds: float) -> void:
 # ---------- KILLER ELIMINATION TRACKING ----------
 
 func _on_killer_eliminated(_player_name: String) -> void:
-	"""Called when killer eliminates a survivor (from network or local)."""
-	# +5s timer bonus (animated count-up) — was 30.0 originally
-	add_timer_bonus(5.0)
+	"""Called when killer eliminates a survivor. +30s timer bonus + ending music handling."""
+	add_timer_bonus(30.0)
+	
+	# Handle music transitions when kill happens during ending countdown
+	if _ending_music_switched:
+		var final_target: float = min(_time_remaining + 30.0, MATCH_DURATION)
+		if final_target > 31.0:
+			# Kill pushes timer back past 31s → restore normal map music
+			_restore_map_music()
+		else:
+			# Kill within ending period → rewind ending music from beginning
+			_rewind_ending_music()
+
+
+# ---------- ENDING MUSIC HELPERS ----------
+
+func _rewind_ending_music() -> void:
+	"""Restart the ending music from the beginning (after a kill during countdown)."""
+	var player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
+	if is_instance_valid(player):
+		player.stop()
+		player.play(0.0)
+		print("GameMap: Rewound ending music (kill during countdown)")
+
+
+func _restore_map_music() -> void:
+	"""Stop ending music and restore normal map music (kill pushed past 31s)."""
+	var ending_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
+	if is_instance_valid(ending_player):
+		ending_player.stop()
+		ending_player.queue_free()
+	
+	_ending_music_switched = false
+	
+	var music_path: String = "res://The Darkness Of The Grasslands assets/Music/Maps/The Test/Test_map_music.wav"
+	if not ResourceLoader.exists(music_path):
+		return
+	var stream: AudioStream = load(music_path)
+	if not stream:
+		return
+	
+	var player := AudioStreamPlayer.new()
+	player.name = "MapMusicPlayer"
+	player.stream = stream
+	player.autoplay = true
+	player.bus = &"Master"
+	player.volume_db = 0.0
+	player.finished.connect(_on_map_music_finished)
+	add_child(player)
+	print("GameMap: Restored map music (kill pushed timer past 31s)")
 
 
 func _on_bot_hp_changed(current_hp: float, _max_hp: float, bot: Node2D) -> void:
