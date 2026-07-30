@@ -82,6 +82,13 @@ var _ending_screen_created: bool = false
 var _ending_bg_alpha: float = 0.0
 var _ending_shake_timer: float = 0.0
 
+# Red UI flash elements (appear at 18s remaining, flash left→right at 150+ BPM)
+var _ending_red_left: ColorRect = null
+var _ending_red_right: ColorRect = null
+var _ending_red_active: bool = false
+var _ending_red_flash_timer: float = 0.0
+var _ending_red_show_left: bool = true
+
 # Match stats
 var _total_damage_taken: float = 0.0
 var _total_damage_dealt: float = 0.0
@@ -1950,10 +1957,33 @@ func _create_match_ending_screen() -> void:
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(top)
 	_ending_screen_overlay = top
+	
+	# Two red UI flash elements — created now but hidden until 18s
+	var view_size: Vector2 = get_viewport().get_visible_rect().size
+	
+	var red_left := ColorRect.new()
+	red_left.name = "EndingRedLeft"
+	red_left.color = Color(1, 0, 0, 0.85)
+	red_left.position = Vector2(0, 0)
+	red_left.size = Vector2(view_size.x * 0.5, view_size.y)
+	red_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	red_left.visible = false
+	hud.add_child(red_left)
+	_ending_red_left = red_left
+	
+	var red_right := ColorRect.new()
+	red_right.name = "EndingRedRight"
+	red_right.color = Color(1, 0, 0, 0.85)
+	red_right.position = Vector2(view_size.x * 0.5, 0)
+	red_right.size = Vector2(view_size.x * 0.5, view_size.y)
+	red_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	red_right.visible = false
+	hud.add_child(red_right)
+	_ending_red_right = red_right
 
 
 func _update_match_ending_screen(delta: float) -> void:
-	"""Slowly fade in the ending screen and shake the top overlay."""
+	"""Update the ending screen: fade-in, shake intensity scales with time left, red UI flash at 18s."""
 	if not _ending_screen_created:
 		return
 	if not is_instance_valid(_ending_screen_bg) or not is_instance_valid(_ending_screen_overlay):
@@ -1967,14 +1997,44 @@ func _update_match_ending_screen(delta: float) -> void:
 	var overlay_alpha: float = min(_ending_bg_alpha * 1.5, 0.85)
 	_ending_screen_overlay.modulate = Color(1, 1, 1, overlay_alpha)
 	
-	# Aggressive shake every second — random offset up to ±8px
+	# Shake intensity scales with time remaining
+	# 31s → mild (±8px, 1.0s interval), 18s → violent (±35px, 0.25s), 0s → extreme (±50px, 0.15s)
+	var time_progress: float = 1.0 - (_time_remaining / 31.0)  # 0 at 31s, 1 at 0s
+	time_progress = clamp(time_progress, 0.0, 1.0)
+	
+	var shake_amplitude: float = 8.0 + time_progress * 42.0  # 8px at 31s, 50px at 0s
+	var shake_interval: float = 1.0 - time_progress * 0.85  # 1.0s at 31s, 0.15s at 0s
+	shake_interval = max(shake_interval, 0.15)
+	
 	_ending_shake_timer += delta
-	if _ending_shake_timer >= 1.0:
-		_ending_shake_timer -= 1.0
-		var shake_x: float = randf_range(-8.0, 8.0)
-		var shake_y: float = randf_range(-6.0, 6.0)
+	if _ending_shake_timer >= shake_interval:
+		_ending_shake_timer -= shake_interval
+		var shake_x: float = randf_range(-shake_amplitude, shake_amplitude)
+		var shake_y: float = randf_range(-shake_amplitude * 0.75, shake_amplitude * 0.75)
 		if is_instance_valid(_ending_screen_overlay):
 			_ending_screen_overlay.position = Vector2(shake_x, shake_y)
+	
+	# Red UI flash — activate at 18 seconds remaining
+	if _time_remaining <= 18.0 and not _ending_red_active:
+		_ending_red_active = true
+		_ending_red_flash_timer = 0.0
+		_ending_red_show_left = true
+	
+	if _ending_red_active:
+		# 150 BPM = 400ms per beat = 200ms alternating left→right
+		# Speed up slightly as time decreases (max 180 BPM = 333ms cycle)
+		var bpm: float = 150.0 + (18.0 - _time_remaining) * (30.0 / 18.0)  # 150 at 18s, 180 at 0s
+		bpm = clamp(bpm, 150.0, 180.0)
+		var half_cycle: float = 60.0 / bpm / 2.0  # Time per side (200ms at 150 BPM)
+		
+		_ending_red_flash_timer += delta
+		if _ending_red_flash_timer >= half_cycle:
+			_ending_red_flash_timer -= half_cycle
+			_ending_red_show_left = not _ending_red_show_left
+			if is_instance_valid(_ending_red_left):
+				_ending_red_left.visible = _ending_red_show_left
+			if is_instance_valid(_ending_red_right):
+				_ending_red_right.visible = not _ending_red_show_left
 
 
 # ---------- DAMAGE VIGNETTE ----------
