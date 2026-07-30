@@ -39,15 +39,9 @@ const teleport_cooldown: float = TELEPORT_COOLDOWN_USED  # Backward compat (AI b
 
 
 # ---------- CHASE MUSIC SETTINGS ----------
-# Proximity radii (pixels) — which layer plays at each distance
-@export var chase_in_layer1: float = 500.0    # Enter Layer 1
-@export var chase_in_layer2: float = 250.0    # Enter Layer 2
-@export var chase_in_layer3: float = 125.0    # Enter Layer 3
-@export var chase_in_chase: float = 20.0      # Enter Chase (very close — only when practically on top)
-@export var chase_out_none: float = 600.0     # Escape → NONE
-@export var chase_out_layer1: float = 400.0   # Leave Layer 1
-@export var chase_out_layer2: float = 200.0   # Leave Layer 2
-@export var chase_out_layer3: float = 100.0   # Leave Layer 3
+# Only Chase layer plays (no build-up layers)
+@export var chase_in_chase: float = 120.0     # Enter Chase (close to survivor)
+@export var chase_out_chase: float = 200.0    # Leave Chase (hysteresis)
 
 # Fade timing (seconds)
 @export var chase_fade_in_duration: float = 0.5

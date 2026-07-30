@@ -27,8 +27,8 @@ const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_surv
 # Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
 const BOT_CHASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/Violentgrass/"
 const CHASE_LAYER_FILES: Array[String] = ["Layer1.wav", "Layer2.wav", "Layer3.wav", "Chase.wav"]
-const CHASE_ENTER_DIST: Array[float] = [800.0, 500.0, 300.0, 150.0]   # When each layer starts: Layer1=far, Layer2=medium, Layer3=close, Chase=very close
-const CHASE_EXIT_DIST: Array[float]  = [900.0, 600.0, 400.0, 220.0]   # When each layer stops (hysteresis)
+const CHASE_ENTER_DIST: Array[float] = [0.0, 0.0, 0.0, 120.0]   # Only Chase (index 3) triggers — no build-up layers
+const CHASE_EXIT_DIST: Array[float]  = [0.0, 0.0, 0.0, 200.0]   # Hysteresis for Chase only
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
 const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
@@ -1154,7 +1154,7 @@ func _update_chase_music(_delta: float) -> void:
 	if _chase_active_layer >= 0 and target_layer < _chase_active_layer:
 		# Check if we've exceeded the exit distance for the current layer
 		if dist > CHASE_EXIT_DIST[_chase_active_layer]:
-			target_layer = _chase_active_layer - 1
+			target_layer = -1  # No build-up layers — go straight to silence
 	
 	# Clamp target_layer: if no layers match, set to -1
 	if target_layer < -1:
