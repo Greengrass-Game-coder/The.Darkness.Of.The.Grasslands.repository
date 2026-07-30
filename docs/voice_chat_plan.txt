@@ -1,0 +1,249 @@
+================================================================================
+  VOICE CHAT SYSTEM — Future Feature Plan
+  The Darkness Of The Grasslands
+================================================================================
+
+OVERVIEW
+--------
+A proximity-based voice chat system with admin verification, voice changers,
+and full in-game controls. Uses a separate UDP tunnel alongside the TCP game
+server for low-latency voice data.
+
+================================================================================
+  INFRASTRUCTURE
+================================================================================
+
+1. SEPARATE UDP VOICE SERVER
+   - A dedicated Godot server (or lightweight UDP relay) running on a
+     different port than the main WebSocket server
+   - localtonet generates a separate UDP tunnel for this
+   - Voice data never touches the main game server, keeping the game snappy
+   - Server relays voice packets to all nearby players (no heavy encoding)
+
+2. SEPARATE UDP POSITION SERVER
+   - A second UDP channel for real-time player position updates
+   - Sends position data 30-60 times per second
+   - Last position is all that matters, so dropped packets are fine
+   - Combined with the voice server to enable proximity-based audio
+   - BUG RISK: Desync if too many packets are dropped. Mitigation: client-side
+     interpolation (smooth toward last known position).
+   - BUG RISK: Higher bandwidth usage on this channel. Mitigation: only send
+     delta (changed data) instead of full position every packet.
+
+3. UDP PING / LATENCY SYSTEM
+   - Tiny heartbeat packets sent every second to measure round-trip time
+   - No TCP handshake overhead, giving accurate real-time ping
+   - Displayed in the HUD as a small ping counter
+   - Used by the server to detect lagging players (potential rubber-band
+     protection)
+   - BUG RISK: Players with unstable connections may show fluctuating ping.
+     Mitigation: show a rolling average of the last 5 pings.
+
+================================================================================
+  CORE VOICE FEATURES
+================================================================================
+
+4. ADMIN VERIFICATION GATE
+   - Players must be verified by an admin before they can speak
+   - Admin panel gets a "Verify VC" / "Revoke VC" button per player
+   - Server issues a short-lived voice token upon verification
+   - Token expires after the session — must be re-verified each game
+   - Unverified players hear a muffled "radio effect" instead of silence
+     (teases the feature without being frustrating)
+   - BUG RISK: Token expiry during a match could cut off a player mid-sentence.
+     Mitigation: token auto-renews every 5 minutes while the match is running,
+     only expires on lobby exit.
+
+5. PROXIMITY CHAT (3D SPATIAL AUDIO)
+   - Voice volume fades based on 3D distance between players in-game
+   - Close range = full volume, far range = silent
+   - Configurable fade radius (e.g. 30 units whisper, 60 units normal,
+     100 units max)
+   - Uses Godot's AudioEffectReverb to simulate indoor/outdoor acoustics
+     based on the player's current environment
+   - Killer and Survivor are on separate chat channels during the game
+     (no cross-team voice)
+   - Dead players can only hear other dead players (spectator channel)
+   - BUG RISK: Audio stutter when many players speak at once. Mitigation:
+     Opus codec at low bitrate (~16 kbps per speaker), cap at 6 simultaneous
+     voices, queue the rest.
+   - BUG RISK: Indoor/outdoor detection false positives. Mitigation: use
+     a simple raycast from player upward — if no ceiling, it's outdoor.
+
+6. HEAR YOURSELF (SIDETONE)
+   - Players can hear their own processed voice through their headphones
+   - Lets them hear what their voice changer sounds like in real time
+   - Toggleable via a slider in settings (sidetone volume 0%–100%)
+   - Sidetone uses the processed voice (after voice changer effects),
+     not the raw microphone input
+   - BUG RISK: Echo feedback loop if sidetone is too loud + speaker output
+     bleeds into mic. Mitigation: warn the player if output volume is above
+     a threshold while sidetone is on.
+
+7. VOICE CHANGER ENGINE
+   - Multiple voice effects selectable per player:
+     (a) Radio — crackling static + bandpass filter
+     (b) Demon — heavy pitch shift down + distortion
+     (c) Robot — stepped pitch + metallic chorus
+     (d) Ghost — reverb + whisper + echo
+     (e) Monster — low growl + formant shift
+     (f) Alien — pitch shift up + flanger
+     (g) Muffled — low-pass filter + proximity effect
+     (h) Helmet — hollow EQ + slight reverb
+     (i) Reverse — short reversed echo trail
+     (j) Custom — user-adjustable pitch + reverb + distortion + EQ
+   - Voice changers apply client-side (no server processing needed)
+   - Each voice changer has a unique "ambient loop" sound that plays
+     faintly nearby (e.g. Demon has a low growl, Ghost has a whisper)
+   - BUG RISK: Voice changer combinations could cause audio clipping.
+     Mitigation: master limiter on the processed voice output, preview
+     button in settings to test before using.
+   - BUG RISK: Performance hit on low-end devices. Mitigation: voice
+     changer processing is offloaded to a separate AudioStream thread,
+     automatically disables if FPS drops below 30.
+
+8. VOICE UI
+   - Speaker icon appears above a player's head when they speak
+     (only visible to others in proximity range)
+   - Speaking player's nameplate glows/brightens
+   - Small waveform indicator in the HUD (optional, toggleable)
+   - Push-to-talk keybind (default: V) + Open mic toggle in settings
+   - Voice activity threshold slider (for open mic mode)
+   - "You are muted" indicator when not verified yet
+   - BUG RISK: Speaker icons overlapping in crowded areas. Mitigation:
+     icons stack vertically with a small offset per player.
+
+9. PER-PLAYER VOLUME CONTROLS
+   - Player list in pause menu shows a volume slider per player
+   - Mute individual players who are being annoying
+   - Settings persist in save data (user://saves/<username>/muted_players.json)
+   - "Mute All Non-Verified" hotkey for quick silence
+   - BUG RISK: Mute list gets outdated if players change usernames.
+     Mitigation: store muted players by their unique player ID, not username.
+
+10. VOICE LOG & MODERATION
+    - Server logs who spoke and for how long (for moderation)
+    - Optional: speech-to-text transcription for admin review
+    - Admins can "listen in" on a player's voice channel (stealth mode)
+    - Audio clips saved for report appeals (encrypted, 60-second rolling buffer)
+    - BUG RISK: Storage blowup if many reports accumulate. Mitigation:
+      auto-delete audio clips older than 7 days, only keep when a report
+      is actively under review.
+
+11. ACCESSIBILITY & SAFETY
+    - "Deafen" mode — mutes all voice chat (for when you don't want to listen)
+    - Visual subtitles for voice chat (toggleable, shows "[Player] is speaking")
+    - Hearing-impaired mode: voice chat is shown as colored text bubbles
+    - Quick report button on a player's speaker icon
+    - Voice chat is disabled by default for players under a certain playtime
+      threshold (anti-toxic measure)
+    - BUG RISK: Subtitles could reveal player positions (e.g. hearing someone
+      nearby). Mitigation: subtitles only show if the player is already in
+      visual range, not just audio range.
+
+12. SPECTATOR MODE (UDP STREAMING)
+    - When a player dies, they switch to spectator channel
+    - Spectators can hear dead players, but not alive ones
+    - Spectators can choose to follow a specific alive player and hear their
+      proximity chat (one-way: the alive player can't hear the spectator)
+    - BUG RISK: Spectator audio leaking to alive players. Mitigation: voice
+      server enforces channel separation at the relay level, not client-side.
+
+13. REAL-TIME PING DISPLAY (UDP)
+    - Tiny UDP heartbeat every second shows live ping in the HUD
+    - Rolling average of last 5 pings for stability
+    - Color-coded: green (<50ms), yellow (50-150ms), red (>150ms)
+    - BUG RISK: Ping spikes during voice chat. Mitigation: voice packets
+      and ping packets are on separate UDP ports, so they don't interfere.
+
+================================================================================
+  COSMETIC SYSTEM — SKIN PACKS
+================================================================================
+
+14. SURVIVOR SKIN PACKS
+    - Bundles of survivor skins sold as packs
+    - Each skin pack includes:
+      - A unique visual model texture change
+      - A matching voice changer unlock (if voice chat is active)
+      - A custom death sound (heard by nearby players)
+    - Examples:
+      (a) "Forest Survivor Pack" — camo outfit + nature ambience voice
+      (b) "Cyber Survivor Pack" — neon outfit + robot voice unlock
+      (c) "Phantom Survivor Pack" — translucent outfit + ghost voice
+    - Skin packs can be previewed in the lobby before purchase
+    - BUG RISK: Skin textures not loading for other players. Mitigation:
+      server sends a skin ID, client loads from a local cache, fallback
+      to default if missing.
+
+15. KILLER SKIN PACKS
+    - Bundles of Violentgrass skins sold as packs
+    - Each skin pack includes:
+      - A unique Violentgrass model texture change
+      - A matching voice changer unlock
+      - A custom terror sound (ambient loop that plays near the killer)
+    - Examples:
+      (a) "Lava Killer Pack" — molten Violentgrass + fire crackle voice
+      (b) "Krampus Killer Pack" — holiday monster + deep growl voice
+      (c) "Shadow Killer Pack" — dark silhouette + whispery voice
+    - BUG RISK: Terror sound playing at wrong volume. Mitigation: terror
+      sound radius is tied to the killer's terror radius stat, fades with
+      distance.
+
+================================================================================
+  IMPLEMENTATION ORDER (Recommended)
+================================================================================
+
+Phase A — Foundation
+  1. UDP voice server + basic relay
+  2. Admin verification gate + token system
+  3. Push-to-talk + hear yourself
+  4. UDP ping display
+
+Phase B — Gameplay Integration
+  5. Proximity chat (3D distance fade)
+  6. UDP position server (for proximity accuracy)
+  7. Voice UI (speaker icons, nameplate glow)
+  8. Per-player volume & mute
+
+Phase C — Polish
+  9. Voice changer engine (3-4 base effects)
+  10. Accessibility features (subtitles, deafen)
+  11. Spectator mode voice channels
+
+Phase D — Expansion
+  12. Voice log & moderation tools
+  13. Survivor Skin Packs
+  14. Killer Skin Packs
+  15. Voice packs & cosmetic system
+
+================================================================================
+  TECHNICAL NOTES
+================================================================================
+
+- Voice data: Opus codec (low bitrate, good quality, free)
+- Packet size: ~60 bytes per 20ms frame per player
+- Bandwidth estimate: ~10 KB/s per speaking player (very manageable)
+- localtonet: one TCP tunnel for game server, one UDP tunnel for voice
+- Voice changer: Godot's AudioEffectPitchShift + AudioEffectReverb +
+  AudioEffectDistortion + AudioEffectFilter (all built-in, no plugins needed)
+- Voice server can be a lean Godot executable running on a headless instance
+- UDP position server: send deltas (x, y, velocity) not full state every tick
+- Skin packs: store as resource files (.tres) with texture + voice effect refs
+
+================================================================================
+  KNOWN BUGS & RISKS (Summary)
+================================================================================
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Position desync from dropped UDP packets | Medium | Client-side interpolation |
+| Voice audio stutter with many speakers | Medium | Cap at 6 voices, Opus at 16kbps |
+| Echo feedback from sidetone + speakers | Low | Volume threshold warning |
+| Voice changer clipping/distortion | Low | Master limiter on output |
+| Spectator audio leaking to alive players | High | Server-enforced channel separation |
+| Skin textures not loading for others | Medium | Server sends skin ID, client cache |
+| Storage blowup from voice logs | Low | Auto-delete after 7 days |
+| Subtitles revealing player positions | Low | Only show in visual range |
+| Tunnel bandwidth saturation | Medium | Separate UDP tunnel for voice + position |
+
+================================================================================
