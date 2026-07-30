@@ -1,9 +1,11 @@
 class_name AISurvivorBotController
 extends GreengrassController
 
-## AI-controlled survivor bot:
-## - Moves toward unsolved puzzle zones and "solves" them
-## - Runs away from the killer when close
+## AI-controlled survivor bot with smart behavior:
+## - Flees from killer with wall avoidance + line-of-sight awareness
+## - Blocks when killer is close and facing the bot
+## - Heals with Spare Flower when low HP
+## - Solves puzzles and patrols when safe
 
 signal bot_solved_puzzle(_area_name: String, area_ref: Area2D)
 
@@ -12,6 +14,9 @@ signal bot_solved_puzzle(_area_name: String, area_ref: Area2D)
 @export var puzzle_approach_range: float = 100.0
 @export var patrol_change_interval: float = 3.0
 @export var solve_time: float = 4.0
+@export var block_threshold: float = 200.0       # Block when killer is this close
+@export var heal_hp_threshold: float = 30.0       # Heal when HP% below this
+@export var safe_los_distance: float = 300.0      # Consider safe if wall blocks view at this range
 
 var _target_killer: Node2D = null
 var _target_puzzle: Area2D = null
@@ -22,6 +27,10 @@ var _solving: bool = false
 var _solve_timer: float = 0.0
 var _current_target_puzzle: Area2D = null
 var _fleeing: bool = false
+var _strafe_dir: float = 1.0
+var _strafe_change_timer: float = 0.0
+var _just_hit_timer: float = 0.0
+var _has_los_to_killer: bool = false
 
 
 func _ready() -> void:
@@ -46,6 +55,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		move_and_slide()
 		_update_cooldowns(delta)
+		_just_hit_timer = 0.5
 		return
 	
 	if current_state in [State.PUNCHING, State.PUNCH_CHARGING, State.HEALING]:
@@ -56,14 +66,32 @@ func _physics_process(delta: float) -> void:
 	
 	_update_cooldowns(delta)
 	
+	if _just_hit_timer > 0.0:
+		_just_hit_timer -= delta
+	
 	if _stamina_exhausted:
 		_exhaustion_timer -= delta
 		if _exhaustion_timer <= 0:
 			_stamina_exhausted = false
 	
 	_find_nearest_killer()
+	_check_los_to_killer()
 	
-	var killer_close: bool = is_instance_valid(_target_killer) and 		global_position.distance_to(_target_killer.global_position) <= flee_range
+	var dist_to_killer: float = INF
+	if is_instance_valid(_target_killer):
+		dist_to_killer = global_position.distance_to(_target_killer.global_position)
+	
+	# Effective flee range: shorter if wall blocks LOS (bot feels safer behind walls)
+	var effective_flee: float = flee_range if _has_los_to_killer else safe_los_distance
+	var killer_close: bool = is_instance_valid(_target_killer) and dist_to_killer <= effective_flee
+	
+	# PRIORITY 0: Block if killer is close, facing the bot, and not already fleeing
+	if is_instance_valid(_target_killer) and current_hp > 0.0 and not killer_close:
+		if dist_to_killer <= block_threshold and not block_on_cooldown and not _fleeing:
+			var killer_dir: Vector2 = _target_killer.get("facing_direction") if "facing_direction" in _target_killer else Vector2.DOWN
+			var to_bot: Vector2 = (global_position - _target_killer.global_position).normalized()
+			if killer_dir.dot(to_bot) > 0.3:
+				use_block()
 	
 	# PRIORITY 1: Flee from killer
 	if killer_close and is_instance_valid(_target_killer):
@@ -75,6 +103,14 @@ func _physics_process(delta: float) -> void:
 		return
 	else:
 		_fleeing = false
+	
+	# PRIORITY 1.5: Heal when low HP and safe (not fleeing)
+	if current_hp > 0.0 and current_hp < heal_hp_threshold and not flower_on_cooldown and not _fleeing:
+		use_spare_flower()
+		if current_state == State.HEALING:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			return
 	
 	# PRIORITY 2: Solve a puzzle
 	if _solving and _current_target_puzzle != null:
@@ -99,6 +135,23 @@ func _physics_process(delta: float) -> void:
 	# PRIORITY 4: Patrol
 	_ai_patrol(delta)
 	move_and_slide()
+
+
+func _check_los_to_killer() -> void:
+	"""Check if a wall blocks LOS from killer to bot."""
+	if not is_instance_valid(_target_killer):
+		_has_los_to_killer = false
+		return
+	
+	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(
+		_target_killer.global_position,
+		global_position
+	)
+	query.collision_mask = 4  # Wall layer
+	query.exclude = [self, _target_killer]
+	var result: Dictionary = space_state.intersect_ray(query)
+	_has_los_to_killer = result.is_empty()
 
 
 func _find_nearest_killer() -> void:
@@ -178,12 +231,50 @@ func _ai_flee(delta: float) -> void:
 		return
 	
 	var away_dir: Vector2 = global_position - _target_killer.global_position
-	var _dist: float = global_position.distance_to(_target_killer.global_position)
+	var _dist: float = away_dir.length()
 	
-	var strafe: Vector2 = Vector2(-away_dir.y, away_dir.x).normalized()
-	var strafe_amount: float = 0.3 if randf() < 0.02 else 0.15
+	# Strafe direction changes periodically for unpredictable movement
+	_strafe_change_timer -= delta
+	if _strafe_change_timer <= 0.0:
+		_strafe_dir = 1.0 if randf() > 0.5 else -1.0
+		_strafe_change_timer = randf_range(0.5, 1.5)
+	
+	var strafe: Vector2 = Vector2(-away_dir.y, away_dir.x).normalized() * _strafe_dir
+	var strafe_amount: float = randf_range(0.2, 0.5)
 	
 	var move_dir: Vector2 = (away_dir.normalized() + strafe * strafe_amount).normalized()
+	
+	# Multi-raycast wall avoidance — check center, left, and right
+	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	var ray_dists: Array[float] = [60.0, 80.0, 100.0]
+	var ray_offsets: Array[float] = [0.0, 45.0, -45.0]  # Degrees
+	var blocked: bool = false
+	
+	for i in range(ray_offsets.size()):
+		var rotated_dir: Vector2 = move_dir.rotated(deg_to_rad(ray_offsets[i]))
+		var query := PhysicsRayQueryParameters2D.create(
+			global_position,
+			global_position + rotated_dir * ray_dists[i]
+		)
+		query.collision_mask = 4  # Wall layer
+		query.exclude = [self]
+		var result: Dictionary = space_state.intersect_ray(query)
+		if not result.is_empty():
+			blocked = true
+			break
+	
+	if blocked:
+		move_dir = strafe.normalized()
+		# Check if strafe is also blocked
+		var strafe_query := PhysicsRayQueryParameters2D.create(
+			global_position,
+			global_position + move_dir * 60.0
+		)
+		strafe_query.collision_mask = 4
+		strafe_query.exclude = [self]
+		if not space_state.intersect_ray(strafe_query).is_empty():
+			# Last resort: reverse direction
+			move_dir = (away_dir.normalized() * -0.5 + strafe.normalized()).normalized()
 	
 	var use_sprint: bool = not _stamina_exhausted
 	var speed: float = sprint_speed if use_sprint else move_speed
@@ -195,16 +286,6 @@ func _ai_flee(delta: float) -> void:
 			_stamina_exhausted = true
 			_exhaustion_timer = 3.0
 		_stamina_regen_timer = stamina_regen_delay
-	
-	# Wall avoidance raycast
-	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
-	var wall_query := PhysicsRayQueryParameters2D.create(global_position, global_position + move_dir * 80.0)
-	wall_query.collision_mask = 4  # Wall layer (bit 3) — same as all characters
-	wall_query.exclude = [self]
-	var wall_result: Dictionary = space_state.intersect_ray(wall_query)
-	
-	if not wall_result.is_empty():
-		move_dir = strafe.normalized()
 	
 	velocity = move_dir * speed
 	_update_direction(velocity)

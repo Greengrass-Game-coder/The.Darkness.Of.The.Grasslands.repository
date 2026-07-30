@@ -25,10 +25,17 @@ const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controlle
 const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_survivor_bot_controller.gd")
 
 # Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
-const BOT_CHASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/Violentgrass/"
+## Settings: configurable folder names for killer + survivor chase themes (auto-searches)
+@export var killer_chase_folder: String = "Violentgrass"   # Folder under Killer Chase Themes/ for killer player
+@export var survivor_chase_folder: String = "Greengrass"    # Folder under Killer Chase Themes/ for survivor player
+const CHASE_BASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/"
 const CHASE_LAYER_FILES: Array[String] = ["Layer1.wav", "Layer2.wav", "Layer3.wav", "Chase.wav"]
-const CHASE_ENTER_DIST: Array[float] = [0.0, 0.0, 0.0, 120.0]   # Only Chase (index 3) triggers — no build-up layers
-const CHASE_EXIT_DIST: Array[float]  = [0.0, 0.0, 0.0, 200.0]   # Hysteresis for Chase only
+# Killer chase: only Chase layer (no build-up) — distance in pixels
+const KILLER_CHASE_ENTER: Array[float] = [0.0, 0.0, 0.0, 250.0]
+const KILLER_CHASE_EXIT: Array[float]  = [0.0, 0.0, 0.0, 300.0]
+# Survivor chase: all 4 layers with build-up
+const SURVIVOR_CHASE_ENTER: Array[float] = [500.0, 300.0, 150.0, 80.0]
+const SURVIVOR_CHASE_EXIT: Array[float]  = [600.0, 400.0, 250.0, 150.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
 const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
@@ -38,6 +45,7 @@ var _map_manager: MapManager = null
 var _player: Node2D = null
 var _killer_bot: Node2D = null
 var _survivor_bots: Array[Node2D] = []
+var _alive_survivor_bot_count: int = 0
 var _chase_layers_enabled: Array[bool] = [false, false, false, false]  # Active state per layer
 var _chase_players: Array[AudioStreamPlayer] = []
 var _chase_active_layer: int = -1  # Highest active layer index
@@ -66,6 +74,13 @@ var _teleport_marker_buttons: Array[Button] = []   # The UI buttons for each mar
 var _ending_vignette: ColorRect = null
 var _ending_music_switched: bool = false
 var _ending_start_time: float = 0.0
+
+# Match ending screen (timer ≤ 30s — Violentgrass only)
+var _ending_screen_bg: TextureRect = null
+var _ending_screen_overlay: TextureRect = null
+var _ending_screen_created: bool = false
+var _ending_bg_alpha: float = 0.0
+var _ending_shake_timer: float = 0.0
 
 # Match stats
 var _total_damage_taken: float = 0.0
@@ -403,12 +418,17 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	_create_ending_vignette()
 	
 	# Spawn bot killer if survivor, or survivor bots if killer
+	# Set up chase music for both roles
 	if not is_killer_player:
 		_spawn_bot_killer()
 		# Attach dynamic difficulty controller to AI bot
 		_attach_ai_difficulty()
+		# Survivor player: load all 4 chase layers from survivor's theme folder
+		_setup_chase_music(survivor_chase_folder)
 	else:
 		_spawn_survivor_bots()
+		# Killer player: load only Chase layer from killer's theme folder
+		_setup_chase_music(killer_chase_folder)
 	
 	# Track damage dealt via punch signal
 	if _player.has_signal("punch_landed") and not _player.punch_landed.is_connected(_on_player_attacked):
@@ -592,6 +612,10 @@ func _process(delta: float) -> void:
 		_ending_start_time += delta
 		_update_ending_vignette()
 		_switch_to_ending_music()
+		# Match ending screen (Violentgrass) — create once, update each frame
+		if not _ending_screen_created:
+			_create_match_ending_screen()
+		_update_match_ending_screen(delta)
 	
 	# Update AI difficulty scaling
 	_update_ai_difficulty()
@@ -850,7 +874,11 @@ func _bots_create_survivor(spawn_pos: Vector2, name_str: String) -> void:
 	add_child(bot)
 	if bot.has_signal("bot_solved_puzzle"):
 		bot.bot_solved_puzzle.connect(_on_bot_solved_puzzle)
+	# Track bot HP to detect elimination
+	if bot.has_signal("hp_changed"):
+		bot.hp_changed.connect(_on_bot_hp_changed.bind(bot))
 	_survivor_bots.append(bot)
+	_alive_survivor_bot_count += 1
 
 
 func _spawn_bot_killer() -> void:
@@ -863,7 +891,6 @@ func _spawn_bot_killer() -> void:
 	bot.position = spawn_pos
 	add_child(bot)
 	_killer_bot = bot
-	_setup_chase_music()
 	# Connect killer hit signal for damage tracking
 	if bot.has_signal("hit_landed") and not bot.hit_landed.is_connected(_on_killer_hit_landed):
 		bot.hit_landed.connect(_on_killer_hit_landed)
@@ -926,15 +953,18 @@ func _read_bot_chase_settings(_bot: Node2D) -> void:
 	pass
 
 
-func _setup_chase_music() -> void:
-	"""Create 4 chase layer players (Layer1-3 + Chase), all muted until triggered."""
+func _setup_chase_music(folder_name: String) -> void:
+	"""Create chase layer players from the specified theme folder, all muted until triggered.
+	Auto-searches in CHASE_BASE_DIR + folder_name/ for Layer1-3.wav and Chase.wav."""
 	_chase_players.clear()
 	_chase_layers_enabled = [false, false, false, false]
 	_chase_active_layer = -1
 	
+	var dir: String = CHASE_BASE_DIR + folder_name + "/"
+	
 	for i: int in CHASE_LAYER_FILES.size():
 		var file_name: String = CHASE_LAYER_FILES[i]
-		var file_path: String = BOT_CHASE_DIR + file_name
+		var file_path: String = dir + file_name
 		if not ResourceLoader.exists(file_path):
 			push_error("GameMap: Chase layer file not found: ", file_path)
 			continue
@@ -952,7 +982,7 @@ func _setup_chase_music() -> void:
 		_chase_players.append(p)
 	
 	var loaded: int = _chase_players.size()
-	print("GameMap: Chase music ready — %d layers loaded" % loaded)
+	print("GameMap: Chase music ready — %d layers loaded from '%s'" % [loaded, folder_name])
 
 
 func _play_killer_cutscene() -> void:
@@ -1105,28 +1135,36 @@ func _on_chase_loop(player: AudioStreamPlayer) -> void:
 
 
 func _update_chase_music(_delta: float) -> void:
-	"""Update chase music for SURVIVORS only, based on distance to the nearest killer.
+	"""Update chase music based on player role.
 	
-	- If the human player IS the killer → silence chase (killers don't hear their own theme)
-	- If the human is a survivor → play chase layers based on distance to AI killer bot
+	- If player IS the killer → play killer's chase theme (only Chase layer) when close to survivors
+	- If player IS a survivor → play survivor's chase theme (all 4 build-up layers) when killer is close
 	
-	Only ONE layer plays at a time (no stacking). Layers transition from
-	Layer1 (farthest) → Layer2 → Layer3 → Chase (closest)."""
-	# SILENCE CHASE IF THE PLAYER IS THE KILLER — only survivors should hear chase music
-	if _character_name == "Violentgrass":
-		_silence_all_chase()
+	Only ONE layer plays at a time (no stacking)."""
+	if _chase_players.is_empty():
 		return
 	
-	# Player is a survivor — chase source is the AI killer bot
-	var chase_source: Node2D = _killer_bot if is_instance_valid(_killer_bot) else null
+	var is_killer: bool = _character_name == "Violentgrass"
+	var chase_source: Node2D = null
+	var enter_dist: Array[float]
+	var exit_dist: Array[float]
+	
+	if is_killer:
+		# Player is the killer — measure distance from player to nearest survivor
+		chase_source = _player if is_instance_valid(_player) else null
+		enter_dist = KILLER_CHASE_ENTER
+		exit_dist = KILLER_CHASE_EXIT
+	else:
+		# Player is a survivor — measure distance from killer bot to nearest survivor
+		chase_source = _killer_bot if is_instance_valid(_killer_bot) else null
+		enter_dist = SURVIVOR_CHASE_ENTER
+		exit_dist = SURVIVOR_CHASE_EXIT
 	
 	if not is_instance_valid(chase_source):
 		_silence_all_chase()
 		return
-	if _chase_players.is_empty():
-		return
 	
-	# Measure distance from killer (chase_source) to nearest survivor
+	# Measure distance from chase source to nearest survivor
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
 	var closest_dist: float = INF
 	for s in survivors:
@@ -1142,21 +1180,17 @@ func _update_chase_music(_delta: float) -> void:
 	var dist: float = closest_dist
 	
 	# Determine which layer should be active based on distance
-	# Iterate from closest (index 3 = Chase) to farthest (index 0 = Layer1)
-	# BREAK on first match so we get the CLOSEST matching layer, not the farthest
-	var target_layer: int = -1  # -1 = no chase (too far)
-	for i: int in range(CHASE_ENTER_DIST.size() - 1, -1, -1):
-		if dist <= CHASE_ENTER_DIST[i]:
+	var target_layer: int = -1
+	for i: int in range(enter_dist.size() - 1, -1, -1):
+		if dist <= enter_dist[i]:
 			target_layer = i
-			break  # CRITICAL: stop at closest match, don't override with farther layers
+			break
 	
-	# Apply hysteresis: if currently at a layer, use EXIT distance to leave
+	# Apply hysteresis: use EXIT distance to leave current layer
 	if _chase_active_layer >= 0 and target_layer < _chase_active_layer:
-		# Check if we've exceeded the exit distance for the current layer
-		if dist > CHASE_EXIT_DIST[_chase_active_layer]:
-			target_layer = -1  # No build-up layers — go straight to silence
+		if dist > exit_dist[_chase_active_layer]:
+			target_layer = -1  # Go straight to silence
 	
-	# Clamp target_layer: if no layers match, set to -1
 	if target_layer < -1:
 		target_layer = -1
 	
@@ -1165,20 +1199,20 @@ func _update_chase_music(_delta: float) -> void:
 		var _old_layer: int = _chase_active_layer
 		_chase_active_layer = target_layer
 		
-		# INSTANTLY mute all players (no tween — prevents stacking overlap)
+		# INSTANTLY mute all players
 		for i: int in _chase_players.size():
 			if is_instance_valid(_chase_players[i]):
 				_chase_layers_enabled[i] = false
 				_chase_players[i].volume_db = -80.0
 		
-		# Fade-IN only the target layer (smooth transition)
+		# Fade-IN only the target layer
 		if target_layer >= 0 and target_layer < _chase_players.size():
 			_chase_layers_enabled[target_layer] = true
 			if is_instance_valid(_chase_players[target_layer]):
 				var tween := create_tween()
 				tween.tween_property(_chase_players[target_layer], "volume_db", CHASE_LAYER_VOLUME[target_layer], CHASE_VOL_FADE_MS)
 		
-		# Duck background music deeply when chase active (-18dB instead of just -10dB)
+		# Duck background music when chase active
 		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
 		if not bg_player:
 			bg_player = get_node_or_null("MapMusicPlayer")
@@ -1535,6 +1569,43 @@ func _on_killer_eliminated(_player_name: String) -> void:
 	add_timer_bonus(5.0)
 
 
+func _on_bot_hp_changed(current_hp: float, _max_hp: float, bot: Node2D) -> void:
+	"""Track AI survivor bot HP and trigger elimination when HP reaches 0."""
+	if current_hp > 0.0:
+		return
+	if not is_instance_valid(bot):
+		return
+	if not _survivor_bots.has(bot):
+		return
+	
+	# Mark bot as eliminated
+	_alive_survivor_bot_count -= 1
+	_survivor_bots.erase(bot)
+	
+	# Grey out the bot
+	bot.modulate = Color(0.4, 0.4, 0.4, 0.5)
+	bot.set_physics_process(false)
+	
+	print("GameMap: Survivor bot eliminated — %d bot(s) remaining" % _alive_survivor_bot_count)
+	_on_killer_eliminated("SurvivorBot")
+	
+	# Check if all survivors (human + bots) are eliminated
+	_check_all_survivors_eliminated()
+
+
+func _check_all_survivors_eliminated() -> void:
+	"""End the match when all survivors (human + AI bots) are eliminated."""
+	if _alive_survivor_bot_count > 0:
+		return
+	# Also check if human player is dead
+	var player_hp: float = _player.get("current_hp") if is_instance_valid(_player) and "current_hp" in _player else 0.0
+	if player_hp <= 0.0:
+		print("GameMap: All survivors eliminated — ending match")
+		match_timer.stop()
+		match_ended.emit()
+		_end_match()
+
+
 # ---------- MATCH TIMER ----------
 
 func _on_match_timer_timeout() -> void:
@@ -1836,6 +1907,74 @@ func _update_ending_vignette() -> void:
 			base_color.b * flicker_bright,
 			clampf(flicker_alpha, 0.3, 0.85)
 		)
+
+
+# ---------- MATCH ENDING SCREEN (timer ≤ 30s) ----------
+
+func _create_match_ending_screen() -> void:
+	"""Create the full-screen ending image + top overlay when timer ≤ 30s."""
+	if _ending_screen_created:
+		return
+	_ending_screen_created = true
+	_ending_bg_alpha = 0.0
+	_ending_shake_timer = 0.0
+	
+	var hud: CanvasLayer = $HUD
+	
+	# Load textures
+	var bg_tex: Texture2D = load("res://The Darkness Of The Grasslands assets/UI/Match/Violentgrass_MATCH_ENDING_SCREEN.png")
+	var overlay_tex: Texture2D = load("res://The Darkness Of The Grasslands assets/UI/Match/Violentgrass_MATCH_ENDING_SCREEN_TOP_OVERLAY.png")
+	
+	# Background image — full screen, fades in slowly
+	var bg := TextureRect.new()
+	bg.name = "EndingScreenBg"
+	bg.texture = bg_tex
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.position = Vector2(0, 0)
+	bg.size = get_viewport().get_visible_rect().size
+	bg.modulate = Color(1, 1, 1, 0.0)  # Start transparent
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(bg)
+	_ending_screen_bg = bg
+	
+	# Top overlay — shakes aggressively each second
+	var top := TextureRect.new()
+	top.name = "EndingScreenOverlay"
+	top.texture = overlay_tex
+	top.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	top.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	top.position = Vector2(0, 0)
+	top.size = get_viewport().get_visible_rect().size
+	top.modulate = Color(1, 1, 1, 0.0)  # Start transparent
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(top)
+	_ending_screen_overlay = top
+
+
+func _update_match_ending_screen(delta: float) -> void:
+	"""Slowly fade in the ending screen and shake the top overlay."""
+	if not _ending_screen_created:
+		return
+	if not is_instance_valid(_ending_screen_bg) or not is_instance_valid(_ending_screen_overlay):
+		return
+	
+	# Slowly fade in the background (alpha 0 → 0.6 over 10 seconds)
+	_ending_bg_alpha = min(_ending_bg_alpha + delta * 0.06, 0.6)
+	_ending_screen_bg.modulate = Color(1, 1, 1, _ending_bg_alpha)
+	
+	# Top overlay fades in slightly faster
+	var overlay_alpha: float = min(_ending_bg_alpha * 1.5, 0.85)
+	_ending_screen_overlay.modulate = Color(1, 1, 1, overlay_alpha)
+	
+	# Aggressive shake every second — random offset up to ±8px
+	_ending_shake_timer += delta
+	if _ending_shake_timer >= 1.0:
+		_ending_shake_timer -= 1.0
+		var shake_x: float = randf_range(-8.0, 8.0)
+		var shake_y: float = randf_range(-6.0, 6.0)
+		if is_instance_valid(_ending_screen_overlay):
+			_ending_screen_overlay.position = Vector2(shake_x, shake_y)
 
 
 # ---------- DAMAGE VIGNETTE ----------
