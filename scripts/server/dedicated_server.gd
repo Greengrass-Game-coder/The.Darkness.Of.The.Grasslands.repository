@@ -5,7 +5,7 @@ extends Node
 ## Port: 8080 (overridable via PORT env var)
 
 var server_port: int = 8080
-const MAX_PLAYERS: int = 9
+const MAX_PLAYERS: int = 12  # Increased for public testing (was 9)
 const MATCH_DURATION_ROUND: float = 240.0
 const MATCH_DURATION_LMS: float = 195.0
 const LOBBY_ANALYSIS_DURATION: float = 60.0

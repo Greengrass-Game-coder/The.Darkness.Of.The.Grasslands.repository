@@ -167,8 +167,8 @@ func _replace_hud_labels() -> void:
 			var bl := BitmapLabel.new()
 			bl.name = "BmpTimer"
 			bl.label_text = timer_label.text
-			bl.font_scale = 0.18
-			bl.char_spacing = 3.0
+			bl.font_scale = 0.22
+			bl.char_spacing = 4.0
 			bl.horizontal_align = timer_label.horizontal_alignment
 			bl.font_color = Color(1, 1, 1, 1)
 			bl.position = timer_label.position
@@ -370,15 +370,13 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	add_child(_player)
 	
 	# Enable camera on the player
-	var cam := _player.get_node_or_null("Camera2D") as Camera2D
-	if not cam:
-		# Some characters (e.g. Violentgrass) don't have a Camera2D — add one
-		cam = Camera2D.new()
-		cam.name = "Camera2D"
-		_player.add_child(cam)
-	if cam:
-		cam.enabled = true
-		cam.make_current()
+	# Camera zoom controller — adds scroll-wheel zoom + larger default zoom
+	var zoom_ctrl := CameraZoomController.new()
+	zoom_ctrl.name = "ZoomController"
+	zoom_ctrl.default_zoom = 1.25  # Bigger than default 1.0 for easier viewing
+	_player.add_child(zoom_ctrl)
+	# Connect zoom to HUD vignette/overlay scaling if needed
+	var cam: Camera2D = _player.get_node_or_null("Camera2D") as Camera2D
 	
 	# Set character name for analysis screen
 	_character_name = "Violentgrass" if is_killer_player else "Greengrass"
@@ -1003,12 +1001,12 @@ func _play_killer_cutscene() -> void:
 	line1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	line1.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	line1.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	line1.add_theme_font_size_override("font_size", 36)
+	line1.add_theme_font_size_override("font_size", 46)
 	line1.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	line1.add_theme_constant_override("outline_size", 4)
+	line1.add_theme_constant_override("outline_size", 5)
 	line1.modulate = Color(1, 1, 1, 0)
-	line1.pivot_offset = Vector2(512, 40)  # center of label for scale-from-center
-	line1.scale = Vector2(0.4, 0.4)
+	line1.pivot_offset = Vector2(512, 50)  # center of label for scale-from-center
+	line1.scale = Vector2(0.5, 0.5)
 	container.add_child(line1)
 	
 	# Killer name — appears 2.5s later with fade + zoom
@@ -1027,12 +1025,12 @@ func _play_killer_cutscene() -> void:
 	line2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	line2.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	line2.add_theme_color_override("font_color", Color(1, 0.15, 0.15, 1))
-	line2.add_theme_font_size_override("font_size", 56)
+	line2.add_theme_font_size_override("font_size", 68)
 	line2.add_theme_color_override("font_outline_color", Color(0.3, 0, 0, 1))
-	line2.add_theme_constant_override("outline_size", 6)
+	line2.add_theme_constant_override("outline_size", 8)
 	line2.modulate = Color(1, 1, 1, 0)
-	line2.pivot_offset = Vector2(512, 50)  # center of label for scale-from-center
-	line2.scale = Vector2(0.3, 0.3)
+	line2.pivot_offset = Vector2(512, 60)  # center of label for scale-from-center
+	line2.scale = Vector2(0.4, 0.4)
 	container.add_child(line2)
 	
 	# Player username — same timing as killer name, positioned below

@@ -8,18 +8,18 @@ extends CanvasLayer
 
 signal hud_ready
 
-# ── Health Bar ──
-@export var health_bar_pos: Vector2 = Vector2(440, 555)
-@export var health_bar_size: Vector2 = Vector2(400, 30)
+# ── Health Bar ── (ENLARGED 1.3x)
+@export var health_bar_pos: Vector2 = Vector2(380, 545)
+@export var health_bar_size: Vector2 = Vector2(520, 36)
 
-# ── Stamina Bar ──
-@export var stamina_bar_pos: Vector2 = Vector2(440, 590)
-@export var stamina_bar_size: Vector2 = Vector2(400, 36)
+# ── Stamina Bar ── (ENLARGED 1.3x)
+@export var stamina_bar_pos: Vector2 = Vector2(380, 588)
+@export var stamina_bar_size: Vector2 = Vector2(520, 36)
 
-# ── Ability Icons ──
-@export var ability_icons_pos: Vector2 = Vector2(490, 652)
+# ── Ability Icons ── (ENLARGED 1.3x)
+@export var ability_icons_pos: Vector2 = Vector2(440, 648)
 @export var ability_slot_start_x: float = 52.0
-@export var ability_slot_spacing: float = 66.0
+@export var ability_slot_spacing: float = 85.0
 
 # ── Internal references ──
 var _player: Node2D = null
@@ -94,28 +94,28 @@ func _create_health_bar() -> void:
 
 	var bg := ColorRect.new()
 	bg.name = "Bg"
-	bg.size = Vector2(404, 32)
+	bg.size = Vector2(524, 40)
 	bg.position = Vector2(-2, -2)
 	bg.color = Color(0.4, 0.4, 0.4, 0.6)
 	container.add_child(bg)
 
 	_hp_fill = ColorRect.new()
 	_hp_fill.name = "Fill"
-	_hp_fill.size = Vector2(400, 28)
+	_hp_fill.size = Vector2(520, 36)
 	_hp_fill.color = Color(0.15, 0.9, 0.15, 0.9)
 	container.add_child(_hp_fill)
 
 	_hp_label = Label.new()
 	_hp_label.name = "Label"
 	_hp_label.text = "100 / 100"
-	_hp_label.position = Vector2(0, 4)
-	_hp_label.size = Vector2(400, 24)
+	_hp_label.position = Vector2(0, 5)
+	_hp_label.size = Vector2(520, 30)
 	_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hp_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 	_hp_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
-	_hp_label.add_theme_constant_override("shadow_offset_x", 1)
-	_hp_label.add_theme_constant_override("shadow_offset_y", 1)
-	_hp_label.add_theme_font_size_override("font_size", 18)
+	_hp_label.add_theme_constant_override("shadow_offset_x", 2)
+	_hp_label.add_theme_constant_override("shadow_offset_y", 2)
+	_hp_label.add_theme_font_size_override("font_size", 22)
 	container.add_child(_hp_label)
 
 	if _player and _player.has_signal("hp_changed"):
@@ -126,7 +126,7 @@ func set_health(current_hp: float, max_hp: float) -> void:
 	"""Update health bar display."""
 	var ratio: float = current_hp / max_hp if max_hp > 0 else 0.0
 	if is_instance_valid(_hp_fill):
-		_hp_fill.size.x = 400.0 * clampf(ratio, 0.0, 1.0)
+		_hp_fill.size.x = 520.0 * clampf(ratio, 0.0, 1.0)
 	if is_instance_valid(_hp_label):
 		_hp_label.text = "%d / %d" % [current_hp, max_hp]
 
@@ -163,27 +163,27 @@ func _create_stamina_bar() -> void:
 
 	var bg := ColorRect.new()
 	bg.name = "Bg"
-	bg.size = Vector2(400, 14)
+	bg.size = Vector2(520, 18)
 	bg.color = Color(0.15, 0.15, 0.15, 0.8)
 	container.add_child(bg)
 
 	_stamina_fill = ColorRect.new()
 	_stamina_fill.name = "Fill"
-	_stamina_fill.size = Vector2(400, 14)
+	_stamina_fill.size = Vector2(520, 18)
 	_stamina_fill.color = Color(0.2, 0.8, 0.2, 0.9)
 	container.add_child(_stamina_fill)
 
 	var label := Label.new()
 	label.name = "Label"
 	label.text = "SPRINT LIMIT"
-	label.position = Vector2(0, 16)
-	label.size = Vector2(400, 16)
+	label.position = Vector2(0, 20)
+	label.size = Vector2(520, 20)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
 	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
 	label.add_theme_constant_override("shadow_offset_x", 1)
 	label.add_theme_constant_override("shadow_offset_y", 1)
-	label.add_theme_font_size_override("font_size", 10)
+	label.add_theme_font_size_override("font_size", 13)
 	container.add_child(label)
 
 	if _player and _player.has_signal("stamina_changed"):
@@ -194,7 +194,7 @@ func _on_stamina_changed(current: float, max_stamina: float) -> void:
 	if not is_instance_valid(_stamina_fill):
 		return
 	var ratio: float = current / max_stamina if max_stamina > 0 else 0.0
-	_stamina_fill.size.x = 400.0 * clampf(ratio, 0.0, 1.0)
+	_stamina_fill.size.x = 520.0 * clampf(ratio, 0.0, 1.0)
 	_stamina_fill.color.a = 0.5 if ratio < 0.2 else 0.9
 
 
@@ -204,7 +204,7 @@ func _create_ability_icons() -> void:
 	_ability_container = Control.new()
 	_ability_container.name = "AbilityIcons"
 	_ability_container.position = ability_icons_pos
-	_ability_container.size = Vector2(300, 60)
+	_ability_container.size = Vector2(350, 80)
 	add_child(_ability_container)
 
 	var is_killer: bool = _character_name == "Violentgrass"
@@ -226,7 +226,7 @@ func _create_ability_icons() -> void:
 		var slot := Control.new()
 		slot.name = "Ability%d" % i
 		slot.position = Vector2(ability_slot_start_x + i * ability_slot_spacing, 0)
-		slot.size = Vector2(56, 56)
+		slot.size = Vector2(72, 72)
 		_ability_container.add_child(slot)
 
 		# Icon
@@ -234,7 +234,7 @@ func _create_ability_icons() -> void:
 		icon.name = "Icon"
 		if ResourceLoader.exists(data["icon"]):
 			icon.texture = load(data["icon"])
-		icon.size = Vector2(56, 56)
+		icon.size = Vector2(72, 72)
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		slot.add_child(icon)
 
@@ -242,7 +242,7 @@ func _create_ability_icons() -> void:
 		if i == 1 and not is_killer:
 			var lock_overlay := ColorRect.new()
 			lock_overlay.name = "LockOverlay"
-			lock_overlay.size = Vector2(56, 56)
+			lock_overlay.size = Vector2(72, 72)
 			lock_overlay.color = Color(0.3, 0.3, 0.3, 0.7)
 			lock_overlay.visible = true
 			slot.add_child(lock_overlay)
@@ -251,9 +251,9 @@ func _create_ability_icons() -> void:
 		var key_label := Label.new()
 		key_label.name = "KeyLabel"
 		key_label.text = data["key"]
-		key_label.position = Vector2(2, 36)
+		key_label.position = Vector2(2, 48)
 		key_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
-		key_label.add_theme_font_size_override("font_size", 12)
+		key_label.add_theme_font_size_override("font_size", 15)
 		key_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
 		key_label.add_theme_constant_override("shadow_offset_x", 1)
 		key_label.add_theme_constant_override("shadow_offset_y", 1)
@@ -262,14 +262,14 @@ func _create_ability_icons() -> void:
 		# Cooldown overlay
 		var cd_overlay := ColorRect.new()
 		cd_overlay.name = "CooldownOverlay"
-		cd_overlay.size = Vector2(56, 56)
+		cd_overlay.size = Vector2(72, 72)
 		cd_overlay.color = Color(0.0, 0.0, 0.0, 0.6)
 		cd_overlay.visible = false
 		slot.add_child(cd_overlay)
 
 		var cd_label := Label.new()
 		cd_label.name = "CooldownLabel"
-		cd_label.size = Vector2(56, 56)
+		cd_label.size = Vector2(72, 72)
 		cd_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cd_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		cd_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
@@ -532,8 +532,8 @@ func _replace_timer_label() -> void:
 	_bitmap_timer = BitmapLabel.new()
 	_bitmap_timer.name = "BmpTimer"
 	_bitmap_timer.label_text = old_label.text
-	_bitmap_timer.font_scale = 0.18
-	_bitmap_timer.char_spacing = 3.0
+	_bitmap_timer.font_scale = 0.22
+	_bitmap_timer.char_spacing = 4.0
 	_bitmap_timer.horizontal_align = old_label.horizontal_alignment
 	_bitmap_timer.font_color = Color(1, 1, 1, 1)
 	_bitmap_timer.position = old_label.position
@@ -578,13 +578,13 @@ func show_teleport_indicator(teleport_pos: Vector2, player_pos: Vector2) -> void
 	_teleport_indicator.name = "TeleportIndicator"
 	_teleport_indicator.text = "▶"
 	_teleport_indicator.add_theme_color_override("font_color", Color(1, 0.2, 0.2, 0.95))
-	_teleport_indicator.add_theme_font_size_override("font_size", 32)
+	_teleport_indicator.add_theme_font_size_override("font_size", 42)
 	_teleport_indicator.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
 	_teleport_indicator.add_theme_constant_override("outline_size", 3)
-	_teleport_indicator.size = Vector2(40, 40)
+	_teleport_indicator.size = Vector2(52, 52)
 	_teleport_indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_teleport_indicator.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_teleport_indicator.pivot_offset = Vector2(20, 20)
+	_teleport_indicator.pivot_offset = Vector2(26, 26)
 	_teleport_indicator.rotation = angle
 
 	var margin: float = 40.0
@@ -592,7 +592,7 @@ func show_teleport_indicator(teleport_pos: Vector2, player_pos: Vector2) -> void
 	var edge_y: float = viewport_size.y * 0.5 + dir.y * (viewport_size.y * 0.5 - margin)
 	_teleport_indicator.position = Vector2(
 		clamp(edge_x, margin, viewport_size.x - margin) - 20,
-		clamp(edge_y, margin, viewport_size.y - margin) - 20
+		clamp(edge_y, margin, viewport_size.y - margin) - 26
 	)
 	add_child(_teleport_indicator)
 

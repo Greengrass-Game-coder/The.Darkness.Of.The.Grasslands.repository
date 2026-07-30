@@ -6,7 +6,7 @@ extends Node
 # Run with: godot --headless res://scenes/server.tscn
 
 var server_port: int = 8080
-const MAX_PLAYERS: int = 9
+const MAX_PLAYERS: int = 12  # Increased for public testing (was 9)
 const MATCH_DURATION: float = 240.0
 
 var _tcp_server: TCPServer = null

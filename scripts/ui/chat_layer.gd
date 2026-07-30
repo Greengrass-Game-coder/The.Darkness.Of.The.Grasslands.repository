@@ -12,10 +12,10 @@ signal chat_sent(text: String, is_admin: bool)
 signal chat_opened()
 signal chat_closed()
 
-@export var panel_position: Vector2 = Vector2(20, 60)
-@export var panel_size: Vector2 = Vector2(420, 280)
-@export var input_position: Vector2 = Vector2(20, 345)
-@export var input_size: Vector2 = Vector2(420, 36)
+@export var panel_position: Vector2 = Vector2(20, 80)
+@export var panel_size: Vector2 = Vector2(600, 340)
+@export var input_position: Vector2 = Vector2(20, 425)
+@export var input_size: Vector2 = Vector2(600, 42)
 @export var max_messages: int = 50
 
 # Reserved username tag colors (lowercase keys)
@@ -226,7 +226,7 @@ func _rebuild_messages() -> void:
 	for msg: String in _messages:
 		var label := BitmapLabel.new()
 		label.label_text = msg
-		label.font_scale = 0.12
+		label.font_scale = 0.16
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label.size.y = 28
 		
