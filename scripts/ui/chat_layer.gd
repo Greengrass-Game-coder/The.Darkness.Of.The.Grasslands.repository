@@ -176,19 +176,24 @@ func _on_text_submitted(text: String) -> void:
 
 
 func add_message(sender: String, text: String) -> void:
-	"""Add a message to the chat display."""
+	"""Add a message to the chat display — appends one label (fast)."""
 	if not is_instance_valid(_message_container):
 		return
 	
 	var msg_text: String = "[%s]: %s" % [sender, text]
 	_messages.append(msg_text)
 	
-	# Trim excess messages
+	# Trim excess messages (remove oldest label)
 	while _messages.size() > max_messages:
 		_messages.pop_front()
+		if _message_container.get_child_count() > 0:
+			_message_container.get_child(0).queue_free()
 	
-	# Rebuild all labels
-	_rebuild_messages()
+	# Append just ONE new label instead of rebuilding all
+	_add_message_label(msg_text)
+	
+	# Auto-scroll to bottom
+	_scroll_to_bottom()
 
 
 func add_system_message(text: String) -> void:
@@ -201,8 +206,11 @@ func add_system_message(text: String) -> void:
 	
 	while _messages.size() > max_messages:
 		_messages.pop_front()
+		if _message_container.get_child_count() > 0:
+			_message_container.get_child(0).queue_free()
 	
-	_rebuild_messages()
+	_add_message_label(msg_text)
+	_scroll_to_bottom()
 
 
 func _get_sender_color(sender: String) -> Color:
@@ -213,8 +221,51 @@ func _get_sender_color(sender: String) -> Color:
 	return Color(0.9, 0.9, 0.9, 1)
 
 
+func _add_message_label(msg: String) -> void:
+	"""Create and add ONE message label (fast, no rebuild)."""
+	if not is_instance_valid(_message_container):
+		return
+	
+	var label := BitmapLabel.new()
+	label.label_text = msg
+	label.font_scale = 0.16
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.size.y = 28
+	
+	# Determine sender color for tag formatting
+	if msg.begins_with("["):
+		var close_bracket: int = msg.find("]")
+		if close_bracket > 0:
+			var sender: String = msg.substr(1, close_bracket - 1)
+			var sender_lower: String = sender.to_lower()
+			if TAG_COLORS.has(sender_lower):
+				label.font_color = TAG_COLORS[sender_lower]
+				# Charon gets a spacy ✦ prefix in chat
+				if sender_lower == "charon":
+					var inner: String = msg.substr(close_bracket + 1).strip_edges()
+					label.label_text = msg.substr(0, close_bracket + 1) + " ✦" + inner
+			else:
+				label.font_color = Color(0.9, 0.9, 0.9, 1)
+		else:
+			label.font_color = Color(0.9, 0.9, 0.9, 1)
+	elif msg.begins_with("***"):
+		label.font_color = Color(0.5, 0.5, 0.5, 1)
+	else:
+		label.font_color = Color(0.9, 0.9, 0.9, 1)
+	
+	_message_container.add_child(label)
+
+
+func _scroll_to_bottom() -> void:
+	"""Auto-scroll chat to the most recent message."""
+	var scroll: ScrollContainer = _root_control.get_node_or_null("ChatScroll") if _root_control else null
+	if scroll:
+		# Defer one frame to let the new label layout settle
+		scroll.set_deferred("scroll_vertical", int(scroll.get_v_scroll_bar().max_value))
+
+
 func _rebuild_messages() -> void:
-	"""Clear and rebuild all message labels."""
+	"""Clear and rebuild all message labels (used only on initial load)."""
 	if not is_instance_valid(_message_container):
 		return
 	
@@ -222,38 +273,8 @@ func _rebuild_messages() -> void:
 	for child: Node in _message_container.get_children():
 		child.queue_free()
 	
-	# Add each message
+	# Add each message (reuses _add_message_label)
 	for msg: String in _messages:
-		var label := BitmapLabel.new()
-		label.label_text = msg
-		label.font_scale = 0.16
-		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		label.size.y = 28
-		
-		# Determine sender color for tag formatting
-		if msg.begins_with("["):
-			var close_bracket: int = msg.find("]")
-			if close_bracket > 0:
-				var sender: String = msg.substr(1, close_bracket - 1)
-				var sender_lower: String = sender.to_lower()
-				if TAG_COLORS.has(sender_lower):
-					label.font_color = TAG_COLORS[sender_lower]
-					# Charon gets a spacy ✦ prefix in chat
-					if sender_lower == "charon":
-						var inner: String = msg.substr(close_bracket + 1).strip_edges()
-						label.label_text = msg.substr(0, close_bracket + 1) + " ✦" + inner
-				else:
-					label.font_color = Color(0.9, 0.9, 0.9, 1)
-			else:
-				label.font_color = Color(0.9, 0.9, 0.9, 1)
-		elif msg.begins_with("***"):
-			label.font_color = Color(0.5, 0.5, 0.5, 1)
-		else:
-			label.font_color = Color(0.9, 0.9, 0.9, 1)
-		
-		_message_container.add_child(label)
+		_add_message_label(msg)
 	
-	# Auto-scroll to bottom
-	var scroll: ScrollContainer = _root_control.get_node_or_null("ChatScroll") if _root_control else null
-	if scroll:
-		scroll.scroll_vertical = int(scroll.get_v_scroll_bar().max_value)
+	_scroll_to_bottom()
