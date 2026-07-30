@@ -24,6 +24,7 @@ const TAG_COLORS: Dictionary = {
 	"orange guy": Color(1.0, 0.55, 0.0, 1),
 	"juangoat": Color(1.0, 0.5, 0.3, 1),
 	"charon": Color(0.3, 0.0, 0.5, 1),  # Dark purple (co-owner)
+	"theactualdummy": Color(0.2, 0.8, 0.1, 1),  # Green (moderator)
 }
 
 var _root_control: Control = null  # Wrapper Control with modulate (CanvasLayer has no modulate)
@@ -217,11 +218,19 @@ func _on_text_submitted(text: String) -> void:
 
 
 func add_message(sender: String, text: String) -> void:
-	"""Add a message to the chat display — appends one label (fast)."""
+	"""Add a message to the chat display — appends one label (fast).
+	Automatically substitutes the local player's display name if applicable."""
 	if not is_instance_valid(_message_container):
 		return
 	
-	var msg_text: String = "[%s]: %s" % [sender, text]
+	# Substitute display name for local player
+	var display_sender: String = sender
+	var gs = get_node_or_null("/root/GameState")
+	if gs and not gs.display_name.is_empty():
+		if sender == "You" or gs.logged_in_username.to_lower() == sender.to_lower():
+			display_sender = gs.display_name
+	
+	var msg_text: String = "[%s]: %s" % [display_sender, text]
 	_messages.append(msg_text)
 	
 	# Trim excess messages (remove oldest label)

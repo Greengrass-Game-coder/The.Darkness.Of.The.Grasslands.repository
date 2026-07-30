@@ -104,6 +104,7 @@ static func autosave(username: String) -> bool:
 		"player_money": GameState.player_money,
 		"player_rings": GameState.player_rings.duplicate(true),
 		"avatar_type": GameState.avatar_type,
+		"display_name": GameState.display_name,
 		"selected_survivor": GameState.selected_survivor,
 		"selected_killer": GameState.selected_killer,
 		"hide_leaderboard": GameState.hide_leaderboard,
@@ -130,6 +131,8 @@ static func autoload(username: String) -> bool:
 		GameState.player_rings = data.player_rings.duplicate(true)
 	if data.has("avatar_type"):
 		GameState.avatar_type = data.avatar_type
+	if data.has("display_name"):
+		GameState.display_name = data.display_name
 	if data.has("selected_survivor"):
 		GameState.selected_survivor = data.selected_survivor
 	if data.has("selected_killer"):

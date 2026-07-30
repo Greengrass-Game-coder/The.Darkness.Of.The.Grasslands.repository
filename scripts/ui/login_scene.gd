@@ -202,7 +202,7 @@ func _on_auth_failed(reason: String) -> void:
 func _on_login_successful() -> void:
 	login_completed.emit()
 	
-	# Transition directly to lobby (EOS handles lobby creation)
-	var err: int = get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+	# Transition to start menu instead of lobby
+	var err: int = get_tree().change_scene_to_file("res://scenes/start_menu.tscn")
 	if err != OK:
-		push_error("LoginScene: Failed to load lobby!")
+		push_error("LoginScene: Failed to load start menu!")

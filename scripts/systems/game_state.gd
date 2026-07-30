@@ -6,6 +6,9 @@ var is_killer: bool = false
 ## Player avatar type for cosmetic selection in lobby
 var avatar_type: String = "Lobby Person"
 
+## Display name — shown in chat & leaderboard instead of username
+var display_name: String = ""
+
 ## Authentication and network state
 var logged_in_username: String = ""
 var is_admin: bool = false

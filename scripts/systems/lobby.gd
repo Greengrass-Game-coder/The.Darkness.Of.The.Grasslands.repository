@@ -1091,6 +1091,46 @@ func _create_leaderboard() -> void:
 
 
 ## Get the special tag color for a reserved username. Returns white for normal players.
+func _get_display_name(pname: String) -> String:
+	"""Get the display name for a player. Returns the username if no display name is set."""
+	# Local player
+	if pname == "You" or pname == GameState.logged_in_username:
+		if not GameState.display_name.is_empty():
+			return GameState.display_name
+		return pname if pname != "You" else GameState.logged_in_username
+	# For other players, we use the username for now (server doesn't sync display names yet)
+	return pname
+
+
+func _get_avatar_texture(pname: String) -> Texture2D:
+	"""Get the avatar texture for a player. Returns null if no custom avatar."""
+	# Check if this is the local player
+	var avatar_type: String = ""
+	if pname == "You" or pname == GameState.logged_in_username:
+		avatar_type = GameState.avatar_type
+	else:
+		# For other players, we don't have their avatar info (server not synced)
+		return null
+	
+	if avatar_type.is_empty() or avatar_type == "Lobby Person":
+		return null
+	
+	# Handle custom uploaded avatar
+	if avatar_type == "custom":
+		var safe_name: String = pname.replace(" ", "_").replace(".", "_").replace("/", "_")
+		var custom_path: String = "user://avatars/" + safe_name + "_custom.png"
+		if ResourceLoader.exists(custom_path):
+			return load(custom_path)
+		return null
+	
+	# Check for built-in avatar
+	var builtin_path: String = "res://assets/avatars/" + avatar_type + ".png"
+	if ResourceLoader.exists(builtin_path):
+		return load(builtin_path)
+	
+	return null
+
+
 func _get_username_tag_color(uname: String) -> Color:
 	var lower: String = uname.to_lower()
 	match lower:
@@ -1100,6 +1140,8 @@ func _get_username_tag_color(uname: String) -> Color:
 			return Color(1.0, 0.5, 0.3, 1)  # Coral mixed with orange
 		"charon":
 			return Color(0.3, 0.0, 0.5, 1)  # Dark purple (co-owner)
+		"theactualdummy":
+			return Color(0.2, 0.8, 0.1, 1)  # Green (moderator)
 		_:
 			return Color(1, 1, 1, 1)  # Default white
 
@@ -1135,7 +1177,13 @@ func _update_leaderboard_entries() -> void:
 		entry.name = "Entry_%s" % pname
 		entry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		entry.size.y = 22
-		entry.text = "  " + pname
+		var display_pname: String = _get_display_name(pname)
+		entry.text = "  " + display_pname
+		# Add avatar icon if available
+		var avatar_tex: Texture2D = _get_avatar_texture(pname)
+		if avatar_tex:
+			entry.icon = avatar_tex
+			entry.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		# Add ring icon + count as child
 		var ring_hbox := HBoxContainer.new()
 		ring_hbox.name = "RingHBox"
@@ -1164,9 +1212,15 @@ func _update_leaderboard_entries() -> void:
 			entry.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 1))
 		elif tag != Color(1, 1, 1, 1):
 			entry.add_theme_color_override("font_color", tag)
-			if pname.to_lower() == "charon":
+			var pname_lower: String = pname.to_lower()
+			if pname_lower == "charon":
 				# Purple outline with light purple shadow (spacy)
 				entry.add_theme_color_override("font_shadow_color", Color(0.8, 0.5, 1.0, 1))
+				entry.add_theme_constant_override("shadow_offset_x", 2)
+				entry.add_theme_constant_override("shadow_offset_y", 2)
+			elif pname_lower == "theactualdummy":
+				# Green font with bold black shadow (green mixed with black)
+				entry.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
 				entry.add_theme_constant_override("shadow_offset_x", 2)
 				entry.add_theme_constant_override("shadow_offset_y", 2)
 			else:
@@ -1207,24 +1261,35 @@ func _show_player_info_popup(player_name: String) -> void:
 	popup.name = "PlayerInfoPopup"
 	# Position directly under the leaderboard (leaderboard is at Y=80, size 200)
 	popup.position = Vector2(774, 280)
-	popup.size = Vector2(200, 180)
+	popup.size = Vector2(200, 200)
 	hud.add_child(popup)
 	_info_popup = popup
 	
 	# Background
 	var bg := ColorRect.new()
-	bg.size = Vector2(200, 180)
+	bg.size = Vector2(200, 200)
 	bg.color = Color(0.05, 0.05, 0.05, 0.85)
 	popup.add_child(bg)
 	
-	# Title
+	# Title — show display name if available, with actual username below
+	var display_pname: String = _get_display_name(player_name)
 	var title := Label.new()
-	title.text = "  " + player_name
+	title.text = "  " + display_pname
 	title.position = Vector2(8, 8)
 	title.size = Vector2(200, 24)
 	title.add_theme_color_override("font_color", Color(1, 1, 0.7, 1))
 	title.add_theme_font_size_override("font_size", 16)
 	popup.add_child(title)
+	
+	# Show actual username below display name if they differ
+	if display_pname != player_name:
+		var uname_label := Label.new()
+		uname_label.text = "  @" + player_name
+		uname_label.position = Vector2(8, 28)
+		uname_label.size = Vector2(200, 16)
+		uname_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 1))
+		uname_label.add_theme_font_size_override("font_size", 11)
+		popup.add_child(uname_label)
 	
 	# Stats
 	var stats: Array[String] = [
@@ -1236,7 +1301,7 @@ func _show_player_info_popup(player_name: String) -> void:
 		"Wins (Survivor): --",
 	]
 	
-	var y_offset: float = 38.0
+	var y_offset: float = 50.0
 	for stat: String in stats:
 		var stat_label := Label.new()
 		stat_label.text = "  " + stat
