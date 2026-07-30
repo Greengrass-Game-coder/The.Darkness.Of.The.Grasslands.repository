@@ -3,6 +3,7 @@ extends CharacterBody2D
 
 signal hit_landed(target: Node2D, damage: float)
 signal stamina_changed(current: float, max_stamina: float)
+signal hp_changed(current_hp: float, max_hp: float)
 signal teleport_scan_started()  # Emitted when killer starts teleport charge
 signal teleport_cancelled()  # Emitted when killer cancels teleport charge
 signal teleported(new_position: Vector2)  # Emitted when teleport completes (at destination)
@@ -94,6 +95,7 @@ var _exhaustion_timer: float = 0.0
 func _ready() -> void:
 	current_hp = max_hp
 	current_stamina = max_stamina
+	hp_changed.emit(current_hp, max_hp)
 	_change_state(State.IDLE)
 	add_to_group("killers")
 	# Save base scales for size_mult adjustments
@@ -647,6 +649,7 @@ func _play_teleport_vfx_reverse() -> void:
 func take_damage(amount: float) -> void:
 	current_hp -= amount
 	print("Violentgrass took ", amount, " damage, HP: ", current_hp)
+	hp_changed.emit(current_hp, max_hp)
 	if current_hp <= 0:
 		current_hp = 0
 		queue_free()

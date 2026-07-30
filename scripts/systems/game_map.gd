@@ -396,6 +396,12 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	_player = player_scene.instantiate()
 	_player.name = "Player"
 	_player.position = spawn_pos
+	
+	# Create health bar BEFORE adding to tree (catches initial hp_changed emit from _ready)
+	_create_health_bar(_player)
+	# Create stamina bar UI
+	_create_stamina_bar(_player)
+	
 	add_child(_player)
 	
 	# Enable camera on the player
@@ -415,12 +421,6 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	
 	# Connect survivor ability icon signals (flash/lock)
 	_connect_ability_icon_signals(_player)
-	
-	# Create health bar UI
-	_create_health_bar(_player)
-	
-	# Create stamina bar UI
-	_create_stamina_bar(_player)
 	
 	# Create epilepsy-safe overlay
 	_create_epilepsy_overlay(_player)
@@ -514,6 +514,7 @@ func _is_player_or_bot(body: Node2D) -> bool:
 
 func _create_health_bar(player: Node2D) -> void:
 	"""Create a health bar in the center-bottom of the HUD."""
+	var is_killer_player: bool = GameState.is_killer if GameState else false
 	var container := Control.new()
 	container.name = "HealthBar"
 	container.position = health_bar_pos
@@ -525,14 +526,20 @@ func _create_health_bar(player: Node2D) -> void:
 	bg.name = "Bg"
 	bg.size = Vector2(404, 32)
 	bg.position = Vector2(-2, -2)
-	bg.color = Color(0.4, 0.4, 0.4, 0.6)
+	if is_killer_player:
+		bg.color = Color(0.4, 0.0, 0.0, 0.7)  # Dark red bg
+	else:
+		bg.color = Color(0.4, 0.4, 0.4, 0.6)
 	container.add_child(bg)
 	
 	# Fill bar (inside the border)
 	var fill := ColorRect.new()
 	fill.name = "Fill"
 	fill.size = Vector2(400, 28)
-	fill.color = Color(0.15, 0.9, 0.15, 0.9)  # Green
+	if is_killer_player:
+		fill.color = Color(0.0, 0.0, 0.0, 0.95)  # Black fill — reveals red bg when depleted
+	else:
+		fill.color = Color(0.15, 0.9, 0.15, 0.9)  # Green
 	container.add_child(fill)
 	
 	# Label (HP text)
@@ -542,8 +549,12 @@ func _create_health_bar(player: Node2D) -> void:
 	label.position = Vector2(0, 4)
 	label.size = Vector2(400, 24)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+	if is_killer_player:
+		label.add_theme_color_override("font_color", Color(0.9, 0.1, 0.1, 1))  # Red text
+		label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 1))
+	else:
+		label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
 	label.add_theme_constant_override("shadow_offset_x", 1)
 	label.add_theme_constant_override("shadow_offset_y", 1)
 	label.add_theme_font_size_override("font_size", 18)
@@ -551,7 +562,7 @@ func _create_health_bar(player: Node2D) -> void:
 	
 	# Connect to player's hp_changed signal
 	if player.has_signal("hp_changed"):
-		player.hp_changed.connect(_on_player_hp_changed.bind(fill, label))
+		player.hp_changed.connect(_on_player_hp_changed.bind(fill, label, is_killer_player))
 
 
 func _create_stamina_bar(player: Node2D) -> void:
@@ -838,7 +849,7 @@ func _on_punch_locked_changed(locked: bool) -> void:
 		lock_overlay.visible = locked
 
 
-func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, label: Label) -> void:
+func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, label: Label, is_killer: bool = false) -> void:
 	"""Update the health bar when player HP changes."""
 	var ratio: float = current_hp / max_hp if max_hp > 0 else 0.0
 	fill.size.x = 400.0 * clampf(ratio, 0.0, 1.0)
@@ -853,20 +864,31 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 		_last_damage_time = _time_remaining
 	_last_hp = current_hp
 	
-	# Color shifts from green to red as HP drops
-	if ratio < 0.3:
-		fill.color = Color(0.9, 0.15, 0.15, 0.9)
-	elif ratio < 0.6:
-		fill.color = Color(0.9, 0.7, 0.1, 0.9)
-	else:
-		fill.color = Color(0.15, 0.9, 0.15, 0.9)
+	if not is_killer:
+		# Color shifts from green to red as HP drops (survivor)
+		if ratio < 0.3:
+			fill.color = Color(0.9, 0.15, 0.15, 0.9)
+		elif ratio < 0.6:
+			fill.color = Color(0.9, 0.7, 0.1, 0.9)
+		else:
+			fill.color = Color(0.15, 0.9, 0.15, 0.9)
+	# Killer: fill stays black (red bg shows through as fill shrinks), text stays red
 	
-	# Death sequence: when survivor HP reaches 0
+	# Death / round end when HP reaches 0
 	if current_hp <= 0.0 and _last_hp > 0.0:
-		# +30s timer bonus if bot killer exists
-		if is_instance_valid(_killer_bot):
-			_on_killer_eliminated("Player")
-		# Start death sequence
+		if is_killer:
+			# Killer eliminated — survivors win, end the round
+			print("GameMap: Killer eliminated — ending match")
+			match_timer.stop()
+			if not _match_ending_lobby:
+				_match_ending_lobby = true
+				match_ended.emit()
+				_end_match()
+		else:
+			# Survivor eliminated — +30s timer bonus if bot killer exists
+			if is_instance_valid(_killer_bot):
+				_on_killer_eliminated("Player")
+			# Start death sequence
 		_start_death_sequence()
 
 
@@ -2272,6 +2294,23 @@ func _on_map_chat_sent(text: String, is_admin: bool) -> void:
 			panel.toggle_gui()
 		return
 	
+	# "G force AI" / "G next AI" — force next killer to be AI
+	if is_admin and (trimmed.begins_with("g force") or trimmed.begins_with("g next")):
+		if trimmed.contains("ai"):
+			if GameState.connected_to_server:
+				# Send to server so it handles the command
+				var nm: Node = get_node("/root/NetworkManager")
+				if is_instance_valid(nm) and nm.has_method("send_admin_command"):
+					nm.send_admin_command(text.trim_prefix("G "))
+				return
+			else:
+				# Local mode: set flag directly
+				GameState.is_killer = false
+				var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+				if chat_layer:
+					chat_layer.add_system_message("Next killer will be AI.")
+				return
+	
 	if is_admin and GameState.connected_to_server:
 		var nm: Node = get_node("/root/NetworkManager")
 		if is_instance_valid(nm) and nm.has_method("send_admin_command"):
@@ -2297,6 +2336,7 @@ func _show_map_admin_help() -> void:
 	chat_layer.add_system_message("G end / G round - End current round")
 	chat_layer.add_system_message("G kill <name> - Eliminate player")
 	chat_layer.add_system_message("G force / G next - Force next killer")
+	chat_layer.add_system_message("G force AI / G next AI - Force next killer to be AI")
 	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
 	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
 	chat_layer.add_system_message("G Gui - Toggle admin GUI panel")

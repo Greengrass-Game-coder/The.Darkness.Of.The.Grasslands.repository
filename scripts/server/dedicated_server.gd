@@ -36,6 +36,7 @@ var _phase: MatchPhase = MatchPhase.WAITING_FOR_PLAYERS
 var _phase_timer: float = 0.0
 var _queued_players: Array[int] = []  # peer_ids in queue
 var _private_rooms: Dictionary = {}  # code -> {host_peer_id, players: []}
+var _force_ai_killer: bool = false  # Set by "G force AI" command
 var _admin_password: String = "Moon996633"
 var _current_match_id: int = 0
 
@@ -207,9 +208,11 @@ func _start_match() -> void:
 		var role: String = _peer_info[pid]["role"]
 		_send_to(pid, "game_started", {
 			"role": role,
-			"player_list": _get_player_summaries()
+			"player_list": _get_player_summaries(),
+			"force_ai_killer": _force_ai_killer
 		})
 	
+	_force_ai_killer = false  # Reset flag after use
 	_phase = MatchPhase.ROUND_ACTIVE
 	_phase_timer = MATCH_DURATION_ROUND
 	_broadcast_phase("ROUND_ACTIVE", MATCH_DURATION_ROUND)
@@ -483,8 +486,18 @@ func _handle_admin_command(pid: int, command: String) -> void:
 						return
 				_send_to(pid, "admin_result", {"success": false, "message": "Player not found: " + target_name})
 		"force", "next":
-			_rotate_killer_role()
-			_send_to_all("admin_result", {"success": true, "message": "Next killer forced."})
+			# Check if "AI" is mentioned in remaining parts
+			var wants_ai: bool = false
+			for i in range(1, parts.size()):
+				if parts[i].to_lower() == "ai":
+					wants_ai = true
+					break
+			if wants_ai:
+				_force_ai_killer = true
+				_send_to_all("admin_result", {"success": true, "message": "Next killer forced to AI."})
+			else:
+				_rotate_killer_role()
+				_send_to_all("admin_result", {"success": true, "message": "Next killer forced."})
 		"gamemode":
 			if parts.size() >= 3 and parts[1].to_lower() == "select" and parts[2].to_lower() == "double" and parts.size() >= 4:
 				if parts[3].to_lower() == "trouble":

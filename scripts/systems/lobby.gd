@@ -248,6 +248,7 @@ func _show_admin_help() -> void:
 	chat_layer.add_system_message("G end / G round - End current round")
 	chat_layer.add_system_message("G kill <name> - Eliminate player")
 	chat_layer.add_system_message("G force / G next - Force next killer")
+	chat_layer.add_system_message("G force AI / G next AI - Force next killer to be AI")
 	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
 	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
 	chat_layer.add_system_message("G Gui - Toggle admin GUI panel")
