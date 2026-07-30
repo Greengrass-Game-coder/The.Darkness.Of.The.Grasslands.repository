@@ -57,7 +57,10 @@ var _death_overlay: ColorRect = null
 var _death_fade_progress: float = 0.0
 
 # Teleport mini-map
-var _teleport_circles: Array[Node] = []  # World-space teleport target circles
+var _teleport_circles: Array[Node] = []       # Teleport overlay children
+var _teleport_markers_active: bool = false     # Whether markers are being shown
+var _teleport_marker_targets: Array[Vector2] = []  # World positions of each marker target
+var _teleport_marker_buttons: Array[Button] = []   # The UI buttons for each marker
 
 # Match-ending effect
 var _ending_vignette: ColorRect = null
@@ -592,6 +595,9 @@ func _process(delta: float) -> void:
 	
 	# Update AI difficulty scaling
 	_update_ai_difficulty()
+	
+	# Update screen-edge teleport markers (reposition as camera moves)
+	_update_teleport_markers()
 	
 	# +30s timer bonus when killer eliminates a survivor (local mode)
 	_check_kill_timer_bonus()
@@ -1192,10 +1198,10 @@ func _silence_all_chase() -> void:
 	_chase_active_layer = -1
 
 
-# ---------- TELEPORT CIRCLES (world-space, clickable) ----------
+# ---------- TELEPORT CIRCLES (screen-edge indicators) ----------
 
 func _on_killer_teleport_scan() -> void:
-	"""Show clickable teleport circles in world space.
+	"""Show screen-edge teleport indicators.
 	Works for both human killers (GameState.is_killer) and AI bot killers."""
 	var gs_t = get_node_or_null("/root/GameState")
 	if (gs_t != null and gs_t.is_killer) or is_instance_valid(_killer_bot):
@@ -1203,34 +1209,65 @@ func _on_killer_teleport_scan() -> void:
 
 
 func _show_teleport_circles() -> void:
-	"""Show clickable world-space circles — 2 per survivor (real + decoy).
-	Killer must guess which circle to teleport to (nerf)."""
+	"""Show clickable screen-edge circles — 2 per survivor (real + decoy).
+	Circles are positioned at the edge of the killer's camera viewport,
+	pointing toward each target position. Killer clicks to teleport."""
 	_close_teleport_minimap()
 	_teleport_circles.clear()
+	_teleport_marker_buttons.clear()
+	_teleport_marker_targets.clear()
 	
-	# Generate a single white circle texture for all markers
-	var circle_tex: Texture2D = _make_teleport_circle_texture(64, 28)
+	# Generate a red circle texture for all markers
+	var marker_tex: Texture2D = _make_teleport_marker_texture(48, 20)
 	
+	# Gather target positions: 2 per survivor (real-area + decoy)
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
 	for s: Node in survivors:
 		if not is_instance_valid(s):
 			continue
 		var real_pos: Vector2 = s.global_position
 		
-		# Circle 1: near the real survivor (within 50-120px offset)
+		# Target 1: near the real survivor (50-100px offset)
 		var offset1: Vector2 = Vector2(randf_range(-100, 100), randf_range(-100, 100))
 		if offset1.length() < 50.0:
 			offset1 = offset1.normalized() * 50.0
-		_create_teleport_circle(real_pos + offset1, circle_tex)
+		_teleport_marker_targets.append(real_pos + offset1)
 		
-		# Circle 2: decoy at a random position on the map
-		_create_teleport_circle(_get_random_map_position(), circle_tex)
+		# Target 2: decoy at a random map position
+		_teleport_marker_targets.append(_get_random_map_position())
 	
-	# Position cancel hint above the killer (killer can't move while charging)
+	# Create a CanvasLayer overlay for the screen-space markers
+	var overlay := CanvasLayer.new()
+	overlay.name = "TeleportOverlay"
+	overlay.layer = 128
+	add_child(overlay)
+	_teleport_circles.append(overlay)
+	
+	# Create a clickable button for each target
+	for i in range(_teleport_marker_targets.size()):
+		var btn := Button.new()
+		btn.name = "TeleportMarker_%d" % i
+		btn.icon = marker_tex
+		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn.size = Vector2(48, 48)
+		# Flat invisible style (just the icon shows)
+		btn.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		btn.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+		btn.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+		# Connect click to teleport
+		btn.pressed.connect(_on_teleport_marker_pressed.bind(i))
+		overlay.add_child(btn)
+		_teleport_marker_buttons.append(btn)
+		_teleport_circles.append(btn)
+		
+		# Pulsing animation via tween on the button scale
+		var pulse := create_tween().set_loops()
+		pulse.tween_property(btn, "scale", Vector2(1.3, 1.3), 0.8)
+		pulse.tween_property(btn, "scale", Vector2(0.9, 0.9), 0.8)
+	
+	# Cancel hint at top of screen
 	var hint := Label.new()
 	hint.name = "TeleportCancelHint"
-	if is_instance_valid(_player):
-		hint.global_position = _player.global_position + Vector2(-80, -50)
 	hint.text = "[E] to cancel"
 	hint.add_theme_color_override("font_color", Color(1, 0.6, 0.6, 0.9))
 	hint.add_theme_font_size_override("font_size", 14)
@@ -1238,12 +1275,15 @@ func _show_teleport_circles() -> void:
 	hint.add_theme_constant_override("outline_size", 2)
 	hint.size = Vector2(160, 24)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(hint)
+	hint.position = Vector2(get_viewport().get_visible_rect().size.x * 0.5 - 80, 12)
+	overlay.add_child(hint)
 	_teleport_circles.append(hint)
+	
+	_teleport_markers_active = true
 
 
-func _make_teleport_circle_texture(size: int, radius: float) -> Texture2D:
-	"""Generate a soft white circle texture for teleport markers."""
+func _make_teleport_marker_texture(size: int, radius: float) -> Texture2D:
+	"""Generate a red circle texture for screen-edge teleport markers."""
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	var cx: float = size * 0.5
@@ -1254,67 +1294,67 @@ func _make_teleport_circle_texture(size: int, radius: float) -> Texture2D:
 			var dy: float = y - cy
 			var dist: float = sqrt(dx * dx + dy * dy)
 			if dist <= radius:
-				# Filled circle with soft gradient
+				# Red circle with soft gradient
 				var t: float = dist / radius
-				var alpha: float = 1.0 - t * 0.4
-				img.set_pixel(x, y, Color(1, 1, 1, alpha))
-			# Bright ring at radius edge
+				var alpha: float = 1.0 - t * 0.3
+				img.set_pixel(x, y, Color(1, 0.2, 0.2, alpha))
+			# Bright ring at edge
 			if abs(dist - radius) < 2.0 and dist > 0:
-				img.set_pixel(x, y, Color(1, 1, 1, 1.0))
+				img.set_pixel(x, y, Color(1, 0.5, 0.5, 1.0))
 	return ImageTexture.create_from_image(img)
 
 
-func _create_teleport_circle(world_pos: Vector2, tex: Texture2D) -> void:
-	"""Create one clickable, pulsing teleport circle in world space."""
-	var area := Area2D.new()
-	area.name = "TeleportCircle_%d" % _teleport_circles.size()
-	area.global_position = world_pos
-	add_child(area)
+func _update_teleport_markers() -> void:
+	"""Reposition each screen-edge marker to point toward its target.
+	Called every frame from _process while markers are active."""
+	if not _teleport_markers_active:
+		return
 	
-	# Collision shape for click detection
-	var shape_node := CollisionShape2D.new()
-	var circle_shape := CircleShape2D.new()
-	circle_shape.radius = 40.0
-	shape_node.shape = circle_shape
-	area.add_child(shape_node)
+	var camera: Camera2D = get_viewport().get_camera_2d()
+	if not is_instance_valid(camera):
+		return
 	
-	# Visual sprite with the circle texture
-	var sprite := Sprite2D.new()
-	sprite.texture = tex
-	sprite.modulate = Color(1, 0.3, 0.3, 0.7)
-	sprite.centered = true
-	area.add_child(sprite)
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	var cam_pos: Vector2 = camera.global_position
+	var margin: float = 60.0  # Pixels from viewport edge
+	var half: Vector2 = viewport_size * 0.5
 	
-	# Connect click handler
-	area.input_event.connect(_on_teleport_circle_clicked.bind(area))
-	
-	# Pulsing animation
-	var pulse := create_tween()
-	pulse.set_loops()
-	pulse.tween_property(sprite, "scale", Vector2(1.35, 1.35), 0.9)
-	pulse.tween_property(sprite, "scale", Vector2(0.9, 0.9), 0.9)
-	
-	# Fade in
-	sprite.modulate = Color(1, 0.3, 0.3, 0.0)
-	var fade := create_tween()
-	fade.tween_property(sprite, "modulate", Color(1, 0.3, 0.3, 0.7), 0.3)
-	
-	_teleport_circles.append(area)
+	for i in range(_teleport_marker_buttons.size()):
+		var btn: Button = _teleport_marker_buttons[i]
+		if not is_instance_valid(btn):
+			continue
+		if i >= _teleport_marker_targets.size():
+			continue
+		
+		var target_pos: Vector2 = _teleport_marker_targets[i]
+		var dir: Vector2 = (target_pos - cam_pos).normalized()
+		
+		# Project direction to viewport edge (with margin)
+		var safe_rect: Vector2 = half - Vector2(margin, margin)
+		var s_x: float = safe_rect.x / abs(dir.x) if dir.x != 0.0 else INF
+		var s_y: float = safe_rect.y / abs(dir.y) if dir.y != 0.0 else INF
+		var s: float = min(s_x, s_y)
+		var edge_pos: Vector2 = half + dir * s
+		
+		btn.position = edge_pos - btn.size * 0.5
+		
+		# Show/hide if direction has no meaningful component
+		btn.visible = s > 0.0
 
 
-func _on_teleport_circle_clicked(_viewport: Node, event: InputEvent, _shape_idx: int, area: Area2D) -> void:
-	"""Handle click on a teleport circle — teleport killer to that position."""
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		get_viewport().set_input_as_handled()
-		var target_pos: Vector2 = area.global_position
-		
-		# Teleport the killer (player) to this position
-		if is_instance_valid(_player) and _player.has_method("teleport_to_position"):
-			_player.teleport_to_position(target_pos)
-		elif is_instance_valid(_killer_bot) and _killer_bot.has_method("teleport_to_position"):
-			_killer_bot.teleport_to_position(target_pos)
-		
-		_close_teleport_minimap()
+func _on_teleport_marker_pressed(index: int) -> void:
+	"""Handle click on a screen-edge marker — teleport killer to that target."""
+	if index < 0 or index >= _teleport_marker_targets.size():
+		return
+	var target_pos: Vector2 = _teleport_marker_targets[index]
+	
+	# Teleport the killer (player) to this position
+	if is_instance_valid(_player) and _player.has_method("teleport_to_position"):
+		_player.teleport_to_position(target_pos)
+	elif is_instance_valid(_killer_bot) and _killer_bot.has_method("teleport_to_position"):
+		_killer_bot.teleport_to_position(target_pos)
+	
+	_close_teleport_minimap()
 
 
 func _get_random_map_position() -> Vector2:
@@ -1323,17 +1363,16 @@ func _get_random_map_position() -> Vector2:
 	if _map_manager and _map_manager.blueprint_size:
 		map_size = Vector2(_map_manager.blueprint_size)
 	# Stay away from edges
-	var margin: float = 100.0
-	var rx: float = randf_range(margin, map_size.x - margin)
-	var ry: float = randf_range(margin, map_size.y - margin)
-	# Ensure at least 200px from any survivor so it's clearly a choice
+	var edge_margin: float = 100.0
+	var rx: float = randf_range(edge_margin, map_size.x - edge_margin)
+	var ry: float = randf_range(edge_margin, map_size.y - edge_margin)
+	# Ensure at least 200px from any survivor so decoy is a genuine choice
 	var min_dist_from_survivors: float = 200.0
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
 	for s: Node in survivors:
 		if is_instance_valid(s):
 			var dist: float = Vector2(rx, ry).distance_to(s.global_position)
 			if dist < min_dist_from_survivors:
-				# Push it further away
 				var dir: Vector2 = (Vector2(rx, ry) - s.global_position).normalized()
 				rx = s.global_position.x + dir.x * min_dist_from_survivors
 				ry = s.global_position.y + dir.y * min_dist_from_survivors
@@ -1341,7 +1380,10 @@ func _get_random_map_position() -> Vector2:
 
 
 func _close_teleport_minimap() -> void:
-	"""Remove all teleport circles and cleanup."""
+	"""Remove all teleport overlay, markers, and cleanup."""
+	_teleport_markers_active = false
+	_teleport_marker_buttons.clear()
+	_teleport_marker_targets.clear()
 	for c: Node in _teleport_circles:
 		if is_instance_valid(c):
 			c.queue_free()

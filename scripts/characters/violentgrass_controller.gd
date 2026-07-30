@@ -43,7 +43,7 @@ const teleport_cooldown: float = TELEPORT_COOLDOWN_USED  # Backward compat (AI b
 @export var chase_in_layer1: float = 500.0    # Enter Layer 1
 @export var chase_in_layer2: float = 250.0    # Enter Layer 2
 @export var chase_in_layer3: float = 125.0    # Enter Layer 3
-@export var chase_in_chase: float = 50.0      # Enter Chase (closest)
+@export var chase_in_chase: float = 20.0      # Enter Chase (very close — only when practically on top)
 @export var chase_out_none: float = 600.0     # Escape → NONE
 @export var chase_out_layer1: float = 400.0   # Leave Layer 1
 @export var chase_out_layer2: float = 200.0   # Leave Layer 2
@@ -75,7 +75,10 @@ var _base_col_scale: Vector2 = Vector2.ONE  # Saved collision shape scale at ini
 var _base_sprite_scale: float = 0.25
 var stair_climbing: bool = false
 
-# Teleport charge animation state
+# Teleport scan state (no charging — press E to scan, click to teleport)
+var _teleport_scan_active: bool = false
+
+# Teleport charge animation state (retained for backward compat, no longer used)
 const TELEPORT_FRAME_TIME: float = 1.0 / 14.0  # 14 fps
 var _teleport_anim_frame: int = 0
 var _teleport_anim_timer: float = 0.0
@@ -115,20 +118,16 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		# During teleport scan, left click targets circles instead of hitting
-		if current_state == State.TELEPORT_CHARGING:
-			return  # Let circle Area2D handle the click
+		if _teleport_scan_active:
+			return  # Let screen-edge UI buttons handle the click
 		use_hit()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ability_2"):
-		if current_state == State.TELEPORT_CHARGING:
-			# Cancel teleport charge — press E again while charging
+		if _teleport_scan_active:
+			# Cancel teleport scan — press E again
 			_cancel_teleport_charge()
 		else:
 			_start_teleport_charge()
-		get_viewport().set_input_as_handled()
-	elif event.is_action_released("ability_2") and current_state == State.TELEPORT_CHARGING:
-		# Release without clicking a circle = cancel (nerf: no direction teleport)
-		_cancel_teleport_charge()
 		get_viewport().set_input_as_handled()
 
 
@@ -205,6 +204,9 @@ func _handle_movement(delta: float) -> void:
 	if input_dir != Vector2.ZERO:
 		input_dir = input_dir.normalized()
 		var speed: float = sprint_speed if is_sprinting else move_speed
+		# 80% slow while teleport scanning (20% speed)
+		if _teleport_scan_active:
+			speed *= 0.2
 		velocity = input_dir * speed
 		_update_direction(input_dir)
 		_play_animation("walk")
@@ -357,30 +359,16 @@ func _on_ability_vfx_finished() -> void:
 # ---------- TELEPORT CHARGE & CAST ----------
 
 func _start_teleport_charge() -> void:
-	"""Start charging teleport — press E to charge."""
+	"""Start teleport scan — edge circles appear. Press E again to cancel. Move freely."""
 	if current_state != State.IDLE and current_state != State.WALKING:
 		return
 	if teleport_on_cooldown:
 		return
 	
-	# Cooldown is set AFTER the action completes (teleport=45s, cancel=25s)
+	_teleport_scan_active = true
 	
-	# Emit scan signal so game_map shows the teleport circles
+	# Emit scan signal so game_map shows the teleport circles at screen edges
 	teleport_scan_started.emit()
-	
-	_change_state(State.TELEPORT_CHARGING)
-	
-	# Show VFX and start charge animation
-	ability_vfx.animation = "teleport"
-	ability_vfx.stop()
-	ability_vfx.visible = true
-	_teleport_anim_frame = 0
-	_teleport_anim_timer = 0.0
-	_teleport_reversing = false
-	ability_vfx.frame = 0
-	
-	# Keep character on idle
-	_play_animation("idle")
 
 
 func _execute_teleport_release() -> void:
@@ -396,13 +384,12 @@ func _execute_teleport_release() -> void:
 
 
 func _cancel_teleport_charge() -> void:
-	"""Cancel the teleport charge — 25s cooldown penalty."""
-	if current_state != State.TELEPORT_CHARGING:
+	"""Cancel teleport scan — 25s cooldown penalty."""
+	if not _teleport_scan_active:
 		return
-	_hide_vfx()
+	_teleport_scan_active = false
 	teleport_on_cooldown = true
 	_teleport_cd_timer = TELEPORT_COOLDOWN_CANCEL
-	_change_state(State.IDLE)
 	teleport_cancelled.emit()
 
 
@@ -435,6 +422,9 @@ func teleport_to_position(target_pos: Vector2) -> void:
 		# Visual effect shift
 		modulate = Color(0.7, 0.3, 0.9, 0.5)
 		get_tree().create_timer(0.3).timeout.connect(_end_teleport_visual)
+	
+	# Teleport executed — clear scan state
+	_teleport_scan_active = false
 	
 	# Set cooldown AFTER teleport completes (45s penalty)
 	teleport_on_cooldown = true
