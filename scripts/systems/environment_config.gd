@@ -20,14 +20,14 @@ enum EnvType {
 		print("EnvironmentConfig: Switched to ", get_environment_name(v as int))
 
 ## Dev WebSocket URL ----- TCP tunnel
-const DEV_WS_URL: String = "ws://unwjbc37l.loclx.io"
+const DEV_WS_URL: String = "ws://hsq41xtxar.localto.net"
 ## Production WebSocket URL (unused, placeholder)
-const PROD_WS_URL: String = "ws://unwjbc37l.loclx.io"
+const PROD_WS_URL: String = "ws://hsq41xtxar.localto.net"
 
 ## Dev HTTP URL
-const DEV_HTTP_URL: String = "http://unwjbc37l.loclx.io"
+const DEV_HTTP_URL: String = "http://hsq41xtxar.localto.net"
 ## Production HTTP URL (unused, placeholder)
-const PROD_HTTP_URL: String = "http://unwjbc37l.loclx.io"
+const PROD_HTTP_URL: String = "http://hsq41xtxar.localto.net"
 
 
 func get_environment_name(env: int) -> String:

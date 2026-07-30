@@ -855,6 +855,9 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 	fill.size.x = 400.0 * clampf(ratio, 0.0, 1.0)
 	label.text = "%d / %d" % [current_hp, max_hp]
 	
+	# Save previous HP BEFORE updating _last_hp (used for death check below)
+	var prev_hp: float = _last_hp
+	
 	# Damage VFX: screen shake + red flash when HP drops
 	if _last_hp >= 0 and current_hp < _last_hp:
 		var dmg: float = _last_hp - current_hp
@@ -875,9 +878,10 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 	# Killer: fill stays black (red bg shows through as fill shrinks), text stays red
 	
 	# Death / round end when HP reaches 0
-	if current_hp <= 0.0 and _last_hp > 0.0:
+	# NOTE: uses prev_hp (saved before _last_hp update) to detect the transition to 0
+	if current_hp <= 0.0 and prev_hp > 0.0:
 		if is_killer:
-			# Killer eliminated — survivors win, end the round
+			# Killer eliminated (tanky — 6666 HP, 25 dmg per punch = ~267 hits)
 			print("GameMap: Killer eliminated — ending match")
 			match_timer.stop()
 			if not _match_ending_lobby:
@@ -889,7 +893,7 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 			if is_instance_valid(_killer_bot):
 				_on_killer_eliminated("Player")
 			# Start death sequence
-		_start_death_sequence()
+			_start_death_sequence()
 
 
 func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:

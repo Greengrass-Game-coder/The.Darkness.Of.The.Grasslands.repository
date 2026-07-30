@@ -35,7 +35,7 @@ func _setup_buttons() -> void:
 	var account_btn: Button = %AccountSettingsBtn
 	var logout_btn: Button = %LogoutBtn
 	
-	find_btn.pressed.connect(_on_find_game_pressed)
+find_btn.pressed.connect(_on_find_game_pressed)
 	settings_btn.pressed.connect(_on_settings_pressed)
 	account_btn.pressed.connect(_on_account_settings_pressed)
 	logout_btn.pressed.connect(_on_logout_pressed)
