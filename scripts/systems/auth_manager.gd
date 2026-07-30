@@ -15,6 +15,10 @@ const ACCOUNTS_FILE: String = "user://accounts.dat"
 const SESSION_FILE: String = "user://session.dat"
 const ENCRYPTION_KEY: String = "TDotG_2024_S3cur3_K3y!"  # XOR obfuscation key
 
+# Reserved usernames — case-insensitive, cannot be registered by other players
+# These users get a limited (non-destructive) admin panel
+const RESERVED_USERNAMES: Array[String] = ["Prograss", "Orange guy", "Juangoat", "Charon"]
+
 var current_username: String = ""
 var is_admin: bool = false
 var _logged_in: bool = false
@@ -41,6 +45,35 @@ func login(username: String, password: String) -> bool:
 		print("AuthManager: Admin login: ", username)
 		return true
 	
+	# Check reserved usernames (case-insensitive)
+	for reserved: String in RESERVED_USERNAMES:
+		if username.to_lower() == reserved.to_lower():
+			# Check if this IS the real reserved user logging in
+			var accounts_check: Dictionary = _load_accounts()
+			if accounts_check.has(username):
+				var stored_hash: String = accounts_check[username]["hash"]
+				var salt: String = accounts_check[username]["salt"]
+				var input_hash: String = _hash_password(password, salt)
+				if input_hash == stored_hash:
+					# Legitimate reserved user — allow login
+					var is_charon: bool = username.to_lower() == "charon"
+					_current_user_login(username)
+					GameState.logged_in_username = username
+					GameState.is_admin = true  # Enables the admin panel
+					GameState.is_limited_admin = not is_charon  # Charon = full admin, others = limited
+					if is_charon:
+						print("AuthManager: Co-owner Charon logged in with full admin")
+					else:
+						print("AuthManager: Reserved user login: ", username)
+					login_succeeded.emit(username, false)
+					return true
+				else:
+					login_failed.emit(reserved + " is already taken.")
+					return false
+			else:
+				login_failed.emit(reserved + " is already taken.")
+				return false
+
 	# Check local accounts file
 	var accounts: Dictionary = _load_accounts()
 	if accounts.has(username):
@@ -72,6 +105,7 @@ func logout() -> void:
 	is_admin = false
 	_logged_in = false
 	GameState.is_admin = false
+	GameState.is_limited_admin = false
 	GameState.logged_in_username = ""
 	_clear_session()
 	logged_out.emit()
@@ -80,6 +114,13 @@ func logout() -> void:
 
 func is_logged_in() -> bool:
 	return _logged_in
+
+
+func set_logged_in(username: String, _is_admin: bool = false) -> void:
+	"""Set the logged-in state (used by server-auth flow)."""
+	_logged_in = true
+	current_username = username
+	_save_session(username)
 
 
 func _auto_login_from_session() -> bool:
@@ -95,9 +136,18 @@ func _auto_login_from_session() -> bool:
 		return false
 	# Auto-login the stored user
 	_current_user_login(username)
+	var lower: String = username.to_lower()
 	if username == ADMIN_USERNAME:
 		is_admin = true
 		GameState.is_admin = true
+	elif lower == "charon":
+		GameState.is_admin = true
+		GameState.is_limited_admin = false
+		is_admin = true
+		print("AuthManager: Session restored for co-owner Charon")
+	elif lower in ["prograss", "orange guy", "juangoat"]:
+		GameState.is_admin = true
+		GameState.is_limited_admin = true
 	GameState.logged_in_username = username
 	print("AuthManager: Session restored for: ", username)
 	return true

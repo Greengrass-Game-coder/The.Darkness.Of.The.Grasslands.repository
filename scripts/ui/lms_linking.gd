@@ -3,7 +3,7 @@ extends CanvasLayer
 
 ## LMS (Last Man Standing) Linking UI.
 ## Shows all available killers/survivors and their skin variants.
-## Read-only display — just tracks what exists.
+## Read-only display ----- just tracks what exists.
 ## Disabled by default (GameState.lms_enabled = false).
 
 @export var panel_position: Vector2 = Vector2(300, 80)
@@ -76,17 +76,17 @@ func _build_ui() -> void:
 	title.position = panel_position + Vector2(8, 8)
 	title.size = Vector2(panel_size.x - 16, 28)
 	title.font_color = Color(1, 1, 0.7, 1)
-	title.font_scale = 20.0
+	title.font_scale = 0.16
 	add_child(title)
 	
 	# Status label
 	var status := BitmapLabel.new()
 	status.name = "StatusLabel"
-	status.label_text = "Status: DISABLED — Enable in admin panel"
+	status.label_text = "Status: DISABLED ----- Enable in admin panel"
 	status.position = panel_position + Vector2(8, 40)
 	status.size = Vector2(panel_size.x - 16, 20)
 	status.font_color = Color(0.7, 0.7, 0.7, 1)
-	status.font_scale = 12.0
+	status.font_scale = 0.10
 	add_child(status)
 	
 	# Tab buttons
@@ -121,7 +121,7 @@ func _build_ui() -> void:
 	content.position = panel_position + Vector2(16, 112)
 	content.size = Vector2(panel_size.x - 32, panel_size.y - 180)
 	content.font_color = Color(0.85, 0.85, 0.85, 1)
-	content.font_scale = 13.0
+	content.font_scale = 0.11
 	add_child(content)
 	
 	# Close button

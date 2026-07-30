@@ -14,7 +14,7 @@
 			"stun_duration": 2.0,
 			"parry_stun_duration": 3.0,
 			"parry_window": 2.0,
-			"description": "Locked by default. Unlocked via a successful Block. Aim with mouse and click to strike. Parried version stuns 3s.",
+			"description": "Locked by default. Unlocked via a successful Block. Aim with mouse and click to strike. Parried version stuns 5s.",
 			"name": "Grass Punch",
 			"type": "offense",
 			"locked": true
@@ -28,7 +28,7 @@
 			"type": "heal"
 		}
 	],
-	"description": "A resilient survivor fighting to make it through the darkness.",
+	"description": "'Hey... We are all grasses here.'",
 	"equipped": true,
 	"max_hp": 100,
 	"name": "Greengrass",

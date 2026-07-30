@@ -67,7 +67,7 @@ func _build_panel(title: String) -> Panel:
 	title_lbl.label_text = title
 	title_lbl.position = Vector2(20, 16)
 	title_lbl.size = Vector2(440, 30)
-	title_lbl.font_scale = 0.18
+	title_lbl.font_scale = 0.16
 	title_lbl.font_color = Color(1, 1, 0.7, 1)
 	panel.add_child(title_lbl)
 	_title_label = title_lbl
@@ -78,7 +78,7 @@ func _build_panel(title: String) -> Panel:
 	diff_lbl.label_text = "Level %d/5" % _puzzle_level
 	diff_lbl.position = Vector2(20, 44)
 	diff_lbl.size = Vector2(200, 20)
-	diff_lbl.font_scale = 0.12
+	diff_lbl.font_scale = 0.10
 	diff_lbl.font_color = Color(0.7, 0.7, 0.7, 1)
 	panel.add_child(diff_lbl)
 	
@@ -88,7 +88,7 @@ func _build_panel(title: String) -> Panel:
 	close_hint.label_text = "[ESC] Cancel"
 	close_hint.position = Vector2(380, 44)
 	close_hint.size = Vector2(100, 20)
-	close_hint.font_scale = 0.10
+	close_hint.font_scale = 0.08
 	close_hint.font_color = Color(0.5, 0.5, 0.5, 1)
 	panel.add_child(close_hint)
 	
@@ -141,7 +141,12 @@ func _on_puzzle_round_solved() -> void:
 	"""Called when a puzzle round is solved — advance to next level or finish."""
 	if not is_instance_valid(_panel):
 		return
+	
+	# Emit reward for THIS level first (before advancing level counter)
 	if _puzzle_level < 5:
+		# Emit reward per-level for levels 1-4 (level 5 handled by _close_puzzle)
+		if _current_area != null:
+			puzzle_completed.emit(_current_area, _puzzle_level)
 		# Show level complete briefly, then advance
 		_puzzle_level += 1
 		if _title_label:
@@ -213,7 +218,7 @@ func _open_memory_puzzle() -> void:
 	instr.label_text = "Watch the sequence..."
 	instr.position = Vector2(20, start_y + tile_h + 12)
 	instr.size = Vector2(440, 24)
-	instr.font_scale = 0.14
+	instr.font_scale = 0.12
 	instr.font_color = Color(0.9, 0.9, 0.9, 1)
 	instr.horizontal_align = 1
 	panel.add_child(instr)

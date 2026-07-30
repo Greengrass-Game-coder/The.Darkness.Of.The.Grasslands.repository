@@ -1,28 +1,31 @@
-[gd_scene load_steps=2 format=3 uid="uid://b7w404p6qvnnr"]
+[gd_scene format=3 uid="uid://b7w404p6qvnnr"]
 
-[ext_resource type="Script" path="res://scripts/ui/login_scene.gd" id="1_qqpm1"]
+[ext_resource type="Script" uid="uid://dv6c18nwfs37n" path="res://scripts/ui/login_scene.gd" id="1_qqpm1"]
 
-[node name="Login" type="Control"]
+[node name="Login" type="Control" unique_id=2094584330]
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_qqpm1")
 
-[node name="Background" type="ColorRect" parent="."]
-anchors_preset = 15
+[node name="Background" type="ColorRect" parent="." unique_id=1559603408]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.02, 0.02, 0.05, 1)
 
-[node name="Vignette" type="ColorRect" parent="."]
-anchors_preset = 15
+[node name="Vignette" type="ColorRect" parent="." unique_id=1071699397]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.4)
 mouse_filter = 2
+color = Color(0, 0, 0, 0.4)
 
-[node name="TitleLabel" type="Label" parent="."]
-anchors_preset = 0
+[node name="TitleLabel" type="Label" parent="." unique_id=985715619]
+layout_mode = 0
 offset_left = 112.0
 offset_top = 80.0
 offset_right = 912.0
@@ -34,8 +37,8 @@ theme_override_constants/shadow_offset_y = 4
 theme_override_font_sizes/font_size = 36
 horizontal_alignment = 1
 
-[node name="SubtitleLabel" type="Label" parent="."]
-anchors_preset = 0
+[node name="SubtitleLabel" type="Label" parent="." unique_id=448475634]
+layout_mode = 0
 offset_left = 312.0
 offset_top = 128.0
 offset_right = 712.0
@@ -44,92 +47,113 @@ theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 
-[node name="CenterPanel" type="Control" parent="."]
+[node name="CenterPanel" type="Control" parent="." unique_id=677986992]
 anchors_preset = 0
 offset_left = 312.0
 offset_top = 240.0
 offset_right = 712.0
 offset_bottom = 520.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterPanel"]
-anchors_preset = 15
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterPanel" unique_id=302961099]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 theme_override_constants/separation = 12
 
-[node name="SpacerTop" type="Control" parent="CenterPanel/VBoxContainer"]
-size_flags_vertical = 1
+[node name="SpacerTop" type="Control" parent="CenterPanel/VBoxContainer" unique_id=457506948]
+layout_mode = 2
 
-[node name="LoginTitle" type="Label" parent="CenterPanel/VBoxContainer"]
-text = "ACCOUNT LOGIN"
+[node name="LoginTitle" type="Label" parent="CenterPanel/VBoxContainer" unique_id=1376939700]
+layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_font_sizes/font_size = 20
+text = "ACCOUNT LOGIN"
 horizontal_alignment = 1
 
-[node name="UsernameLabel" type="Label" parent="CenterPanel/VBoxContainer"]
-text = "Username:"
+[node name="UsernameLabel" type="Label" parent="CenterPanel/VBoxContainer" unique_id=773631374]
+layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Username:"
 
-[node name="UsernameInput" type="LineEdit" parent="CenterPanel/VBoxContainer"]
-placeholder_text = "Enter username"
+[node name="UsernameInput" type="LineEdit" parent="CenterPanel/VBoxContainer" unique_id=395451413]
+layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_placeholder_color = Color(0.5, 0.5, 0.5, 1)
+placeholder_text = "Enter username"
 max_length = 24
 
-[node name="PasswordLabel" type="Label" parent="CenterPanel/VBoxContainer"]
-text = "Password:"
+[node name="PasswordLabel" type="Label" parent="CenterPanel/VBoxContainer" unique_id=668744649]
+layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Password:"
 
-[node name="PasswordInput" type="LineEdit" parent="CenterPanel/VBoxContainer"]
-placeholder_text = "Enter password"
+[node name="PasswordInput" type="LineEdit" parent="CenterPanel/VBoxContainer" unique_id=384059770]
+layout_mode = 2
 size_flags_horizontal = 3
-secret = true
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_placeholder_color = Color(0.5, 0.5, 0.5, 1)
+placeholder_text = "Enter password"
 max_length = 32
+secret = true
 
-[node name="SpacerMid" type="Control" parent="CenterPanel/VBoxContainer"]
-size_flags_vertical = 1
+[node name="ServerURLLabel" type="Label" parent="CenterPanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
+theme_override_font_sizes/font_size = 10
+text = "Server URL (optional):"
 
-[node name="LoginButton" type="Button" parent="CenterPanel/VBoxContainer"]
-text = "LOGIN / REGISTER"
+[node name="ServerURLInput" type="LineEdit" parent="CenterPanel/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_colors/font_placeholder_color = Color(0.4, 0.4, 0.4, 1)
+placeholder_text = "wss://your-tunnel-url.loclx.io"
+max_length = 256
+
+[node name="SpacerMid" type="Control" parent="CenterPanel/VBoxContainer" unique_id=1195657712]
+layout_mode = 2
+
+[node name="LoginButton" type="Button" parent="CenterPanel/VBoxContainer" unique_id=31157177]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_hover_color = Color(0.8, 0.8, 0.8, 1)
-custom_minimum_size = Vector2(280, 40)
+text = "LOGIN / REGISTER"
 
-[node name="StatusLabel" type="Label" parent="CenterPanel/VBoxContainer"]
-text = ""
+[node name="StatusLabel" type="Label" parent="CenterPanel/VBoxContainer" unique_id=771670735]
+layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 1
 
-[node name="SpacerBottom" type="Control" parent="CenterPanel/VBoxContainer"]
-size_flags_vertical = 1
+[node name="SpacerBottom" type="Control" parent="CenterPanel/VBoxContainer" unique_id=417573288]
+layout_mode = 2
 
-[node name="AdminHint" type="Label" parent="CenterPanel/VBoxContainer"]
-text = "Admin: Greengrass"
+[node name="AdminHint" type="Label" parent="CenterPanel/VBoxContainer" unique_id=63959071]
+layout_mode = 2
 theme_override_colors/font_color = Color(0.3, 0.3, 0.3, 1)
 theme_override_font_sizes/font_size = 10
+text = "Admin: Greengrass"
 horizontal_alignment = 1
 
-[node name="LoadingIndicator" type="ColorRect" parent="."]
-anchors_preset = 15
+[node name="LoadingIndicator" type="ColorRect" parent="." unique_id=1987227866]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.6)
 mouse_filter = 2
+color = Color(0, 0, 0, 0.6)
 
-[node name="LoadingLabel" type="Label" parent="LoadingIndicator"]
-anchors_preset = 8
+[node name="LoadingLabel" type="Label" parent="LoadingIndicator" unique_id=1295455384]
+layout_mode = 0
 anchor_top = 0.5
 anchor_bottom = 0.5
 offset_left = 362.0
-offset_right = 662.0
 offset_top = -10.0
+offset_right = 662.0
 offset_bottom = 10.0
-text = "LOGGING IN..."
-theme_override_colors/font_color = Color(0.5, 1.0, 0.5, 1)
+theme_override_colors/font_color = Color(0.5, 1, 0.5, 1)
 theme_override_font_sizes/font_size = 24
+text = "LOGGING IN..."
 horizontal_alignment = 1

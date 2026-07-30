@@ -1,5 +1,5 @@
 extends Control
-## BitmapLabel — renders text using FontManager's cropped character textures.
+## BitmapLabel ----- renders text using FontManager's cropped character textures.
 ## Uses _draw() to render directly.
 ## Dollar-mode: "$" in text toggles golden rendering style.
 ## Context controls when "$" is visible: "menu" strips it, "match"/"chat" shows it.
@@ -16,7 +16,7 @@ var _fm_connected: bool = false
 			label_text = v
 			queue_redraw()
 
-## Alias for label_text — allows Label API compatibility (Label.text → BitmapLabel.label_text)
+## Alias for label_text ----- allows Label API compatibility (Label.text -->- BitmapLabel.label_text)
 var text: String:
 	get:
 		return label_text
@@ -74,7 +74,7 @@ func _try_connect_fm() -> void:
 
 
 func _on_fonts_loaded() -> void:
-	"""FontManager finished loading — redraw if we have text."""
+	"""FontManager finished loading ----- redraw if we have text."""
 	queue_redraw()
 
 

@@ -29,7 +29,7 @@ func play_cutscene(folder_path: String, audio_path: String = "") -> void:
 	while true:
 		var path: String = folder_path.path_join("frame_%05d.png" % frame_idx)
 		if not ResourceLoader.exists(path):
-			# Try alternate pattern: frame_00000.png (5 digits) — already using this
+			# Try alternate pattern: frame_00000.png (5 digits) ----- already using this
 			# If not found, stop loading
 			if frame_idx == 0:
 				push_error("CutscenePlayer: No frames found in ", folder_path)
@@ -142,7 +142,7 @@ func _process(delta: float) -> void:
 func _on_cutscene_done() -> void:
 	"""Called when all frames have played."""
 	finished.emit()
-	# Don't queue_free here — let the caller handle cleanup
+	# Don't queue_free here ----- let the caller handle cleanup
 	# in case they want to fade out or something
 
 
@@ -159,23 +159,9 @@ func fade_out_and_free(duration: float = 0.5) -> void:
 	queue_free()
 
 
-func skip() -> void:
-	"""Skip the cutscene immediately."""
-	if not _playing:
-		return
-	_playing = false
-	_current_frame = _frames.size()
-	_on_cutscene_done()
-
-
-func _input(event: InputEvent) -> void:
-	"""Allow skipping via spacebar or click."""
-	if not _playing:
-		return
-	if event.is_action_pressed("ui_accept") or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
-		skip()
+# Skip functionality removed — killer intro is mandatory viewing.
 
 
 func _on_audio_finished() -> void:
-	"""Audio finished — do nothing special, cutscene continues."""
+	"""Audio finished ----- do nothing special, cutscene continues."""
 	pass

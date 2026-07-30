@@ -9,6 +9,24 @@ signal settings_closed()
 @onready var sections_container: VBoxContainer = $UILayer/Panel/ScrollContainer/SectionsContainer
 
 const BACKGROUND_TEXTURE: String = "res://The Darkness Of The Grasslands assets/UI/Lobby/Shop and inventory background UI.png"
+const KEYBINDS_FILE: String = "user://keybinds.cfg"
+
+# All rebindable actions with their display labels and default keycodes
+const KEYBINDABLE_ACTIONS: Array[Dictionary] = [
+	{"action": "move_left",  "label": "Move Left",  "default": KEY_A},
+	{"action": "move_right", "label": "Move Right", "default": KEY_D},
+	{"action": "move_up",    "label": "Move Up",    "default": KEY_W},
+	{"action": "move_down",  "label": "Move Down",  "default": KEY_S},
+	{"action": "sprint",     "label": "Sprint",     "default": KEY_SHIFT},
+	{"action": "ability_1",  "label": "Ability 1 (Block)",   "default": KEY_Q},
+	{"action": "ability_2",  "label": "Ability 2 (Punch)",   "default": KEY_E},
+	{"action": "ability_3",  "label": "Ability 3 (Flower)",  "default": KEY_R},
+	{"action": "ability_4",  "label": "Ability 4",           "default": KEY_T},
+]
+
+var _rebinding_action: String = ""  # Action currently waiting for a keypress
+var _rebinding_button: Button = null  # The button that was clicked to start rebinding
+var _rebind_labels: Dictionary = {}  # Maps action_name -> Button for updating display
 
 # Section definitions: title, items.
 # Supported item types:
@@ -16,10 +34,21 @@ const BACKGROUND_TEXTURE: String = "res://The Darkness Of The Grasslands assets/
 #   {"type":"toggle", "label","var","default"} → CheckBox bound to GameState
 #   {"type":"slider", "label","bus"} → HSlider bound to AudioServer bus volume
 #   {"type":"action", "label","action_name"} → CheckBox that triggers a function
+#   {"type":"keybind", "label","action"}     → Rebiddable keybinding button
 const SECTIONS: Array[Dictionary] = [
 	{
 		"title": "KEYBINDING",
-		"items": ["Move: WASD", "Sprint: Shift", "Ability 1: Q", "Ability 2: E", "Ability 3: R", "Ability 4: T"]
+		"items": [
+			{"type": "keybind", "label": "Move Left", "action": "move_left"},
+			{"type": "keybind", "label": "Move Right", "action": "move_right"},
+			{"type": "keybind", "label": "Move Up", "action": "move_up"},
+			{"type": "keybind", "label": "Move Down", "action": "move_down"},
+			{"type": "keybind", "label": "Sprint", "action": "sprint"},
+			{"type": "keybind", "label": "Ability 1 (Block)", "action": "ability_1"},
+			{"type": "keybind", "label": "Ability 2 (Punch)", "action": "ability_2"},
+			{"type": "keybind", "label": "Ability 3 (Flower)", "action": "ability_3"},
+			{"type": "keybind", "label": "Ability 4", "action": "ability_4"},
+		]
 	},
 	{
 		"title": "GAMEPLAY",
@@ -57,9 +86,11 @@ func _sync_visibility() -> void:
 		_ui_layer.visible = visible
 
 func _ready() -> void:
+	process_mode = PROCESS_MODE_ALWAYS  # So _unhandled_input works while hidden
 	hide()
 	_sync_visibility()
 	_setup_signals()
+	_load_keybinds()
 	_build_sections()
 
 
@@ -116,6 +147,8 @@ func _build_sections() -> void:
 						_add_slider_item(item_data, section)
 					"action":
 						_add_action_item(item_data, section)
+					"keybind":
+						_add_keybind_item(item_data, section)
 			else:
 				# Plain text label
 				var item_text: String = str(item_data)
@@ -156,9 +189,20 @@ func _add_toggle_item(item_data: Dictionary, section: VBoxContainer) -> void:
 	else:
 		check.button_pressed = default_val
 	
-	check.toggled.connect(_on_toggle_changed.bind(var_name))
+	if var_name != "" and var_name in GameState:
+		check.toggled.connect(_on_game_state_toggle.bind(var_name))
+	else:
+		check.toggled.connect(_on_action_toggled.bind(var_name))
 	hbox.add_child(check)
 	section.add_child(hbox)
+
+
+func _on_game_state_toggle(value: bool, var_name: String) -> void:
+	"""Update a GameState boolean toggle."""
+	if var_name in GameState:
+		GameState.set(var_name, value)
+		# Autosave settings when toggles change
+		_save_settings()
 
 
 func _add_slider_item(item_data: Dictionary, section: VBoxContainer) -> void:
@@ -239,10 +283,140 @@ func _add_action_item(item_data: Dictionary, section: VBoxContainer) -> void:
 	section.add_child(hbox)
 
 
-func _on_toggle_changed(value: bool, var_name: String) -> void:
-	"""Update GameState when a toggle setting changes."""
-	if var_name != "" and var_name in GameState:
-		GameState.set(var_name, value)
+func _add_keybind_item(item_data: Dictionary, section: VBoxContainer) -> void:
+	"""Add a clickable keybind button that captures key presses."""
+	var label_text: String = item_data.get("label", "")
+	var action_name: String = item_data.get("action", "")
+	
+	var hbox := HBoxContainer.new()
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	
+	# Label
+	var name_label := Label.new()
+	name_label.text = "  " + label_text
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.add_theme_font_size_override("font_size", 16)
+	name_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9, 1))
+	hbox.add_child(name_label)
+	
+	# Key button
+	var key_btn := Button.new()
+	key_btn.name = "KeyBtn_%s" % action_name
+	key_btn.text = _get_key_display_name(action_name)
+	key_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	key_btn.custom_minimum_size.x = 80
+	key_btn.pressed.connect(_on_keybind_pressed.bind(action_name, key_btn))
+	hbox.add_child(key_btn)
+	
+	_rebind_labels[action_name] = key_btn
+	section.add_child(hbox)
+
+
+func _get_key_display_name(action_name: String) -> String:
+	"""Get the display name of the current key for an action."""
+	if not InputMap.has_action(action_name):
+		return "?"
+	var events: Array = InputMap.action_get_events(action_name)
+	if events.is_empty():
+		return "?"
+	var event: InputEvent = events[0]
+	if event is InputEventKey:
+		return OS.get_keycode_string(event.keycode)
+	return "?"
+
+
+func _on_keybind_pressed(action_name: String, button: Button) -> void:
+	"""Enter rebinding mode for the given action."""
+	if not _rebinding_action.is_empty():
+		# Cancel previous rebinding
+		if _rebind_labels.has(_rebinding_action):
+			_rebind_labels[_rebinding_action].disabled = false
+			_rebind_labels[_rebinding_action].text = _get_key_display_name(_rebinding_action)
+	
+	_rebinding_action = action_name
+	_rebinding_button = button
+	button.text = "..."
+	button.disabled = true
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	"""Capture key presses during rebinding."""
+	if _rebinding_action.is_empty():
+		return
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	
+	var action_name: String = _rebinding_action
+	var keycode: int = event.keycode
+	
+	# Escape cancels rebinding
+	if keycode == KEY_ESCAPE:
+		_cancel_rebinding()
+		get_viewport().set_input_as_handled()
+		return
+	
+	# Remove old events for this action
+	if InputMap.has_action(action_name):
+		InputMap.action_erase_events(action_name)
+	
+	# Add new event
+	var new_event := InputEventKey.new()
+	new_event.keycode = keycode
+	InputMap.action_add_event(action_name, new_event)
+	
+	# Update display
+	var btn = _rebind_labels.get(action_name)
+	if btn:
+		btn.text = OS.get_keycode_string(keycode)
+		btn.disabled = false
+	
+	_save_keybinds()
+	_rebinding_action = ""
+	_rebinding_button = null
+	
+	print("Settings: Rebound '%s' to %s" % [action_name, OS.get_keycode_string(keycode)])
+	get_viewport().set_input_as_handled()
+
+
+func _cancel_rebinding() -> void:
+	"""Cancel the current rebinding operation."""
+	if not _rebinding_action.is_empty():
+		var btn = _rebind_labels.get(_rebinding_action)
+		if btn:
+			btn.text = _get_key_display_name(_rebinding_action)
+			btn.disabled = false
+	_rebinding_action = ""
+	_rebinding_button = null
+
+
+func _save_keybinds() -> void:
+	"""Save current keybindings to disk."""
+	var config := ConfigFile.new()
+	for action_data: Dictionary in KEYBINDABLE_ACTIONS:
+		var aname: String = action_data["action"]
+		if InputMap.has_action(aname):
+			var events: Array = InputMap.action_get_events(aname)
+			if not events.is_empty() and events[0] is InputEventKey:
+				config.set_value("keybinds", aname, events[0].keycode)
+	config.save(KEYBINDS_FILE)
+
+
+func _load_keybinds() -> void:
+	"""Load saved keybindings from disk."""
+	var config := ConfigFile.new()
+	if config.load(KEYBINDS_FILE) != OK:
+		return
+	for action_data: Dictionary in KEYBINDABLE_ACTIONS:
+		var aname: String = action_data["action"]
+		var keycode: int = config.get_value("keybinds", aname, -1)
+		if keycode < 0:
+			continue
+		if InputMap.has_action(aname):
+			InputMap.action_erase_events(aname)
+			var ev := InputEventKey.new()
+			ev.keycode = keycode
+			InputMap.action_add_event(aname, ev)
 
 
 func _on_slider_changed(value: float, bus_name: String, value_label: Label) -> void:
@@ -254,6 +428,17 @@ func _on_slider_changed(value: float, bus_name: String, value_label: Label) -> v
 			var linear: float = value / 100.0
 			var db: float = linear_to_db(linear)
 			AudioServer.set_bus_volume_db(bus_idx, db)
+			_save_settings()
+
+
+func _save_settings() -> void:
+	"""Save all settings to disk via SaveManager."""
+	var username: String = GameState.logged_in_username
+	if username.is_empty():
+		return
+	var sm = get_node_or_null("/root/SaveManager")
+	if sm and sm.has_method("autosave"):
+		sm.autosave(username)
 
 
 func _on_action_toggled(value: bool, action_name: String) -> void:

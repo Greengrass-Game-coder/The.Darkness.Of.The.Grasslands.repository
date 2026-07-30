@@ -1,5 +1,5 @@
-class_name Lobby
 extends CharacterBody2D
+# Scene root — accessed via scene path, no class_name needed (avoids EOSG plugin conflict)
 
 signal countdown_finished()
 
@@ -15,8 +15,11 @@ signal countdown_finished()
 @export var settings_button_pos: Vector2 = Vector2(16, 340)
 @export var settings_button_size: Vector2 = Vector2(64, 64)
 
-# Role toggle
-@export var role_toggle_pos: Vector2 = Vector2(820, 660)
+# Friends
+@export var friends_button_pos: Vector2 = Vector2(16, 130)
+@export var friends_button_size: Vector2 = Vector2(64, 64)
+
+# (Role toggle removed — server assigns roles)
 
 @onready var lobby_music: AudioStreamPlayer2D = $"../LobbyMusic"
 @onready var countdown_label: Label = %CountdownLabel
@@ -38,6 +41,7 @@ signal countdown_finished()
 @onready var flower_dialogue: DialogueLine = preload("res://resources/flower_dialogue.tres")
 @onready var evil_potato_dialogue: DialogueLine = preload("res://resources/evil_potato_dialogue.tres")
 @onready var evil_potato_dialogue_repeat: DialogueLine = preload("res://resources/evil_potato_dialogue_repeat.tres")
+@onready var evil_potato_orange_dialogue: DialogueLine = preload("res://resources/evil_potato_orange_guy_dialogue.tres")
 
 
 var infade_tween: Tween
@@ -59,6 +63,7 @@ var _inventory_layer: InventoryLayer = null
 var _settings_layer: SettingsLayer = null
 var _analysis_overlay: CanvasLayer = null
 var _analysis_timer: float = 0.0
+var _friends_panel: FriendsPanel = null
 
 # BitmapLabel references (Font1 sprite text replacements)
 var _bitmap_countdown: BitmapLabel = null
@@ -106,8 +111,9 @@ func _ready() -> void:
 	_setup_screenshot_prank()
 	_setup_shop_inventory()
 	_create_leaderboard()
+	_setup_admin_panel()
 	_setup_chat()
-	_setup_role_toggle()
+	# _setup_role_toggle() — removed, server assigns roles
 	countdown_finished.connect(_on_lobby_countdown_finished)
 	
 	# Show match-end analysis if returning from a match
@@ -120,7 +126,28 @@ func _setup_chat() -> void:
 	var chat := ChatLayer.new()
 	chat.name = "ChatLayer"
 	chat.chat_sent.connect(_on_chat_sent)
+	chat.chat_opened.connect(_on_lobby_chat_opened)
+	chat.chat_closed.connect(_on_lobby_chat_closed)
 	add_child(chat)
+
+
+func _on_lobby_chat_opened() -> void:
+	"""Disable ALL player processing (movement + abilities) when chatting."""
+	set_physics_process(false)
+	process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func _on_lobby_chat_closed() -> void:
+	"""Re-enable ALL player processing when done chatting."""
+	set_physics_process(true)
+	process_mode = Node.PROCESS_MODE_INHERIT
+
+
+func _setup_admin_panel() -> void:
+	"""Create the admin panel instance for private server hosts."""
+	var panel := AdminPanel.new()
+	panel.name = "AdminPanel"
+	add_child(panel)
 
 
 func _on_chat_sent(text: String, is_admin: bool) -> void:
@@ -134,7 +161,7 @@ func _on_chat_sent(text: String, is_admin: bool) -> void:
 	# "G setenv dev/prod" — toggle environment locally
 	# "G env" — show current environment
 	if trimmed == "g env" or trimmed == "g environment":
-		var env_config = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
+		var env_config = get_node("/root/EnvironmentConfig")
 		var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
 		if not chat_layer:
 			return
@@ -147,9 +174,16 @@ func _on_chat_sent(text: String, is_admin: bool) -> void:
 		chat_layer.add_system_message("WebSocket: " + ws_url)
 		return
 	
+	# "G Gui" — toggle admin GUI panel
+	if trimmed == "g gui":
+		var panel: AdminPanel = get_node_or_null("AdminPanel")
+		if panel:
+			panel.toggle_gui()
+		return
+	
 	if trimmed.begins_with("g setenv ") or trimmed.begins_with("g env "):
 		var env_arg: String = trimmed.split(" ")[-1]
-		var env_config = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
+		var env_config = get_node("/root/EnvironmentConfig")
 		if not env_config:
 			var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
 			if chat_layer:
@@ -172,14 +206,14 @@ func _on_chat_sent(text: String, is_admin: bool) -> void:
 	
 	# "G ..." commands: forward to server if connected
 	if is_admin and GameState.connected_to_server:
-		var nm: Node = Engine.get_singleton("NetworkManager")
+		var nm: Node = get_node("/root/NetworkManager")
 		if is_instance_valid(nm) and nm.has_method("send_admin_command"):
 			nm.send_admin_command(text.trim_prefix("G "))
 		return
 	
 	# Normal chat: forward to server if connected
 	if GameState.connected_to_server:
-		var nm: Node = Engine.get_singleton("NetworkManager")
+		var nm: Node = get_node("/root/NetworkManager")
 		if is_instance_valid(nm) and nm.has_method("send_chat"):
 			nm.send_chat(text)
 	else:
@@ -200,6 +234,7 @@ func _show_admin_help() -> void:
 	chat_layer.add_system_message("G force / G next - Force next killer")
 	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
 	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
+	chat_layer.add_system_message("G Gui - Toggle admin GUI panel")
 	chat_layer.add_system_message("G setenv dev | G setenv prod - Toggle ngrok / Render")
 	chat_layer.add_system_message("G env - Show current environment")
 	chat_layer.add_system_message("=====================")
@@ -226,7 +261,7 @@ func _replace_labels_with_bitmap() -> void:
 		bl.name = "BmpCountdown"
 		bl.label_text = countdown_label.text
 		bl.font_scale = 0.35
-		bl.char_spacing = 6.0
+		bl.char_spacing = 4.0
 		bl.horizontal_align = 1
 		bl.font_color = Color(1, 1, 1, 1)
 		bl.position = Vector2(0, 4)
@@ -243,8 +278,8 @@ func _replace_labels_with_bitmap() -> void:
 		bl2.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		bl2.name = "BmpComeBack"
 		bl2.label_text = "COME BACK."
-		bl2.font_scale = 3.0
-		bl2.char_spacing = 8.0
+		bl2.font_scale = 2.0
+		bl2.char_spacing = 5.0
 		bl2.horizontal_align = 1
 		bl2.vertical_align = 1
 		bl2.font_color = Color(1, 0, 0, 1)
@@ -370,10 +405,55 @@ func _setup_shop_inventory() -> void:
 	_settings_layer.settings_closed.connect(_on_settings_closed)
 	_settings_layer.hide()
 	
+	# Create friends panel
+	_create_friends_panel()
+	
 	# Create inventory and shop buttons in the HUD (reverse order = top z-order)
 	_create_settings_button()
 	_create_inventory_button()
 	_create_shop_button()
+
+
+func _create_friends_panel() -> void:
+	"""Create the friends panel and its open/close control."""
+	var fp := FriendsPanel.new()
+	fp.name = "FriendsPanel"
+	fp.friends_panel_closed.connect(_on_friends_closed)
+	add_child(fp)
+	_friends_panel = fp
+	
+	# Create friends button in HUD
+	var hud: CanvasLayer = $"../HUD"
+	var fri_tex: Texture2D = load("res://The Darkness Of The Grasslands assets/UI/Lobby/Friends_Icon.png")
+	if fri_tex:
+		var btn := TextureButton.new()
+		btn.name = "FriendsButton"
+		btn.size = friends_button_size
+		btn.position = friends_button_pos
+		btn.texture_normal = fri_tex
+		btn.pressed.connect(_on_friends_button_pressed)
+		hud.add_child(btn)
+	else:
+		var btn := Button.new()
+		btn.name = "FriendsButton"
+		btn.size = friends_button_size
+		btn.position = friends_button_pos
+		btn.text = "FRIENDS"
+		btn.add_theme_font_size_override("font_size", 10)
+		btn.pressed.connect(_on_friends_button_pressed)
+		hud.add_child(btn)
+
+
+func _on_friends_button_pressed() -> void:
+	if dialogue_ui.is_dialogue_active():
+		return
+	if _friends_panel:
+		_friends_panel.open()
+		_toggle_hud_buttons(false)
+
+
+func _on_friends_closed() -> void:
+	_toggle_hud_buttons(true)
 
 
 func _create_shop_button() -> void:
@@ -460,7 +540,7 @@ func _on_settings_closed() -> void:
 
 
 func _is_any_ui_open() -> bool:
-	return (_shop_layer and _shop_layer.visible) or (_inventory_layer and _inventory_layer.visible) or (_settings_layer and _settings_layer.visible)
+	return (_shop_layer and _shop_layer.visible) or (_inventory_layer and _inventory_layer.visible) or (_settings_layer and _settings_layer.visible) or (_friends_panel and _friends_panel.visible)
 
 
 func _toggle_hud_buttons(show_buttons: bool) -> void:
@@ -468,51 +548,26 @@ func _toggle_hud_buttons(show_buttons: bool) -> void:
 	var shop_btn: Node = hud.get_node_or_null("ShopButton")
 	var inv_btn: Node = hud.get_node_or_null("InventoryButton")
 	var set_btn: Node = hud.get_node_or_null("SettingsButton")
+	var fri_btn: Node = hud.get_node_or_null("FriendsButton")
 	if shop_btn:
 		shop_btn.visible = show_buttons
 	if inv_btn:
 		inv_btn.visible = show_buttons
 	if set_btn:
 		set_btn.visible = show_buttons
+	if fri_btn:
+		fri_btn.visible = show_buttons
 
 
-func _setup_role_toggle() -> void:
-	"""Create a killer/survivor role toggle button."""
-	var hud: CanvasLayer = $"../HUD"
-	if not hud:
-		return
-	
-	var btn := Button.new()
-	btn.name = "RoleToggle"
-	btn.size = Vector2(140, 32)
-	btn.position = role_toggle_pos
-	
-	if GameState.is_killer:
-		btn.text = "ROLE: KILLER"
-		btn.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
-	else:
-		btn.text = "ROLE: SURVIVOR"
-		btn.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	
-	btn.toggle_mode = true
-	btn.button_pressed = GameState.is_killer
-	btn.pressed.connect(_on_role_toggle_pressed.bind(btn))
-	hud.add_child(btn)
-
-
-func _on_role_toggle_pressed(btn: Button) -> void:
-	"""Toggle killer/survivor role."""
-	GameState.is_killer = btn.button_pressed
-	if GameState.is_killer:
-		btn.text = "ROLE: KILLER"
-		btn.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
-	else:
-		btn.text = "ROLE: SURVIVOR"
-		btn.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	print("Lobby: Role toggled — is_killer = ", GameState.is_killer)
+# ---------- ROLE TOGGLE REMOVED (server assigns roles) ----------
 
 
 func _on_lobby_countdown_finished() -> void:
+	# Autosave player progress before game starts
+	if not GameState.logged_in_username.is_empty():
+		var sm := get_node_or_null("/root/SaveManager")
+		if is_instance_valid(sm) and sm.has_method("autosave"):
+			sm.autosave(GameState.logged_in_username)
 	# Transition directly to game map (uses role toggle state)
 	get_tree().change_scene_to_file("res://scenes/game_map.tscn")
 
@@ -561,7 +616,7 @@ func _on_font_swap_timer_timeout() -> void:
 	come_back_label.set_position(shake_offset)
 	# Also update BitmapLabel version
 	if is_instance_valid(_bitmap_comeback):
-		_bitmap_comeback.font_scale = 0.6 + randi() % 5 * 0.05
+		_bitmap_comeback.font_scale = 0.5 + randi() % 5 * 0.05
 		_bitmap_comeback.font_color = Color(0.9 + randf() * 0.1, 0.0, 0.0, 1.0)
 		_bitmap_comeback.position = shake_offset
 
@@ -583,7 +638,7 @@ func _restore_focus() -> void:
 	if is_instance_valid(_bitmap_comeback):
 		_bitmap_comeback.visible = false
 		_bitmap_comeback.position = Vector2.ZERO
-		_bitmap_comeback.font_scale = 0.7
+		_bitmap_comeback.font_scale = 0.5
 		_bitmap_comeback.font_color = Color(1, 1, 1, 1)
 
 
@@ -679,7 +734,13 @@ func _process(delta: float) -> void:
 		elif potato_prompt.visible:
 			potato_prompt.hide()
 			_ensure_dialogue_connect()
-			if _potato_dialogue_done:
+			# Check if current player is Orange Guy (case-insensitive)
+			var am_node := get_node("/root/AuthManager")
+			var player_name: String = am_node.current_username if is_instance_valid(am_node) else ""
+			var is_orange_guy: bool = player_name.to_lower() == "orange guy"
+			if is_orange_guy:
+				dialogue_ui.start_dialogue_with(evil_potato_orange_dialogue)
+			elif _potato_dialogue_done:
 				dialogue_ui.start_dialogue_with(evil_potato_dialogue_repeat)
 			else:
 				_potato_dialogue_done = true
@@ -1013,6 +1074,20 @@ func _create_leaderboard() -> void:
 	_update_leaderboard_visibility()
 
 
+## Get the special tag color for a reserved username. Returns white for normal players.
+func _get_username_tag_color(uname: String) -> Color:
+	var lower: String = uname.to_lower()
+	match lower:
+		"orange guy":
+			return Color(1.0, 0.55, 0.0, 1)  # Orange
+		"juangoat":
+			return Color(1.0, 0.5, 0.3, 1)  # Coral mixed with orange
+		"charon":
+			return Color(0.3, 0.0, 0.5, 1)  # Dark purple (co-owner)
+		_:
+			return Color(1, 1, 1, 1)  # Default white
+
+
 func _update_leaderboard_entries() -> void:
 	"""Rebuild player entries from GameState player_rings."""
 	var container: VBoxContainer = _leaderboard_panel.get_node_or_null("EntryContainer")
@@ -1029,8 +1104,8 @@ func _update_leaderboard_entries() -> void:
 	
 	# Always include the local player (if not already in list)
 	var local_name: String = "You"
-	if Engine.has_singleton("AuthManager"):
-		var am = Engine.get_singleton("AuthManager")
+	var am = get_node("/root/AuthManager")
+	if is_instance_valid(am):
 		if am.is_logged_in():
 			local_name = am.current_username
 	if local_name not in players:
@@ -1044,10 +1119,49 @@ func _update_leaderboard_entries() -> void:
 		entry.name = "Entry_%s" % pname
 		entry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		entry.size.y = 22
-		entry.text = "  %s — R:%d" % [pname, rings]
-		entry.add_theme_color_override("font_color", Color(0.6, 1.0, 0.6, 1) if is_self else Color(1, 1, 1, 1))
+		entry.text = "  " + pname
+		# Add ring icon + count as child
+		var ring_hbox := HBoxContainer.new()
+		ring_hbox.name = "RingHBox"
+		ring_hbox.position = Vector2(entry.size.x - 80, 3)
+		ring_hbox.size = Vector2(80, 18)
+		var ring_icon := TextureRect.new()
+		ring_icon.name = "RingIcon"
+		var ring_tex: Texture2D = load("res://The Darkness Of The Grasslands assets/UI/Lobby/Rings icon.png")
+		if ring_tex:
+			ring_icon.texture = ring_tex
+			ring_icon.size = Vector2(16, 16)
+			ring_icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		var ring_label := Label.new()
+		ring_label.name = "RingCount"
+		ring_label.text = str(rings)
+		ring_label.add_theme_color_override("font_color", Color(1, 0.9, 0.4, 1))
+		ring_label.add_theme_font_size_override("font_size", 12)
+		ring_hbox.add_child(ring_icon)
+		ring_hbox.add_child(ring_label)
+		entry.add_child(ring_hbox)
+		# Apply tag color for reserved usernames
+		var tag: Color = _get_username_tag_color(pname)
+		if pname.to_lower() == "prograss":
+			# Oreo style: black text on white shadow
+			entry.add_theme_color_override("font_color", Color(0, 0, 0, 1) if not is_self else Color(0.2, 0.2, 0.2, 1))
+			entry.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 1))
+		elif tag != Color(1, 1, 1, 1):
+			entry.add_theme_color_override("font_color", tag)
+			if pname.to_lower() == "charon":
+				# Purple outline with light purple shadow (spacy)
+				entry.add_theme_color_override("font_shadow_color", Color(0.8, 0.5, 1.0, 1))
+				entry.add_theme_constant_override("shadow_offset_x", 2)
+				entry.add_theme_constant_override("shadow_offset_y", 2)
+			else:
+				entry.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		elif is_self:
+			entry.add_theme_color_override("font_color", Color(0.6, 1.0, 0.6, 1))
+			entry.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		else:
+			entry.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+			entry.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
 		entry.add_theme_font_size_override("font_size", 13)
-		entry.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
 		entry.add_theme_constant_override("shadow_offset_x", 1)
 		entry.add_theme_constant_override("shadow_offset_y", 1)
 		entry.add_theme_stylebox_override("normal", StyleBoxEmpty.new())

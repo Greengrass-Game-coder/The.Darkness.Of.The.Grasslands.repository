@@ -1,14 +1,15 @@
 extends Node
+# Autoload — accessible via get_node("/root/NetworkManager")
 
-## WebSocket client that connects to the game server.
-## Autoload - accessible globally as NetworkManager.
-## Uses EnvironmentConfig to toggle between Dev (ngrok) and Production (Render).
+## Network manager — plain WebSocket client.
+## Connects to the dedicated server via playit.gg tunnel (or localhost).
+## Maintains the same signal interface for backward compatibility.
 
 signal connected_to_server()
 signal disconnected_from_server()
 signal connection_failed(error_msg: String)
-signal player_joined(player_id: int, username: String)
-signal player_left(player_id: int)
+signal player_joined(player_id: String, username: String)
+signal player_left(player_id: String)
 signal player_list_updated(players: Array)
 signal chat_message_received(sender: String, text: String)
 signal match_found(match_data: Dictionary)
@@ -16,298 +17,268 @@ signal game_started(role: String, player_list: Array)
 signal phase_changed(phase: String, time_remaining: float)
 signal admin_command_result(success: bool, message: String)
 
-## Returns the active server URL from EnvironmentConfig
-func _get_server_url() -> String:
-	var env = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
-	if env and env.has_method("get_ws_url"):
-		return env.get_ws_url()
-	return "wss://the-darkness-server.onrender.com"
+# Auth & save signals
+signal auth_result(success: bool, username: String, error_msg: String)
+signal save_data_loaded(data: Dictionary)
 
-## Returns the active HTTP wake-up URL from EnvironmentConfig
-func _get_http_url() -> String:
-	var env = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
-	if env and env.has_method("get_http_url"):
-		return env.get_http_url()
-	return "https://the-darkness-server.onrender.com"
-const RECONNECT_DELAY: float = 3.0
-const MAX_RECONNECT_ATTEMPTS: int = 5
+const DEFAULT_WS_URL: String = "ws://localhost:8080"
+const CONNECT_TIMEOUT: float = 10.0  # seconds before giving up
 
-var socket: WebSocketMultiplayerPeer = null
+## Whether we're connected to the server
 var connected: bool = false
-var player_id: int = 0
-var reconnect_attempts: int = 0
-var _reconnect_timer: float = 0.0
-var _in_queue: bool = false
-var _handlers: Dictionary = {}
 
-# Render wake-up (free tier spins down after inactivity)
-var _http: HTTPRequest = null
-var _waking_server: bool = false
-var _wake_done: bool = false
+## Local player ID assigned by server
+var player_id: String = "0"
+
+var _ws: WebSocketPeer = null
+var _ws_url: String = DEFAULT_WS_URL
+var _player_names: Dictionary = {}  # pid -> username
+var _connect_elapsed: float = 0.0  # For connection timeout
 
 
 func _ready() -> void:
-	_register_handlers()
-	_setup_wake_up()
+	# Get URL from EnvironmentConfig if available
+	var env_config = get_node_or_null("/root/EnvironmentConfig")
+	if env_config and env_config.has_method("get_ws_url"):
+		_ws_url = env_config.get_ws_url()
+	print("NetworkManager: Starting, WS URL = %s" % _ws_url)
 
 
-func _setup_wake_up() -> void:
-	"""Create HTTP node to ping Render and wake it from sleep."""
-	_http = HTTPRequest.new()
-	add_child(_http)
-	_http.request_completed.connect(_on_wake_response)
+func _process(_delta: float) -> void:
+	if _ws:
+		_ws.poll()
+		var state: int = _ws.get_ready_state()
+		
+		if state == WebSocketPeer.STATE_OPEN:
+			while _ws.get_available_packet_count() > 0:
+				var raw: PackedByteArray = _ws.get_packet()
+				var text: String = raw.get_string_from_utf8()
+				_handle_message(text)
+		
+		elif state == WebSocketPeer.STATE_CONNECTING:
+			_connect_elapsed += _delta
+			if _connect_elapsed >= CONNECT_TIMEOUT:
+				_ws.close()
+				_ws = null
+				connection_failed.emit("Connection timed out")
+		
+		elif state == WebSocketPeer.STATE_CLOSED:
+			_disconnected()
 
 
-func _wake_server() -> void:
-	"""Send an HTTP GET to wake a free-tier server from sleep.
-	Only fires in PRODUCTION mode (Render). DEV mode skips this."""
-	# Skip wake-up in DEV mode (local/ngrok — no sleep)
-	var env = Engine.get_singleton("EnvironmentConfig") if Engine.has_singleton("EnvironmentConfig") else null
-	if env and env.has_method("is_dev") and env.is_dev():
-		print("NetworkManager: DEV mode — skipping server wake-up")
-		_wake_done = true
-		_do_connect()
+func apply_custom_url(url: String) -> void:
+	"""Override the WebSocket URL with a user-provided one (e.g. from login screen)."""
+	if url.is_empty():
 		return
-	if _waking_server or _wake_done:
-		return
-	_waking_server = true
-	var wake_url: String = _get_http_url()
-	print("NetworkManager: Waking server at ", wake_url)
-	_http.request(wake_url)
-
-
-func _on_wake_response(_result: int, _response_code: int, _headers: Array, _body: PackedByteArray) -> void:
-	_waking_server = false
-	_wake_done = true
-	print("NetworkManager: Server is awake, connecting WebSocket...")
-	_do_connect()
-
-
-func _register_handlers() -> void:
-	_handlers["connected"] = _on_server_connected
-	_handlers["disconnected"] = _on_server_disconnected
-	_handlers["player_joined"] = _on_player_joined
-	_handlers["player_left"] = _on_player_left
-	_handlers["player_list"] = _on_player_list
-	_handlers["chat"] = _on_chat_message
-	_handlers["match_found"] = _on_match_found
-	_handlers["game_start"] = _on_game_start
-	_handlers["phase_change"] = _on_phase_change
-	_handlers["admin_result"] = _on_admin_result
-	_handlers["error"] = _on_server_error
+	# Only override if different from default
+	if url != _ws_url:
+		_ws_url = url
+		print("NetworkManager: Custom URL set to %s" % _ws_url)
+		# If already connected to a different URL, disconnect first
+		if connected or (_ws and _ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING):
+			disconnect_from_server()
 
 
 func connect_to_server() -> void:
-	"""Connect to the WebSocket server. Wakes Render first if needed."""
+	"""Connect to the WebSocket server."""
 	if connected:
 		return
-	if not _wake_done:
-		_wake_server()
-		return
-	_do_connect()
-
-
-func _do_connect() -> void:
-	"""Internal: create WebSocket connection."""
-	if connected:
-		return
-
-	socket = WebSocketMultiplayerPeer.new()
-	var player_name: String = GameState.logged_in_username if not GameState.logged_in_username.is_empty() else "Player"
-	var url: String = _get_server_url() + "?player_name=" + player_name.uri_encode()
-	var err: int = socket.create_client(url)
-
+	if _ws and _ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING:
+		return  # Already connecting
+	
+	_ws = WebSocketPeer.new()
+	var err: Error = _ws.connect_to_url(_ws_url)
 	if err != OK:
-		connection_failed.emit("Failed to create WebSocket client: " + error_string(err))
+		connection_failed.emit("Failed to connect: %s" % error_string(err))
+		_ws = null
 		return
-
-	multiplayer.multiplayer_peer = socket
-	_connect_signals()
-	reconnect_attempts = 0
-	print("NetworkManager: Connecting to ", _get_server_url())
-
-
-func _connect_signals() -> void:
-	if not socket:
-		return
-	if not socket.connection_succeeded.is_connected(_on_socket_connected):
-		socket.connection_succeeded.connect(_on_socket_connected)
-	if not socket.connection_failed.is_connected(_on_socket_connect_failed):
-		socket.connection_failed.connect(_on_socket_connect_failed)
-	if not socket.server_disconnected.is_connected(_on_socket_disconnected):
-		socket.server_disconnected.connect(_on_socket_disconnected)
-
-
-func _on_socket_connected() -> void:
-	connected = true
-	reconnect_attempts = 0
-	connected_to_server.emit()
-	print("NetworkManager: Connected to server")
-
-
-func _on_socket_connect_failed() -> void:
-	connected = false
-	connection_failed.emit("Connection refused by server")
-	_try_reconnect()
-
-
-func _on_socket_disconnected() -> void:
-	connected = false
-	GameState.connected_to_server = false
-	disconnected_from_server.emit()
-	print("NetworkManager: Disconnected from server")
-	_try_reconnect()
-
-
-func _try_reconnect() -> void:
-	if reconnect_attempts < MAX_RECONNECT_ATTEMPTS:
-		reconnect_attempts += 1
-		print("NetworkManager: Reconnect attempt %d/%d in %.1fs..." % [reconnect_attempts, MAX_RECONNECT_ATTEMPTS, RECONNECT_DELAY])
-		_reconnect_timer = RECONNECT_DELAY
-
-
-func _process(delta: float) -> void:
-	# Handle reconnect timer
-	if _reconnect_timer > 0:
-		_reconnect_timer -= delta
-		if _reconnect_timer <= 0:
-			connect_to_server()
-
-	# Poll for incoming packets
-	if not connected or not socket:
-		return
-
-	socket.poll()
-	if socket.get_available_packet_count() > 0:
-		var raw: PackedByteArray = socket.get_packet()
-		var json_str: String = raw.get_string_from_utf8()
-		var data: Dictionary = JSON.parse_string(json_str) as Dictionary
-		if data and data.has("type"):
-			var handler: Callable = _handlers.get(data["type"], Callable())
-			if handler.is_valid():
-				handler.call(data)
-
-
-func send_message(type: String, payload: Dictionary = {}) -> void:
-	"""Send a JSON message to the server."""
-	if not connected or not socket:
-		return
-	var msg: Dictionary = {"type": type}
-	msg.merge(payload)
-	var json_str: String = JSON.stringify(msg)
-	socket.put_packet(json_str.to_utf8_buffer())
-
-
-# ---------- High-level API ----------
-
-func join_queue() -> void:
-	"""Join the matchmaking queue."""
-	_in_queue = true
-	send_message("join_queue", {"role_preference": "survivor"})
-
-
-func leave_queue() -> void:
-	"""Leave the matchmaking queue."""
-	_in_queue = false
-	send_message("leave_queue")
-
-
-func create_private_server(code: String) -> void:
-	"""Create a private server with a join code."""
-	send_message("create_private", {"code": code})
-	GameState.in_private_server = true
-	GameState.private_server_code = code
-
-
-func join_private_server(code: String) -> void:
-	"""Join a private server using a code."""
-	send_message("join_private", {"code": code})
-	GameState.in_private_server = true
-	GameState.private_server_code = code
-
-
-func send_chat(text: String, is_admin_command: bool = false) -> void:
-	"""Send a chat message or admin command."""
-	send_message("chat", {"text": text, "admin": is_admin_command})
-
-
-func send_admin_command(command: String) -> void:
-	"""Send a G-prefix admin command."""
-	send_chat("G " + command, true)
-
-
-# ---------- Message Handlers ----------
-
-func _on_server_connected(data: Dictionary) -> void:
-	player_id = data.get("player_id", 0)
-	GameState.connected_to_server = true
-	GameState.player_id = player_id
-
-
-func _on_server_disconnected(_data: Dictionary) -> void:
-	GameState.connected_to_server = false
-	_in_queue = false
-
-
-func _on_player_joined(data: Dictionary) -> void:
-	var pid: int = data.get("player_id", 0)
-	var pname: String = data.get("username", "Unknown")
-	player_joined.emit(pid, pname)
-
-
-func _on_player_left(data: Dictionary) -> void:
-	var pid: int = data.get("player_id", 0)
-	player_left.emit(pid)
-
-
-func _on_player_list(data: Dictionary) -> void:
-	var players: Array = data.get("players", [])
-	player_list_updated.emit(players)
-
-
-func _on_chat_message(data: Dictionary) -> void:
-	var sender: String = data.get("sender", "System")
-	var text: String = data.get("text", "")
-	chat_message_received.emit(sender, text)
-
-
-func _on_match_found(data: Dictionary) -> void:
-	_in_queue = false
-	match_found.emit(data)
-
-
-func _on_game_start(data: Dictionary) -> void:
-	var role: String = data.get("role", "survivor")
-	var players: Array = data.get("players", [])
-	GameState.player_role = role
-	GameState.is_killer = (role == "killer")
-	game_started.emit(role, players)
-
-
-func _on_phase_change(data: Dictionary) -> void:
-	var phase: String = data.get("phase", "")
-	var time_remaining: float = data.get("time_remaining", 0.0)
-	phase_changed.emit(phase, time_remaining)
-
-
-func _on_admin_result(data: Dictionary) -> void:
-	var success: bool = data.get("success", false)
-	var msg: String = data.get("message", "")
-	admin_command_result.emit(success, msg)
-
-
-func _on_server_error(data: Dictionary) -> void:
-	var msg: String = data.get("message", "Unknown error")
-	print("NetworkManager: Server error - ", msg)
+	
+	print("NetworkManager: Connecting to %s..." % _ws_url)
+	_connect_elapsed = 0.0
 
 
 func disconnect_from_server() -> void:
-	"""Cleanly disconnect from the server."""
-	if socket:
-		socket.close()
-	connected = false
-	_in_queue = false
-	GameState.connected_to_server = false
-	if multiplayer.multiplayer_peer == socket:
-		multiplayer.multiplayer_peer = null
-	socket = null
+	"""Disconnect from the server."""
+	if _ws:
+		_ws.close()
+		_ws = null
+	_disconnected()
+
+
+func _disconnected() -> void:
+	if connected:
+		connected = false
+		GameState.connected_to_server = false
+		_player_names.clear()
+		disconnected_from_server.emit()
+		print("NetworkManager: Disconnected")
+
+
+func _handle_message(text: String) -> void:
+	var json: Dictionary = {}
+	var json_parse: JSON = JSON.new()
+	var parse_err: Error = json_parse.parse(text)
+	if parse_err != OK:
+		push_error("NetworkManager: Invalid JSON: %s" % text)
+		return
+	json = json_parse.data as Dictionary
+	if json.is_empty():
+		return
+	
+	var msg_type: String = json.get("type", "")
+	match msg_type:
+		"connected":
+			connected = true
+			player_id = str(json.get("player_id", "0"))
+			GameState.connected_to_server = true
+			GameState.player_id = json.get("player_id", 0)
+			print("NetworkManager: Connected, ID = %s" % player_id)
+			connected_to_server.emit()
+		
+		"player_joined":
+			var pid: String = str(json.get("player_id", "0"))
+			var uname: String = json.get("username", "Unknown")
+			_player_names[pid] = uname
+			player_joined.emit(pid, uname)
+			_emit_player_list()
+		
+		"player_left":
+			var pid: String = str(json.get("player_id", "0"))
+			_player_names.erase(pid)
+			player_left.emit(pid)
+			_emit_player_list()
+		
+		"player_list":
+			var players: Array = json.get("players", [])
+			for p: Dictionary in players:
+				var pid: String = str(p.get("id", "0"))
+				_player_names[pid] = p.get("username", "Unknown")
+			_emit_player_list()
+		
+		"chat":
+			chat_message_received.emit(
+				json.get("sender", "?"),
+				json.get("text", "")
+			)
+		
+		"match_found":
+			match_found.emit(json.get("data", {}))
+		
+		"game_started":
+			game_started.emit(
+				json.get("role", "survivor"),
+				json.get("player_list", [])
+			)
+		
+		"phase_changed":
+			phase_changed.emit(
+				json.get("phase", ""),
+				json.get("time_remaining", 0.0)
+			)
+		
+		"auth_result":
+			auth_result.emit(
+				json.get("success", false),
+				json.get("username", ""),
+				json.get("error", "")
+			)
+		
+		"load_data":
+			save_data_loaded.emit(json.get("data", {}))
+		
+		"admin_result":
+			admin_command_result.emit(
+				json.get("success", false),
+				json.get("message", "")
+			)
+
+
+func _emit_player_list() -> void:
+	var list: Array = []
+	for pid: String in _player_names:
+		list.append({
+			"id": pid,
+			"username": _player_names[pid]
+		})
+	player_list_updated.emit(list)
+
+
+func send_json(data: Dictionary) -> void:
+	"""Send a JSON message to the server."""
+	if not _ws or _ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+	var text: String = JSON.stringify(data)
+	_ws.send_text(text)
+
+
+func send_chat(text: String, is_admin_command: bool = false) -> void:
+	"""Send a chat message."""
+	var sender: String = GameState.logged_in_username
+	if sender.is_empty():
+		sender = "Anonymous"
+	var msg: Dictionary = {
+		"type": "chat",
+		"sender": sender,
+		"text": text,
+		"is_admin": is_admin_command
+	}
+	send_json(msg)
+
+
+func send_admin_command(command: String) -> void:
+	"""Send an admin command (prefixed with 'G ')."""
+	send_chat("G " + command, true)
+
+
+func join_queue() -> void:
+	"""Join the matchmaking queue."""
+	if not connected:
+		return
+	send_json({"type": "join_queue"})
+
+
+func leave_queue() -> void:
+	"""Leave the queue."""
+	if not connected:
+		return
+	send_json({"type": "leave_queue"})
+
+
+func create_private_server(_code: String) -> void:
+	"""Create a private server."""
+	if not connected:
+		connect_to_server()
+		await connected_to_server
+	send_json({"type": "create_private_server", "code": _code})
+
+
+func join_private_server(code: String) -> void:
+	"""Join a private server by code."""
+	if not connected:
+		connect_to_server()
+		await connected_to_server
+	send_json({"type": "join_private_server", "code": code})
+
+
+# ═══════════════ AUTH ═══════════════
+
+func register(username: String, password: String) -> void:
+	"""Register a new account on the server."""
+	send_json({"type": "register", "username": username, "password": password})
+
+
+func login(username: String, password: String) -> void:
+	"""Log in to an existing account on the server."""
+	send_json({"type": "login", "username": username, "password": password})
+
+
+# ═══════════════ SAVE DATA ═══════════════
+
+func save_data(data: Dictionary) -> void:
+	"""Save player data to the server."""
+	send_json({"type": "save_data", "data": data})
+
+
+func load_data() -> void:
+	"""Request player save data from the server."""
+	send_json({"type": "load_data"})

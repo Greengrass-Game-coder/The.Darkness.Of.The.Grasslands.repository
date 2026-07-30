@@ -306,6 +306,10 @@ func _ai_teleport_to_random() -> void:
 	teleport_on_cooldown = true
 	_teleport_cd_timer = teleport_cooldown
 
+	# Play teleport sound
+	if is_instance_valid(teleport_sound) and not teleport_sound.playing:
+		teleport_sound.play()
+
 	_change_state(State.TELEPORTING)
 	_play_animation("teleport")
 
@@ -335,6 +339,9 @@ func _ai_teleport_to_random() -> void:
 		var approach_dir: Vector2 = (hit_pos - global_position).normalized()
 		global_position = hit_pos - approach_dir * 24.0
 
+	# Notify game_map that teleport completed (sound + indicator)
+	teleported.emit(global_position)
+	
 	modulate = Color(0.7, 0.3, 0.9, 0.5)
 	get_tree().create_timer(0.3).timeout.connect(_ai_end_teleport_visual)
 

@@ -32,7 +32,7 @@ func _ready() -> void:
 	label.name = "BotLabel"
 	label.label_text = "SURVIVOR BOT"
 	label.position = Vector2(-35, -50)
-	label.font_scale = 0.10
+	label.font_scale = 0.12
 	label.font_color = Color(0.5, 0.8, 1.0, 1.0)
 	add_child(label)
 

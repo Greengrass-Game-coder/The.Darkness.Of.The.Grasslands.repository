@@ -1,7 +1,7 @@
 class_name WiringPuzzleController
 extends Node
 
-## Wiring puzzle controller — drag-and-drop.
+## Wiring puzzle controller ----- drag-and-drop.
 ## Press and drag from a left wire to its matching right plug.
 
 var left_wires: Array[TextureRect] = []
@@ -122,7 +122,7 @@ func _connect_wire(wire_idx: int, plug_idx: int) -> void:
 	# Update left wire appearance
 	var left_label: Label = left_wires[wire_idx].get_child(0) if left_wires[wire_idx].get_child_count() > 0 else null
 	if left_label:
-		left_label.text = "✓ Wire %d" % (wire_idx + 1)
+		left_label.text = "-...- Wire %d" % (wire_idx + 1)
 	left_wires[wire_idx].modulate = Color(0.3, 0.9, 0.3, 1)
 	
 	# Update right plug appearance
@@ -142,7 +142,7 @@ func _connect_wire(wire_idx: int, plug_idx: int) -> void:
 
 
 func _process(_delta: float) -> void:
-	"""Update drag line while dragging — follow cursor."""
+	"""Update drag line while dragging ----- follow cursor."""
 	if not _drag_active or _drag_wire_idx < 0 or not _drag_line.visible:
 		return
 	

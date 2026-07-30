@@ -9,6 +9,7 @@ var avatar_type: String = "Lobby Person"
 ## Authentication and network state
 var logged_in_username: String = ""
 var is_admin: bool = false
+var is_limited_admin: bool = false  # Reserved testers with limited admin panel access
 var connected_to_server: bool = false
 var player_id: int = 0
 var player_role: String = ""
@@ -19,6 +20,7 @@ var private_server_code: String = ""
 var double_trouble: bool = false
 var force_killer: bool = false
 var lms_enabled: bool = false
+var pending_join_code: String = ""
 
 ## Which character scene to spawn for the player
 var selected_survivor: String = "Greengrass"

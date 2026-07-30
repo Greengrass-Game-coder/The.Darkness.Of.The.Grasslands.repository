@@ -4,6 +4,8 @@ extends CharacterBody2D
 signal hit_landed(target: Node2D, damage: float)
 signal stamina_changed(current: float, max_stamina: float)
 signal teleport_scan_started()  # Emitted when killer starts teleport charge
+signal teleport_cancelled()  # Emitted when killer cancels teleport charge
+signal teleported(new_position: Vector2)  # Emitted when teleport completes (at destination)
 ## (teleport_target_selected removed — unused)
 
 enum State { IDLE, WALKING, HITTING, TELEPORT_CHARGING, TELEPORT_CASTING, TELEPORTING, STUNNED }
@@ -52,6 +54,8 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var state_timer: Timer = $StateTimer
 @onready var ability_vfx: AnimatedSprite2D = $AbilityVFX
+@onready var hit_sound: AudioStreamPlayer2D = $HitSound
+@onready var teleport_sound: AudioStreamPlayer2D = $TeleportSound
 
 var current_hp: float
 var current_stamina: float
@@ -67,6 +71,7 @@ var _hit_cd_timer: float = 0.0
 var _teleport_cd_timer: float = 0.0
 var _base_col_scale: Vector2 = Vector2.ONE  # Saved collision shape scale at init
 var _base_sprite_scale: float = 0.25
+var stair_climbing: bool = false
 
 # Teleport charge animation state
 const TELEPORT_FRAME_TIME: float = 1.0 / 14.0  # 14 fps
@@ -102,11 +107,19 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# Q key OR left mouse button triggers hit
 	if event.is_action_pressed("ability_1"):
 		use_hit()
 		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		use_hit()
+		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ability_2"):
-		_start_teleport_charge()
+		if current_state == State.TELEPORT_CHARGING:
+			# Cancel teleport charge — press E again while charging
+			_cancel_teleport_charge()
+		else:
+			_start_teleport_charge()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_released("ability_2") and current_state == State.TELEPORT_CHARGING:
 		_execute_teleport_release()
@@ -376,6 +389,17 @@ func _execute_teleport_release() -> void:
 	_change_state(State.TELEPORT_CASTING)
 
 
+func _cancel_teleport_charge() -> void:
+	"""Cancel the teleport charge — return to idle, close mini-map."""
+	if current_state != State.TELEPORT_CHARGING:
+		return
+	_hide_vfx()
+	teleport_on_cooldown = false
+	_teleport_cd_timer = 0.0
+	_change_state(State.IDLE)
+	teleport_cancelled.emit()
+
+
 func teleport_to_position(target_pos: Vector2) -> void:
 	"""Public method: teleport directly to a target position (called by game_map mini-map)."""
 	if not is_instance_valid(self):
@@ -405,6 +429,9 @@ func teleport_to_position(target_pos: Vector2) -> void:
 		# Visual effect shift
 		modulate = Color(0.7, 0.3, 0.9, 0.5)
 		get_tree().create_timer(0.3).timeout.connect(_end_teleport_visual)
+	
+	# Emit teleported signal so game_map can play sound + show indicator
+	teleported.emit(global_position)
 	
 	_change_state(State.TELEPORTING)
 	_hide_vfx()
@@ -442,6 +469,9 @@ func _do_teleport_move() -> void:
 		modulate = Color(0.7, 0.3, 0.9, 0.5)
 		get_tree().create_timer(0.3).timeout.connect(_end_teleport_visual)
 	
+	# Emit teleported signal so game_map can play sound + show indicator
+	teleported.emit(global_position)
+	
 	_change_state(State.TELEPORTING)
 	_hide_vfx()
 
@@ -457,6 +487,10 @@ func _end_teleport_visual() -> void:
 # ---------- HIT (MB1) ----------
 
 func use_hit() -> void:
+	# Play hit sound
+	if is_instance_valid(hit_sound) and not hit_sound.playing:
+		hit_sound.play()
+	
 	if current_state != State.IDLE and current_state != State.WALKING:
 		return
 	if hit_on_cooldown:

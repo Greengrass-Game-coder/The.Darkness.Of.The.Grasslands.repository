@@ -95,7 +95,7 @@ func _ready() -> void:
 		elif status == ResourceLoader.THREAD_LOAD_IN_PROGRESS and not timed_out:
 			await get_tree().process_frame
 		elif timed_out:
-			# Timed out — do a direct load instead
+			# Timed out ----- do a direct load instead
 			var direct: Resource = load(PRELOAD_SCENE)
 			if direct:
 				_load_complete = true
@@ -105,12 +105,12 @@ func _ready() -> void:
 				if loading_label:
 					loading_label.text = "Loading... 100%"
 			else:
-				# Even direct load failed — proceed anyway
+				# Even direct load failed ----- proceed anyway
 				_load_complete = true
 				_load_progress = 1.0
 			break
 		else:
-			# Error or unsupported — mark as done so we don't hang
+			# Error or unsupported ----- mark as done so we don't hang
 			_load_complete = true
 			_load_progress = 1.0
 			if progress_bar:
@@ -153,9 +153,9 @@ func _on_skip_pressed() -> void:
 	if loading_label:
 		loading_label.text = "Loading in background..."
 	
-	# Go to lobby immediately — threaded load continues globally
+	# Go to lobby immediately ----- threaded load continues globally
 	_finish_loading()
 
 
 func _finish_loading() -> void:
-	get_tree().change_scene_to_file(RETURN_SCENE)
+	SceneFader.go(RETURN_SCENE, "Loading lobby...")

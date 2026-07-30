@@ -87,6 +87,7 @@ var _punch_cd_timer: float = 0.0
 var _flower_cd_timer: float = 0.0
 var _base_col_scale: Vector2 = Vector2.ONE
 var _base_sprite_scale: float = 0.25
+var stair_climbing: bool = false
 
 
 func _ready() -> void:

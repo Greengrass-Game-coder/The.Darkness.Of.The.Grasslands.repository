@@ -1,4 +1,4 @@
-## BitmapTextUtil — convenience functions for creating properly-sized BitmapLabels.
+## BitmapTextUtil ----- convenience functions for creating properly-sized BitmapLabels.
 ## Use these in game_map.gd, chat_layer.gd, and other scripts to create
 ## text that uses Font1 character sprites.
 
@@ -7,7 +7,7 @@ static func make_label(text: String, font_size: float = 16.0, color: Color = Col
 	var bl := BitmapLabel.new()
 	bl.label_text = text
 	bl.font_color = color
-	# Map: 100px native char height ≈ 56pt system font → scale_factor = font_size / 120.0
+	# Map: 100px native char height -%- 56pt system font -->- scale_factor = font_size / 120.0
 	bl.font_scale = font_size / 120.0
 	bl.char_spacing = font_size * 0.12
 	if center:
@@ -19,7 +19,7 @@ static func make_key_label(key_text: String) -> BitmapLabel:
 	var bl := BitmapLabel.new()
 	bl.label_text = key_text
 	bl.font_color = Color(1, 1, 1, 0.8)
-	bl.font_scale = 0.12  # ~14pt
+	bl.font_scale = 0.10  # ~12pt
 	bl.char_spacing = 2.0
 	return bl
 
@@ -27,7 +27,7 @@ static func make_cooldown_label() -> BitmapLabel:
 	"""Create a centered cooldown number label."""
 	var bl := BitmapLabel.new()
 	bl.font_color = Color(1, 1, 1, 0.9)
-	bl.font_scale = 0.2  # ~24pt
+	bl.font_scale = 0.16  # ~19pt
 	bl.horizontal_align = 1
 	bl.vertical_align = 1
 	bl.char_spacing = 2.0

@@ -1,5 +1,5 @@
 extends Node
-## FontHelpers — utility functions for creating BitmapLabel instances
+## FontHelpers ----- utility functions for creating BitmapLabel instances
 ## with common configurations. Use these instead of BitmapLabel.new() for
 ## game-styled text using Font1 character sprites.
 ##
@@ -15,7 +15,7 @@ static func make_text(text: String, font_size: float, position: Vector2, color: 
 	# So scale = font_size / 56.0 gives approximate sizing
 	# But our char height is ~100-150px, 56pt system font is ~56px tall
 	# Scale factor of ~0.4-0.6 should be right for most text
-	# Empirical: 56pt system font ≈ 56px → scale 56/120 = 0.47
+	# Empirical: 56pt system font -%- 56px -->- scale 56/120 = 0.47
 	bl.font_scale = font_size / 120.0
 	bl.char_spacing = font_size * 0.12
 

@@ -93,7 +93,7 @@ func _add_character_card(name_text: String, icon_path: String, status_text: Stri
 	# Name label (BitmapLabel)
 	var name_lbl := BitmapLabel.new()
 	name_lbl.label_text = name_text
-	name_lbl.font_scale = 0.22
+	name_lbl.font_scale = 0.18
 	name_lbl.font_color = Color(1, 1, 1, 1)
 	name_lbl.position = card_name_pos
 	name_lbl.size = Vector2(260, 30)
@@ -102,7 +102,7 @@ func _add_character_card(name_text: String, icon_path: String, status_text: Stri
 	# Status label (OWNED) - BitmapLabel
 	var status_lbl := BitmapLabel.new()
 	status_lbl.label_text = status_text
-	status_lbl.font_scale = 0.18
+	status_lbl.font_scale = 0.14
 	status_lbl.font_color = Color(0.5, 1, 0.5, 1)
 	status_lbl.position = card_status_pos
 	status_lbl.size = Vector2(260, 24)

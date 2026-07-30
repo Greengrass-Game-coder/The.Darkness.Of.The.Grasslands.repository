@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script="res://resources/dialogue_line.gd" format=3]
+
+[resource]
+script = Resource("res://resources/dialogue_line.gd")
+lines = Array[String](["[Evil Potato] GASP!! IS THAT YOU LARPGUY?!?!?!!?",
+"[Orange Guy] Yes it is I!",
+"[Orange Guy] Wtf do you mean...",
+"[Evil Potato] OH MY GOD YOU BASTARD!!!!",
+"[Evil Potato] I!",
+"[Evil Potato] I can't do nuthin because you literally have limbs while i have none... );",
+"[Evil Potato] Oh! Perhaps i am mistaken...",
+"[Evil Potato] ...",
+"[Orange Guy] Bye"])
+choices = {
+	1: [{"text":"\"Yes it is I!\"","target":3}],
+	2: [{"text":"\"Wtf do you mean...\"","target":6}],
+	3: [{"text":"","target":4,"auto":true}],
+	4: [{"text":"","target":5,"auto":true}],
+	5: [{"text":"","target":8,"auto":true}],
+	6: [{"text":"","target":7,"auto":true}],
+	7: [{"text":"","target":8,"auto":true}],
+	8: [{"text":"Bye","target":-2}]
+}

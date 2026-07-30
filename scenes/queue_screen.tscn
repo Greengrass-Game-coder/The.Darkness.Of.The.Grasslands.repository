@@ -1,7 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://bt58j7fn5ltn4"]
+[gd_scene format=3 uid="uid://bt58j7fn5ltn4"]
 
-[ext_resource type="Script" path="res://scripts/ui/queue_screen.gd" id="1_5hgr3"]
+[ext_resource type="Script" uid="uid://cet7bvqt15lqo" path="res://scripts/ui/queue_screen.gd" id="1_5hgr3"]
 
-[node name="QueueScreen" type="CanvasLayer"]
+[node name="QueueScreen" type="CanvasLayer" unique_id=461781159]
 layer = 128
 script = ExtResource("1_5hgr3")

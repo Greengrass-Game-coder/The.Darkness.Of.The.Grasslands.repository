@@ -26,6 +26,8 @@
 [ext_resource type="Texture2D" uid="uid://0r20dvwk4qla" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-8.png" id="17_3edid"]
 [ext_resource type="Texture2D" uid="uid://cai0gtdc4v4f0" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-9.png" id="18_ervg2"]
 [ext_resource type="Texture2D" uid="uid://b6g6mtrgod0fn" path="res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-10.png" id="19_unp45"]
+[ext_resource type="AudioStreamWAV" path="res://The Darkness Of The Grasslands assets/Sound/Sfx/Violentgrass_Hit.wav" id="20_hitwav"]
+[ext_resource type="AudioStreamWAV" uid="uid://bhfigudh5vvlv" path="res://The Darkness Of The Grasslands assets/Sound/Sfx/Violentgrass_Teleportation.wav" id="21_teleportwav"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_vg"]
 animations = [{
@@ -185,6 +187,8 @@ animations = [{
 script = ExtResource("1_7nksj")
 sprint_speed = 500.0
 teleport_cooldown = 35.0
+size_mult = 1.5
+chase_in_chase = 600.0
 chase_fade_in_duration = 0.0
 chase_fade_out_duration = 0.0
 
@@ -207,3 +211,9 @@ z_index = 100
 scale = Vector2(0.25, 0.25)
 sprite_frames = SubResource("SpriteFrames_xlvmw")
 animation = &"teleport_down"
+
+[node name="HitSound" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("20_hitwav")
+
+[node name="TeleportSound" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("21_teleportwav")

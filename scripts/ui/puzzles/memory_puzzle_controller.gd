@@ -108,7 +108,7 @@ func _on_tile_clicked(idx: int) -> void:
 			# Completed successfully
 			_accept_input = false
 			if instruction_label:
-				instruction_label.text = "✓ Solved!"
+				instruction_label.text = "-...- Solved!"
 			for i in range(tile_count):
 				if is_instance_valid(tiles[i]):
 					tiles[i].color = COLOR_SUCCESS

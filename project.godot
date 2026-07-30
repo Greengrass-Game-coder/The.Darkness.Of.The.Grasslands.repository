@@ -11,10 +11,9 @@ config_version=5
 [application]
 
 config/name="The Darkness Of The Grasslands"
-run/main_scene="uid://dxhksv6ivmaii"
+run/main_scene="res://scenes/login.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
-"#run/main_sceneisin[run]sectionbelowconfig/features"=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
 
@@ -23,6 +22,9 @@ AuthManager="*res://scripts/systems/auth_manager.gd"
 NetworkManager="*res://scripts/systems/network_manager.gd"
 FontManager="*res://scripts/systems/font_manager.gd"
 EnvironmentConfig="*res://scripts/systems/environment_config.gd"
+FriendsManager="*res://scripts/systems/friends_manager.gd"
+SaveManager="*res://scripts/systems/save_manager.gd"
+SFXManager="*res://scripts/systems/sfx_manager.gd"
 
 [display]
 
@@ -30,6 +32,10 @@ window/size/viewport_width="1024"
 window/size/viewport_height="768"
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray()
 
 [input]
 
@@ -42,6 +48,10 @@ ability_1="[{\"type\": \"key\", \"keycode\": \"Q\"}]"
 ability_2="[{\"type\": \"key\", \"keycode\": \"E\"}]"
 ability_3="[{\"type\": \"key\", \"keycode\": \"R\"}]"
 ability_4="[{\"type\": \"key\", \"keycode\": \"T\"}]"
+
+[limbo_ai]
+
+behavior_tree/favorite_tasks=PackedStringArray("BTSequence", "BTComment")
 
 [physics]
 

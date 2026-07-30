@@ -335,14 +335,20 @@ scale = Vector2(4, 4)
 shape = SubResource("RectangleShape2D_h7k9m")
 
 [node name="PotatoPrompt" type="Label" parent="EvilPotato" unique_id=1491302297]
-offset_top = -55.0
-offset_bottom = -25.0
+offset_left = -267.0
+offset_top = 50.0
+offset_right = 290.0
+offset_bottom = 217.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
 theme_override_constants/shadow_offset_x = 2
 theme_override_constants/shadow_offset_y = 2
 theme_override_font_sizes/font_size = 22
-text = "Press [E] to talk"
+text = "Press [E] to talk with MISTER EVIL POTATA RAHHHHH
+HHHH
+HHH
+HH
+H"
 horizontal_alignment = 1
 
 [node name="RedFlower" type="Area2D" parent="." unique_id=1900000001]

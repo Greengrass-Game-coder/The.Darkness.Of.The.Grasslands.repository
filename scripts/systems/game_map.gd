@@ -27,8 +27,8 @@ const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_surv
 # Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
 const BOT_CHASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/Violentgrass/"
 const CHASE_LAYER_FILES: Array[String] = ["Layer1.wav", "Layer2.wav", "Layer3.wav", "Chase.wav"]
-const CHASE_ENTER_DIST: Array[float] = [600.0, 350.0, 200.0, 100.0]   # When each layer starts
-const CHASE_EXIT_DIST: Array[float]  = [700.0, 450.0, 300.0, 150.0]   # When each layer stops (hysteresis)
+const CHASE_ENTER_DIST: Array[float] = [800.0, 500.0, 300.0, 150.0]   # When each layer starts: Layer1=far, Layer2=medium, Layer3=close, Chase=very close
+const CHASE_EXIT_DIST: Array[float]  = [900.0, 600.0, 400.0, 220.0]   # When each layer stops (hysteresis)
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
 const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
@@ -69,13 +69,23 @@ var _total_damage_taken: float = 0.0
 var _total_damage_dealt: float = 0.0
 var _character_name: String = "Greengrass"
 
-# Damage tracking for VFX
-var _last_known_hp: float = -1.0
+# Damage tracking for VFX (consolidated with _last_hp)
+# @deprecated _last_known_hp — now using _last_hp for both paths
 var _last_damage_time: float = -10.0  # When last damage was taken (for screen shake cooldown)
 
 # BitmapLabel references
 var _bitmap_timer: BitmapLabel = null
 var _timer_flash_red: float = 0.0  # Timer turns red when decreasing
+
+# Kill bonus animation state
+var _bonus_target: float = 0.0  # Target _time_remaining after bonus animation
+var _bonus_tick_timer: float = 0.0  # Accumulator for 1-second ticks
+
+# Multiplayer integration
+var _multiplayer_sync: MultiplayerGameSync = null
+
+# AI difficulty controller
+var _ai_difficulty: AIDifficultyController = null
 
 
 func _ready() -> void:
@@ -115,14 +125,30 @@ func _ready() -> void:
 	_time_remaining = MATCH_DURATION
 	_update_timer_label()
 	
+	# Determine if this player should be the killer based on rings
+	var gs = get_node("/root/GameState")
+	var should_be_killer: bool = false
+	if gs != null:
+		should_be_killer = _determine_killer_by_rings()
+		gs.is_killer = should_be_killer
+	
 	# Spawn the player character (also spawns killer bot if survivor)
-	spawn_player(GameState.is_killer)
+	spawn_player(should_be_killer)
 	
 	# Setup chat system
 	_setup_chat()
 	
+	# Load saved settings into GameState
+	_apply_saved_settings()
+	
+	# Setup admin panel (for in-game admin controls)
+	_setup_admin_panel()
+	
 	# Replace HUD labels with BitmapLabel versions
 	_replace_hud_labels()
+	
+	# Initialize multiplayer sync if connected to server
+	_initialize_multiplayer()
 	
 	# Play killer intro cutscene after spawns are complete
 	call_deferred("_play_killer_cutscene")
@@ -141,8 +167,8 @@ func _replace_hud_labels() -> void:
 			var bl := BitmapLabel.new()
 			bl.name = "BmpTimer"
 			bl.label_text = timer_label.text
-			bl.font_scale = 0.25
-			bl.char_spacing = 4.0
+			bl.font_scale = 0.18
+			bl.char_spacing = 3.0
 			bl.horizontal_align = timer_label.horizontal_alignment
 			bl.font_color = Color(1, 1, 1, 1)
 			bl.position = timer_label.position
@@ -266,6 +292,8 @@ func _place_markers() -> void:
 		shape.size = Vector2(64, 64)
 		col.shape = shape
 		area.add_child(col)
+		area.body_entered.connect(_on_stairs_entered.bind(area))
+		area.body_exited.connect(_on_stairs_exited.bind(area))
 		add_child(area)
 	
 	# Puzzles as interactive Area2D triggers
@@ -331,7 +359,8 @@ func _place_markers() -> void:
 
 func spawn_player(spawn_as_killer: bool = false) -> void:
 	"""Spawn the player character at the appropriate spawn point."""
-	var is_killer_player: bool = spawn_as_killer or GameState.is_killer
+	var gs_sp = get_node("/root/GameState")
+	var is_killer_player: bool = spawn_as_killer or (gs_sp != null and gs_sp.is_killer)
 	var spawn_pos: Vector2 = _map_manager.get_spawn_point(is_killer_player)
 	
 	var player_scene: PackedScene = VIOLENTGRASS_SCENE if is_killer_player else GREENGRASS_SCENE
@@ -342,6 +371,11 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	
 	# Enable camera on the player
 	var cam := _player.get_node_or_null("Camera2D") as Camera2D
+	if not cam:
+		# Some characters (e.g. Violentgrass) don't have a Camera2D — add one
+		cam = Camera2D.new()
+		cam.name = "Camera2D"
+		_player.add_child(cam)
 	if cam:
 		cam.enabled = true
 		cam.make_current()
@@ -370,6 +404,8 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	# Spawn bot killer if survivor, or survivor bots if killer
 	if not is_killer_player:
 		_spawn_bot_killer()
+		# Attach dynamic difficulty controller to AI bot
+		_attach_ai_difficulty()
 	else:
 		_spawn_survivor_bots()
 	
@@ -381,7 +417,61 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	if _player.has_signal("teleport_scan_started") and not _player.teleport_scan_started.is_connected(_on_killer_teleport_scan):
 		_player.teleport_scan_started.connect(_on_killer_teleport_scan)
 	
+	# Connect teleported signal for sound + indicator
+	if _player.has_signal("teleported") and not _player.teleported.is_connected(_on_player_teleported):
+		_player.teleported.connect(_on_player_teleported)
+	
+	# Connect teleport cancel to close mini-map
+	if _player.has_signal("teleport_cancelled") and not _player.teleport_cancelled.is_connected(_close_teleport_minimap):
+		_player.teleport_cancelled.connect(_close_teleport_minimap)
+	
+	# Re-assert player camera (bots spawned above may have tried to steal it)
+	if is_instance_valid(cam):
+		cam.enabled = true
+		cam.make_current()
+	
 	print("GameMap: Spawned ", _character_name, " at ", spawn_pos)
+
+
+# ═══════════════ STAIRS SYSTEM ═══════════════
+
+func _on_stairs_entered(body: Node2D, area: Area2D) -> void:
+	"""When a player enters a stair zone, check front/behind."""
+	if not _is_player_or_bot(body):
+		return
+	# Player is BEHIND stairs (Y < center) → climb (scale up)
+	# Player is IN FRONT of stairs (Y > center) → blocked (collision stays)
+	var behind: bool = body.global_position.y < area.global_position.y
+	if behind:
+		body.set("stair_climbing", true)
+		# Scale up to create depth illusion
+		var tween := create_tween()
+		tween.tween_property(body, "scale", body.scale * 1.5, 0.2)
+		# Disable collision with the stair segment so player can walk through
+		body.set_collision_mask_value(4, false)  # Temporarily disable wall collision
+
+
+func _on_stairs_exited(body: Node2D, _area: Area2D) -> void:
+	"""When a player exits a stair zone, restore normal scale and collision."""
+	if not _is_player_or_bot(body):
+		return
+	body.set("stair_climbing", false)
+	# Restore normal scale
+	var tween := create_tween()
+	tween.tween_property(body, "scale", body.scale / 1.5, 0.2)
+	# Restore wall collision
+	body.set_collision_mask_value(4, true)
+
+
+func _is_player_or_bot(body: Node2D) -> bool:
+	"""Check if the body is the player or an AI bot."""
+	if body == _player:
+		return true
+	if _survivor_bots.has(body):
+		return true
+	if _killer_bot == body:
+		return true
+	return false
 
 
 func _create_health_bar(player: Node2D) -> void:
@@ -471,6 +561,24 @@ func _process(delta: float) -> void:
 	"""Update HUD, interact detection, cooldowns, and settings each frame."""
 	if not is_instance_valid(_player):
 		return
+	
+	# Multiplayer position sync
+	if _multiplayer_sync and is_instance_valid(_player):
+		_sync_multiplayer_position(_player.global_position)
+	
+	# Animated timer bonus count-up (red, tick-by-tick)
+	if _bonus_target > 0.0:
+		_bonus_tick_timer += delta
+		var tick_speed: float = 0.15  # ~6.7 ticks per second
+		while _bonus_tick_timer >= tick_speed and _time_remaining < _bonus_target:
+			_bonus_tick_timer -= tick_speed
+			_time_remaining = min(_time_remaining + 1.0, _bonus_target)
+			_timer_flash_red = 0.3  # Keep red while counting up
+			_update_timer_label()
+		if _time_remaining >= _bonus_target:
+			_bonus_target = 0.0
+			_bonus_tick_timer = 0.0
+	
 	_update_ability_cooldowns()
 	_check_interact_input(delta)
 	_check_settings_updates()
@@ -483,6 +591,9 @@ func _process(delta: float) -> void:
 		_ending_start_time += delta
 		_update_ending_vignette()
 		_switch_to_ending_music()
+	
+	# Update AI difficulty scaling
+	_update_ai_difficulty()
 	
 	# +30s timer bonus when killer eliminates a survivor (local mode)
 	_check_kill_timer_bonus()
@@ -675,14 +786,13 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 	label.text = "%d / %d" % [current_hp, max_hp]
 	
 	# Damage VFX: screen shake + red flash when HP drops
-	if _last_known_hp >= 0 and current_hp < _last_known_hp:
-		var dmg: float = _last_known_hp - current_hp
+	if _last_hp >= 0 and current_hp < _last_hp:
+		var dmg: float = _last_hp - current_hp
 		_total_damage_taken += dmg
 		_trigger_screen_shake(clampf(dmg * 0.2, 2.0, 8.0), 0.25)
 		_trigger_vignette()
 		_last_damage_time = _time_remaining
-	
-	_last_known_hp = current_hp
+	_last_hp = current_hp
 	
 	# Color shifts from green to red as HP drops
 	if ratio < 0.3:
@@ -699,7 +809,6 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 			_on_killer_eliminated("Player")
 		# Start death sequence
 		_start_death_sequence()
-	_last_hp = current_hp
 
 
 func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:
@@ -730,6 +839,10 @@ func _bots_create_survivor(spawn_pos: Vector2, name_str: String) -> void:
 	bot.set_script(AI_SURVIVOR_BOT_SCRIPT)
 	bot.name = name_str
 	bot.position = spawn_pos
+	# Disable bot camera so it doesn't steal focus from the player
+	var bot_cam: Camera2D = bot.get_node_or_null("Camera2D") as Camera2D
+	if bot_cam:
+		bot_cam.enabled = false
 	add_child(bot)
 	if bot.has_signal("bot_solved_puzzle"):
 		bot.bot_solved_puzzle.connect(_on_bot_solved_puzzle)
@@ -750,6 +863,9 @@ func _spawn_bot_killer() -> void:
 	# Connect killer hit signal for damage tracking
 	if bot.has_signal("hit_landed") and not bot.hit_landed.is_connected(_on_killer_hit_landed):
 		bot.hit_landed.connect(_on_killer_hit_landed)
+	# Connect teleported signal for sound + indicator
+	if bot.has_signal("teleported") and not bot.teleported.is_connected(_on_player_teleported):
+		bot.teleported.connect(_on_player_teleported)
 	# Store killer's base sprint speed for scaling
 	if bot.has_method("get_sprint_speed"):
 		_killer_base_sprint = bot.sprint_speed
@@ -836,7 +952,9 @@ func _setup_chase_music() -> void:
 
 
 func _play_killer_cutscene() -> void:
-	"""Play the Violentgrass killer intro cutscene from PNG frames."""
+	"""Play the Violentgrass killer intro cutscene from PNG frames.
+	Also shows animated text overlay: 'THE NEXT KILLER IS:' fades in,
+	then killer name + player username appear 2.5s later with zoom effect."""
 	# Hide everything except the cutscene
 	var hud: CanvasLayer = $HUD
 	if hud:
@@ -862,9 +980,106 @@ func _play_killer_cutscene() -> void:
 	
 	cutscene.play_cutscene(folder_path, audio_path)
 	
+	# ── Build text overlay (on top of cutscene frames) ──
+	var overlay := CanvasLayer.new()
+	overlay.name = "KillerIntroTextOverlay"
+	overlay.layer = 5  # Above cutscene (layer 0/1), below HUD (layer 10)
+	add_child(overlay)
+	
+	var container := Control.new()
+	container.name = "IntroTextContainer"
+	container.anchors_preset = Control.PRESET_FULL_RECT
+	overlay.add_child(container)
+	
+	# "THE NEXT KILLER IS:" — appears immediately with fade + zoom
+	var line1 := Label.new()
+	line1.name = "Line1_TheNextKiller"
+	line1.text = "THE NEXT KILLER IS:"
+	line1.anchors_preset = Control.PRESET_TOP_WIDE
+	line1.offset_left = 0
+	line1.offset_right = 0
+	line1.offset_top = 220
+	line1.offset_bottom = 300
+	line1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line1.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	line1.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	line1.add_theme_font_size_override("font_size", 36)
+	line1.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	line1.add_theme_constant_override("outline_size", 4)
+	line1.modulate = Color(1, 1, 1, 0)
+	line1.pivot_offset = Vector2(512, 40)  # center of label for scale-from-center
+	line1.scale = Vector2(0.4, 0.4)
+	container.add_child(line1)
+	
+	# Killer name — appears 2.5s later with fade + zoom
+	# Show "Killer_AI" when no human killer (AI bot is the killer)
+	var is_human_killer: bool = GameState.is_killer
+	var killer_name: String = "Violentgrass" if is_human_killer else "Killer_AI"
+	var line2 := Label.new()
+	line2.name = "Line2_KillerName"
+	line2.text = killer_name
+	line2.anchors_preset = Control.PRESET_TOP_WIDE
+	line2.offset_left = 0
+	line2.offset_right = 0
+	line2.offset_top = 310
+	line2.offset_bottom = 410
+	line2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line2.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	line2.add_theme_color_override("font_color", Color(1, 0.15, 0.15, 1))
+	line2.add_theme_font_size_override("font_size", 56)
+	line2.add_theme_color_override("font_outline_color", Color(0.3, 0, 0, 1))
+	line2.add_theme_constant_override("outline_size", 6)
+	line2.modulate = Color(1, 1, 1, 0)
+	line2.pivot_offset = Vector2(512, 50)  # center of label for scale-from-center
+	line2.scale = Vector2(0.3, 0.3)
+	container.add_child(line2)
+	
+	# Player username — same timing as killer name, positioned below
+	var player_name: String = ""
+	var gs = get_node("/root/GameState")
+	if gs != null:
+		player_name = gs.logged_in_username
+	var line3 := Label.new()
+	line3.name = "Line3_PlayerName"
+	line3.text = player_name
+	line3.anchors_preset = Control.PRESET_TOP_WIDE
+	line3.offset_left = 0
+	line3.offset_right = 0
+	line3.offset_top = 420
+	line3.offset_bottom = 470
+	line3.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line3.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	line3.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6, 1))
+	line3.add_theme_font_size_override("font_size", 26)
+	line3.modulate = Color(1, 1, 1, 0)
+	line3.pivot_offset = Vector2(512, 25)  # center of label for scale-from-center
+	line3.scale = Vector2(0.4, 0.4)
+	container.add_child(line3)
+	
+	# ── Animate ──
+	# Line 1: fade in + zoom immediately (0.8s)
+	var t1: Tween = create_tween().set_parallel(true)
+	t1.tween_property(line1, "modulate", Color(1, 1, 1, 1), 0.8).set_ease(Tween.EASE_OUT)
+	t1.tween_property(line1, "scale", Vector2(1.0, 1.0), 0.8).set_ease(Tween.EASE_OUT)
+	
+	# Wait 2.5s, then lines 2 and 3: fade in + zoom (1.0s)
+	var t2_start: float = 2.5
+	await get_tree().create_timer(t2_start).timeout
+	
+	if is_instance_valid(overlay):
+		var t2: Tween = create_tween().set_parallel(true)
+		t2.tween_property(line2, "modulate", Color(1, 0.15, 0.15, 1), 1.0).set_ease(Tween.EASE_OUT)
+		t2.tween_property(line2, "scale", Vector2(1.0, 1.0), 1.0).set_ease(Tween.EASE_OUT)
+		t2.tween_property(line3, "modulate", Color(0.6, 0.6, 0.6, 0.6), 1.0).set_ease(Tween.EASE_OUT)
+		t2.tween_property(line3, "scale", Vector2(1.0, 1.0), 1.0).set_ease(Tween.EASE_OUT)
+	
 	# Wait for cutscene to finish (has auto-fade in last 1s)
 	await cutscene.finished
 	cutscene.queue_free()
+	
+	# Clean up the text overlay
+	if is_instance_valid(overlay):
+		overlay.queue_free()
 	
 	# Restore everything
 	if hud:
@@ -885,14 +1100,20 @@ func _on_chase_loop(player: AudioStreamPlayer) -> void:
 
 
 func _update_chase_music(_delta: float) -> void:
-	"""Update chase music based on player-killer or bot-killer to nearest survivor."""
-	# Determine chase source: player (if killer) or bot (if survivor)
-	var is_player_killer: bool = _character_name == "Violentgrass"
-	var chase_source: Node2D = null
-	if is_player_killer and is_instance_valid(_player):
-		chase_source = _player
-	elif is_instance_valid(_killer_bot):
-		chase_source = _killer_bot
+	"""Update chase music for SURVIVORS only, based on distance to the nearest killer.
+	
+	- If the human player IS the killer → silence chase (killers don't hear their own theme)
+	- If the human is a survivor → play chase layers based on distance to AI killer bot
+	
+	Only ONE layer plays at a time (no stacking). Layers transition from
+	Layer1 (farthest) → Layer2 → Layer3 → Chase (closest)."""
+	# SILENCE CHASE IF THE PLAYER IS THE KILLER — only survivors should hear chase music
+	if _character_name == "Violentgrass":
+		_silence_all_chase()
+		return
+	
+	# Player is a survivor — chase source is the AI killer bot
+	var chase_source: Node2D = _killer_bot if is_instance_valid(_killer_bot) else null
 	
 	if not is_instance_valid(chase_source):
 		_silence_all_chase()
@@ -900,7 +1121,7 @@ func _update_chase_music(_delta: float) -> void:
 	if _chase_players.is_empty():
 		return
 	
-	# Measure distance to nearest survivor
+	# Measure distance from killer (chase_source) to nearest survivor
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
 	var closest_dist: float = INF
 	for s in survivors:
@@ -916,10 +1137,13 @@ func _update_chase_music(_delta: float) -> void:
 	var dist: float = closest_dist
 	
 	# Determine which layer should be active based on distance
+	# Iterate from closest (index 3 = Chase) to farthest (index 0 = Layer1)
+	# BREAK on first match so we get the CLOSEST matching layer, not the farthest
 	var target_layer: int = -1  # -1 = no chase (too far)
 	for i: int in range(CHASE_ENTER_DIST.size() - 1, -1, -1):
 		if dist <= CHASE_ENTER_DIST[i]:
 			target_layer = i
+			break  # CRITICAL: stop at closest match, don't override with farther layers
 	
 	# Apply hysteresis: if currently at a layer, use EXIT distance to leave
 	if _chase_active_layer >= 0 and target_layer < _chase_active_layer:
@@ -936,14 +1160,13 @@ func _update_chase_music(_delta: float) -> void:
 		var _old_layer: int = _chase_active_layer
 		_chase_active_layer = target_layer
 		
-		# Mute all players first
+		# INSTANTLY mute all players (no tween — prevents stacking overlap)
 		for i: int in _chase_players.size():
 			if is_instance_valid(_chase_players[i]):
 				_chase_layers_enabled[i] = false
-				var tween := create_tween()
-				tween.tween_property(_chase_players[i], "volume_db", -80.0, CHASE_VOL_FADE_MS)
+				_chase_players[i].volume_db = -80.0
 		
-		# Unmute the target layer if any
+		# Fade-IN only the target layer (smooth transition)
 		if target_layer >= 0 and target_layer < _chase_players.size():
 			_chase_layers_enabled[target_layer] = true
 			if is_instance_valid(_chase_players[target_layer]):
@@ -973,10 +1196,10 @@ func _silence_all_chase() -> void:
 # ---------- TELEPORT MINI-MAP ----------
 
 func _on_killer_teleport_scan() -> void:
-	"""Show mini-map overlay when killer activates teleport scan."""
-	if not is_instance_valid(_killer_bot):
-		return
-	_show_teleport_minimap()
+	"""Show mini-map overlay when killer activates teleport scan.
+	Works for both human killers (GameState.is_killer) and AI bot killers."""
+	if GameState.is_killer or is_instance_valid(_killer_bot):
+		_show_teleport_minimap()
 
 
 func _show_teleport_minimap() -> void:
@@ -998,7 +1221,7 @@ func _show_teleport_minimap() -> void:
 	minimap.add_child(bg)
 	
 	# Determine map bounds from map manager
-	var map_size: Vector2 = _map_manager.blueprint_size if _map_manager else Vector2(1024, 768)
+	var map_size: Vector2 = (Vector2(_map_manager.blueprint_size) if _map_manager else Vector2(1024, 768))
 	# Display area for the mini-map (centered, 300x225)
 	var mm_w: float = 300.0
 	var mm_h: float = 225.0
@@ -1049,14 +1272,15 @@ func _show_teleport_minimap() -> void:
 		dot.pressed.connect(_on_minimap_dot_pressed.bind(world_pos))
 		minimap.add_child(dot)
 	
-	# Close button
-	var close_btn := Button.new()
-	close_btn.text = "X CANCEL"
-	close_btn.position = Vector2(mm_x + mm_w - 80, mm_y + mm_h + 8)
-	close_btn.size = Vector2(80, 28)
-	close_btn.add_theme_color_override("font_color", Color(1, 0.5, 0.5, 1))
-	close_btn.pressed.connect(_close_teleport_minimap)
-	minimap.add_child(close_btn)
+	# Cancel hint — press [E] again to cancel
+	var cancel_hint := Label.new()
+	cancel_hint.text = "Press [E] to cancel"
+	cancel_hint.position = Vector2(mm_x + mm_w - 160, mm_y + mm_h + 8)
+	cancel_hint.size = Vector2(160, 24)
+	cancel_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cancel_hint.add_theme_color_override("font_color", Color(1, 0.6, 0.6, 0.9))
+	cancel_hint.add_theme_font_size_override("font_size", 14)
+	minimap.add_child(cancel_hint)
 
 
 func _on_minimap_dot_pressed(world_pos: Vector2) -> void:
@@ -1071,6 +1295,101 @@ func _close_teleport_minimap() -> void:
 	if is_instance_valid(_teleport_minimap):
 		_teleport_minimap.queue_free()
 		_teleport_minimap = null
+
+
+# ---------- TELEPORT SOUND + INDICATOR ----------
+
+const TELEPORT_SOUND_PATH: String = "res://The Darkness Of The Grasslands assets/Sound/Sfx/Violentgrass_Teleportation.wav"
+
+func _on_player_teleported(new_pos: Vector2) -> void:
+	"""Called when Violentgrass (player or AI bot) completes a teleport.
+	Plays a positional sound at the destination and shows an arrow indicator
+	on survivor HUDs pointing toward the teleport location."""
+	_play_teleport_sound_at(new_pos)
+	_close_teleport_minimap()
+	_show_teleport_indicator(new_pos)
+
+
+func _play_teleport_sound_at(pos: Vector2) -> void:
+	"""Spawn a temporary positional audio player at the teleport position."""
+	var player := AudioStreamPlayer2D.new()
+	player.stream = load(TELEPORT_SOUND_PATH)
+	player.global_position = pos
+	player.max_distance = 800.0  # Audible to nearby survivors
+	player.volume_db = 0.0
+	add_child(player)
+	player.play()
+	# Auto-cleanup after sound finishes playing
+	get_tree().create_timer(2.5).timeout.connect(func ():
+		if is_instance_valid(player):
+			player.queue_free()
+	)
+
+
+func _show_teleport_indicator(teleport_pos: Vector2) -> void:
+	"""Show a directional arrow on the player's HUD pointing to the teleport location.
+	Only shows when the player is a survivor (not the killer who teleported).
+	The arrow disappears after 3 seconds."""
+	# Don't show if the player IS the killer
+	if _character_name == "Violentgrass" or GameState.is_killer:
+		return
+	
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	
+	# Get relative direction from player to teleport position
+	var dir: Vector2 = (teleport_pos - _player.global_position).normalized() if is_instance_valid(_player) else Vector2.RIGHT
+	
+	# Create the indicator — a Label with a transparent arrow character
+	var arrow_label := Label.new()
+	arrow_label.name = "TeleportIndicator"
+	arrow_label.text = "▶"
+	arrow_label.add_theme_color_override("font_color", Color(1, 0.2, 0.2, 0.95))
+	arrow_label.add_theme_font_size_override("font_size", 32)
+	arrow_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	arrow_label.add_theme_constant_override("outline_size", 3)
+	arrow_label.size = Vector2(40, 40)
+	arrow_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	arrow_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	
+	# Place at screen edge
+	var margin: float = 40.0
+	var edge_x: float = viewport_size.x * 0.5 + dir.x * (viewport_size.x * 0.5 - margin)
+	var edge_y: float = viewport_size.y * 0.5 + dir.y * (viewport_size.y * 0.5 - margin)
+	edge_x = clamp(edge_x, margin, viewport_size.x - margin)
+	edge_y = clamp(edge_y, margin, viewport_size.y - margin)
+	
+	arrow_label.position = Vector2(edge_x - 20, edge_y - 20)
+	
+	# Rotate the arrow to point toward the teleport location
+	var angle: float = atan2(dir.y, dir.x)
+	arrow_label.pivot_offset = Vector2(20, 20)
+	arrow_label.rotation = angle
+	
+	# Add to HUD
+	$HUD.add_child(arrow_label)
+	
+	# Add a secondary ring pulse effect below the arrow
+	var ring := ColorRect.new()
+	ring.name = "TeleportIndicatorRing"
+	ring.size = Vector2(6, 6)
+	ring.position = arrow_label.position + Vector2(17, 17)
+	ring.color = Color(1, 0.2, 0.2, 0.6)
+	$HUD.add_child(ring)
+	
+	# Animate ring pulse
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(ring, "size", Vector2(20, 20), 0.5)
+	tween.tween_property(ring, "modulate:a", 0.0, 0.5)
+	tween.tween_property(arrow_label, "modulate:a", 0.0, 0.5).set_delay(2.5)
+	
+	# Remove both after 3 seconds
+	get_tree().create_timer(3.0).timeout.connect(func ():
+		if is_instance_valid(arrow_label):
+			arrow_label.queue_free()
+		if is_instance_valid(ring):
+			ring.queue_free()
+	)
 
 
 func get_random_killer_spawn() -> Vector2:
@@ -1110,18 +1429,17 @@ func _check_kill_timer_bonus() -> void:
 	# The +30s is actually added there. See _on_player_died() for implementation.
 
 func add_timer_bonus(seconds: float) -> void:
-	"""Add time to the match timer (e.g. +30s when killer kills a survivor)."""
-	_time_remaining = min(_time_remaining + seconds, MATCH_DURATION)
-	_update_timer_label()
-	print("GameMap: Timer +", seconds, "s (now ", _time_remaining, "s)")
+	"""Add time to the match timer with animated red count-up."""
+	_bonus_target = min(_time_remaining + seconds, MATCH_DURATION)
+	print("GameMap: Timer +", seconds, "s (target ", _bonus_target, "s)")
 
 
 # ---------- KILLER ELIMINATION TRACKING ----------
 
 func _on_killer_eliminated(_player_name: String) -> void:
 	"""Called when killer eliminates a survivor (from network or local)."""
-	# +30s timer bonus
-	add_timer_bonus(30.0)
+	# +5s timer bonus (animated count-up) — was 30.0 originally
+	add_timer_bonus(5.0)
 
 
 # ---------- MATCH TIMER ----------
@@ -1204,19 +1522,20 @@ func _open_puzzle_for_area(area: Area2D) -> void:
 func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
 	"""Handle puzzle solved — rewards + timer deduction (3.25s per puzzle level)."""
 	var area_name: String = area.name
-	_solved_puzzles.append(area_name)
+	if not area_name in _solved_puzzles:
+		_solved_puzzles.append(area_name)
 	
-	# Rewards: $15 and 2 rings per puzzle
-	var gs = Engine.get_singleton("GameState") if Engine.has_singleton("GameState") else null
+	# Rewards: +$5 and +1 ring per puzzle level completed
+	var gs = get_node("/root/GameState")
+	var rings_per_level: int = 1
+	var money_per_level: int = 5
 	if gs != null:
-		gs.add_money(15)
-		var username: String = ""
-		if "logged_in_username" in gs:
-			username = gs.logged_in_username
+		gs.add_money(money_per_level)
+		var username: String = gs.logged_in_username
 		if username != "":
 			var current_rings: int = gs.get_player_rings(username)
-			gs.set_player_rings(username, current_rings + 2)
-		print("GameMap: Puzzle reward — +$15, +2 rings")
+			gs.set_player_rings(username, current_rings + rings_per_level)
+		print("GameMap: Puzzle reward — +$", money_per_level, ", +", rings_per_level, " ring (level ", puzzle_level, ")")
 	
 	# Decrease match timer by 3.25 seconds per puzzle level (flash red)
 	var deduction: float = 3.25 * puzzle_level
@@ -1429,17 +1748,16 @@ func _update_ending_vignette() -> void:
 # ---------- DAMAGE VIGNETTE ----------
 
 func _check_damage_vignette() -> void:
-	"""Detect player HP changes to trigger vignette and track damage."""
+	"""Detect player HP changes to trigger vignette and track damage.
+	Uses _last_damage_time to avoid duplicating _on_player_hp_changed()."""
 	if not is_instance_valid(_player):
 		return
 	if not "current_hp" in _player:
 		return
 	var hp: float = _player.get("current_hp")
-	if _last_hp < 0.0:
-		_last_hp = hp
-		return
-	if hp < _last_hp:
-		# Player took damage
+	# Don't track _last_hp here — that's owned by _on_player_hp_changed().
+	# Only trigger the visual vignette effect.
+	if _last_hp >= 0 and hp < _last_hp:
 		var dmg: float = _last_hp - hp
 		_total_damage_taken += dmg
 		_trigger_vignette()
@@ -1476,7 +1794,56 @@ func _setup_chat() -> void:
 	var chat := ChatLayer.new()
 	chat.name = "ChatLayer"
 	chat.chat_sent.connect(_on_map_chat_sent)
+	chat.chat_opened.connect(_on_chat_opened)
+	chat.chat_closed.connect(_on_chat_closed)
 	add_child(chat)
+
+
+func _setup_admin_panel() -> void:
+	"""Create AdminPanel instance for in-game admin controls."""
+	var panel := AdminPanel.new()
+	panel.name = "AdminPanel"
+	add_child(panel)
+	panel.hide()  # Start hidden — toggled via "G Gui"
+
+
+func _apply_saved_settings() -> void:
+	"""Apply loaded settings from GameState to the game map."""
+	# Load audio bus volumes from save (already applied by SaveManager.autoload at login)
+	# This ensures proper audio setup in the game map
+	var sm = get_node_or_null("/root/SaveManager")
+	if sm and sm.has_method("load_player_data") and GameState.logged_in_username != "":
+		var data: Dictionary = sm.load_player_data(GameState.logged_in_username)
+		if not data.is_empty():
+			# Restore audio bus volumes
+			for bus_name in ["Master", "Music", "SFX"]:
+				var key: String = "bus_vol_" + bus_name
+				if data.has(key):
+					var bus_idx: int = AudioServer.get_bus_index(bus_name)
+					if bus_idx >= 0:
+						AudioServer.set_bus_volume_db(bus_idx, data[key])
+	
+	# Apply epilepsy safe mode (reduce flash effects)
+	if GameState.epilepsy_safe_mode:
+		# Red flash intensity is already controlled by _timer_flash_red
+		# Just ensure the flash alpha is reduced
+		pass
+	
+	print("GameMap: Applied saved settings")
+
+
+func _on_chat_opened() -> void:
+	"""Disable ALL player processing (movement + abilities) when chat is open."""
+	if is_instance_valid(_player):
+		_player.set_physics_process(false)
+		_player.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func _on_chat_closed() -> void:
+	"""Re-enable ALL player processing when chat is closed."""
+	if is_instance_valid(_player):
+		_player.set_physics_process(true)
+		_player.process_mode = Node.PROCESS_MODE_INHERIT
 
 
 func _on_map_chat_sent(text: String, is_admin: bool) -> void:
@@ -1486,14 +1853,21 @@ func _on_map_chat_sent(text: String, is_admin: bool) -> void:
 		_show_map_admin_help()
 		return
 	
+	# "G Gui" — toggle admin GUI panel (works regardless of server status)
+	if trimmed == "g gui":
+		var panel: AdminPanel = get_node_or_null("AdminPanel")
+		if panel:
+			panel.toggle_gui()
+		return
+	
 	if is_admin and GameState.connected_to_server:
-		var nm: Node = Engine.get_singleton("NetworkManager")
+		var nm: Node = get_node("/root/NetworkManager")
 		if is_instance_valid(nm) and nm.has_method("send_admin_command"):
 			nm.send_admin_command(text.trim_prefix("G "))
 		return
 	
 	if GameState.connected_to_server:
-		var nm: Node = Engine.get_singleton("NetworkManager")
+		var nm: Node = get_node("/root/NetworkManager")
 		if is_instance_valid(nm) and nm.has_method("send_chat"):
 			nm.send_chat(text)
 	else:
@@ -1513,7 +1887,53 @@ func _show_map_admin_help() -> void:
 	chat_layer.add_system_message("G force / G next - Force next killer")
 	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
 	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
+	chat_layer.add_system_message("G Gui - Toggle admin GUI panel")
 	chat_layer.add_system_message("=====================")
+
+
+func _determine_killer_by_rings() -> bool:
+	"""Ring-based killer selection: highest ring count gets to be killer.
+	If multiple players tied or local player isn't top, picks based on next-in-line.
+	If nobody has rings, picks randomly."""
+	var gs = get_node("/root/GameState")
+	if gs == null:
+		return false
+	
+	# Get players sorted by rings descending
+	var sorted_players: Array[String] = gs.get_players_sorted_by_rings()
+	
+	# If no other players have ring data, check for tied/highest
+	var local_username: String = gs.logged_in_username
+	if local_username.is_empty():
+		return false
+	
+	var local_rings: int = gs.get_player_rings(local_username)
+	
+	# If this player has the most rings, they're the killer
+	if sorted_players.is_empty() or sorted_players[0] == local_username:
+		# Check if ANY other player has equal rings (tie)
+		var tied_players: Array[String] = []
+		for pname: String in sorted_players:
+			if gs.get_player_rings(pname) >= local_rings:
+				tied_players.append(pname)
+		
+		if tied_players.size() <= 1:
+			# This player is uniquely at the top
+			print("GameMap: Ring-based killer selection — %s (%d rings)" % [local_username, local_rings])
+			return true
+		else:
+			# Tie — pick next person in line
+			var my_index: int = tied_players.find(local_username)
+			if my_index >= 0 and my_index + 1 < tied_players.size():
+				# Next tied player is chosen instead
+				print("GameMap: Ring tie — %s passed to %s" % [local_username, tied_players[my_index + 1]])
+				return false
+			# Default to this player
+			return true
+	
+	# Someone else has more rings
+	print("GameMap: Ring-based killer selection — %s is not top ring holder" % local_username)
+	return false
 
 
 func _on_player_attacked(_stunned: bool) -> void:
@@ -1571,7 +1991,96 @@ func _end_match() -> void:
 	GameState.match_damage_taken = _total_damage_taken
 	GameState.match_damage_dealt = _total_damage_dealt
 	
-	# Transition to lobby
+	# Clean up multiplayer sync
+	if _multiplayer_sync:
+		_multiplayer_sync.queue_free()
+		_multiplayer_sync = null
+	
+	# Transition to lobby with fade effect
 	get_tree().paused = false
-	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+	SceneFader.go("res://scenes/lobby.tscn", "Match Complete — Loading Results...")
 	print("GameMap: Match ended — transitioning to lobby for analysis")
+
+
+# ═══════════════ MULTIPLAYER INTEGRATION ═══════════════
+
+func _initialize_multiplayer() -> void:
+	"""Set up MultiplayerGameSync if connected to the dedicated server."""
+	var nm: Node = get_node_or_null("/root/NetworkManager")
+	if not nm or not nm.connected:
+		return  # Offline mode — bots handle gameplay
+	
+	_multiplayer_sync = MultiplayerGameSync.new()
+	_multiplayer_sync.name = "MultiplayerSync"
+	add_child(_multiplayer_sync)
+	_multiplayer_sync.match_started.connect(_on_multiplayer_match_started)
+	_multiplayer_sync.player_disconnected.connect(_on_multiplayer_player_left)
+	
+	# Override role from server
+	if _multiplayer_sync.is_killer():
+		GameState.is_killer = true
+		_character_name = "Violentgrass"
+	
+	print("GameMap: Multiplayer mode active — role: ", _multiplayer_sync.get_player_role())
+
+
+func _on_multiplayer_match_started(role: String, player_list: Array) -> void:
+	"""Handle match start from server."""
+	print("GameMap: Multiplayer match started — Role: ", role, " | Players: ", player_list.size())
+
+
+func _on_multiplayer_player_left(name: String) -> void:
+	"""Handle player disconnection during match."""
+	var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+	if chat_layer:
+		chat_layer.add_system_message(name + " disconnected.")
+	print("GameMap: Player left during match — ", name)
+
+
+func _sync_multiplayer_position(pos: Vector2) -> void:
+	"""Send position update to server for multiplayer sync."""
+	if _multiplayer_sync:
+		_multiplayer_sync.send_position_update(pos)
+
+
+func _sync_multiplayer_hp(hp: float, max_hp: float) -> void:
+	"""Send HP update to server for multiplayer sync."""
+	if _multiplayer_sync:
+		_multiplayer_sync.send_hp_update(hp, max_hp)
+
+
+func _sync_multiplayer_ability(ability: String, pos: Vector2 = Vector2.ZERO) -> void:
+	"""Send ability usage to server for multiplayer sync."""
+	if _multiplayer_sync:
+		_multiplayer_sync.send_ability_used(ability, pos)
+
+
+# ═══════════════ AI DIFFICULTY SCALING ═══════════════
+
+func _attach_ai_difficulty() -> void:
+	"""Attach dynamic difficulty to the AI killer bot."""
+	if not is_instance_valid(_killer_bot):
+		return
+	_ai_difficulty = AIDifficultyController.new()
+	_ai_difficulty.name = "AIDifficulty"
+	_killer_bot.add_child(_ai_difficulty)
+	_ai_difficulty.initialize(_killer_bot)
+	print("GameMap: AI difficulty controller attached")
+
+
+func _update_ai_difficulty() -> void:
+	"""Update AI difficulty based on current match state."""
+	if not is_instance_valid(_ai_difficulty) or not is_instance_valid(_killer_bot):
+		return
+	var target_hp: float = 100.0
+	if is_instance_valid(_player) and "current_hp" in _player:
+		target_hp = _player.current_hp
+	
+	var survivor_count: int = 0
+	for bot in _survivor_bots:
+		if is_instance_valid(bot):
+			survivor_count += 1
+	if _character_name != "Violentgrass" and is_instance_valid(_player):
+		survivor_count += 1
+	
+	_ai_difficulty.update_difficulty(_time_remaining, survivor_count, target_hp)
