@@ -83,8 +83,35 @@ func _build_ui() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.name = "ChatScroll"
 	scroll.position = panel_position + Vector2(4, 4)
-	scroll.size = panel_size - Vector2(8, 8)
+	scroll.size = panel_size - Vector2(14, 8)  # Leave room for scrollbar
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	root.add_child(scroll)
+	
+	# Style the vertical scrollbar — dark semi-transparent theme
+	var vbar: VScrollBar = scroll.get_v_scroll_bar()
+	vbar.custom_minimum_size.x = 10
+	if vbar.has_method("set_anchor_and_offset"):
+		vbar.anchor_right = 1.0
+	# StyleBox for the scrollbar grabber
+	var grabber_style := StyleBoxFlat.new()
+	grabber_style.bg_color = Color(0.35, 0.35, 0.35, 0.7)
+	grabber_style.border_width_left = 1
+	grabber_style.border_width_right = 1
+	grabber_style.border_width_top = 1
+	grabber_style.border_width_bottom = 1
+	grabber_style.border_color = Color(0.5, 0.5, 0.5, 0.5)
+	grabber_style.corner_radius_top_left = 3
+	grabber_style.corner_radius_top_right = 3
+	grabber_style.corner_radius_bottom_left = 3
+	grabber_style.corner_radius_bottom_right = 3
+	# StyleBox for the scrollbar track
+	var track_style := StyleBoxEmpty.new()
+	vbar.add_theme_stylebox_override("scroll", track_style)
+	vbar.add_theme_stylebox_override("scroll_focus", track_style)
+	vbar.add_theme_stylebox_override("grabber", grabber_style)
+	vbar.add_theme_stylebox_override("grabber_highlight", grabber_style)
+	vbar.add_theme_stylebox_override("grabber_pressed", grabber_style)
 	
 	# Message container
 	var vbox := VBoxContainer.new()

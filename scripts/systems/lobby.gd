@@ -129,12 +129,28 @@ func _setup_chat() -> void:
 	chat.chat_opened.connect(_on_lobby_chat_opened)
 	chat.chat_closed.connect(_on_lobby_chat_closed)
 	add_child(chat)
+	
+	# Listen for incoming chat messages from the server
+	var nm: Node = get_node_or_null("/root/NetworkManager")
+	if is_instance_valid(nm) and nm.has_signal("chat_message_received"):
+		if not nm.chat_message_received.is_connected(_on_lobby_server_chat):
+			nm.chat_message_received.connect(_on_lobby_server_chat)
 
 
 func _on_lobby_chat_opened() -> void:
 	"""Disable ALL player processing (movement + abilities) when chatting."""
 	set_physics_process(false)
 	process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func _on_lobby_server_chat(sender: String, text: String) -> void:
+	"""Display a chat message received from the server relay."""
+	var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+	if chat_layer:
+		if sender == "SERVER":
+			chat_layer.add_system_message(text)
+		else:
+			chat_layer.add_message(sender, text)
 
 
 func _on_lobby_chat_closed() -> void:
