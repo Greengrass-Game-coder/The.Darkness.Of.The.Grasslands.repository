@@ -26,7 +26,7 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var hit_range: float = 120.0  # Extended range — hits outside collision body
 
 # Teleportation ability (nerfed: circles + decoy guessing game)
-@export var teleport_range: float = 350.0
+@export var teleport_range: float = 350.0  # Used by AI bot; human teleport is full-distance via circles
 const TELEPORT_COOLDOWN_USED: float = 45.0   # Cooldown after teleporting
 const TELEPORT_COOLDOWN_CANCEL: float = 25.0 # Cooldown after cancel
 const teleport_cooldown: float = TELEPORT_COOLDOWN_USED  # Backward compat (AI bot refs this)
@@ -401,9 +401,7 @@ func teleport_to_position(target_pos: Vector2) -> void:
 	var delta_dir: Vector2 = target_pos - global_position
 	var distance: float = delta_dir.length()
 	
-	# Clamp to max range
-	if distance > teleport_range:
-		delta_dir = delta_dir.normalized() * teleport_range
+	# No range clamp — circles are the range limit, teleport goes full distance
 	
 	if distance > 0.0:
 		var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
@@ -447,9 +445,7 @@ func _do_teleport_move() -> void:
 	
 	var distance: float = _teleport_target_dir.length()
 	
-	# Clamp to max range
-	if distance > teleport_range:
-		_teleport_target_dir = _teleport_target_dir.normalized() * teleport_range
+	# No range clamp — full distance teleport
 	
 	if distance > 0.0:
 		var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state

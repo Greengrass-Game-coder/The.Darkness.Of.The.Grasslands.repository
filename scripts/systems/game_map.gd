@@ -1227,10 +1227,10 @@ func _show_teleport_circles() -> void:
 			continue
 		var real_pos: Vector2 = s.global_position
 		
-		# Target 1: near the real survivor (50-100px offset)
-		var offset1: Vector2 = Vector2(randf_range(-100, 100), randf_range(-100, 100))
-		if offset1.length() < 50.0:
-			offset1 = offset1.normalized() * 50.0
+		# Target 1: far from survivor (200-400px offset — full-distance teleport)
+		var offset1: Vector2 = Vector2(randf_range(-400, 400), randf_range(-400, 400))
+		if offset1.length() < 200.0:
+			offset1 = offset1.normalized() * 200.0
 		_teleport_marker_targets.append(real_pos + offset1)
 		
 		# Target 2: decoy at a random map position
