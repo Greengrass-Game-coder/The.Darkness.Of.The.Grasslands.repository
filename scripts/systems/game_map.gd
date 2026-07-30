@@ -57,7 +57,7 @@ var _death_overlay: ColorRect = null
 var _death_fade_progress: float = 0.0
 
 # Teleport mini-map
-var _teleport_minimap: Control = null
+var _teleport_circles: Array[Node] = []  # World-space teleport target circles
 
 # Match-ending effect
 var _ending_vignette: ColorRect = null
@@ -1192,109 +1192,160 @@ func _silence_all_chase() -> void:
 	_chase_active_layer = -1
 
 
-# ---------- TELEPORT MINI-MAP ----------
+# ---------- TELEPORT CIRCLES (world-space, clickable) ----------
 
 func _on_killer_teleport_scan() -> void:
-	"""Show mini-map overlay when killer activates teleport scan.
+	"""Show clickable teleport circles in world space.
 	Works for both human killers (GameState.is_killer) and AI bot killers."""
 	var gs_t = get_node_or_null("/root/GameState")
 	if (gs_t != null and gs_t.is_killer) or is_instance_valid(_killer_bot):
-		_show_teleport_minimap()
+		_show_teleport_circles()
 
 
-func _show_teleport_minimap() -> void:
-	"""Create a mini-map overlay showing all survivor positions as dots."""
-	if is_instance_valid(_teleport_minimap):
-		_teleport_minimap.queue_free()
+func _show_teleport_circles() -> void:
+	"""Show clickable world-space circles — 2 per survivor (real + decoy).
+	Killer must guess which circle to teleport to (nerf)."""
+	_close_teleport_minimap()
+	_teleport_circles.clear()
 	
-	var minimap := Control.new()
-	minimap.name = "TeleportMiniMap"
-	minimap.size = get_viewport().get_visible_rect().size
-	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
-	$HUD.add_child(minimap)
-	_teleport_minimap = minimap
+	# Generate a single white circle texture for all markers
+	var circle_tex: Texture2D = _make_teleport_circle_texture(64, 28)
 	
-	# Dark background
-	var bg := ColorRect.new()
-	bg.size = minimap.size
-	bg.color = Color(0, 0, 0, 0.7)
-	minimap.add_child(bg)
-	
-	# Determine map bounds from map manager
-	var map_size: Vector2 = (Vector2(_map_manager.blueprint_size) if _map_manager else Vector2(1024, 768))
-	# Display area for the mini-map (centered, 300x225)
-	var mm_w: float = 300.0
-	var mm_h: float = 225.0
-	var mm_x: float = (minimap.size.x - mm_w) * 0.5
-	var mm_y: float = (minimap.size.y - mm_h) * 0.5
-	
-	# Mini-map background
-	var mm_bg := ColorRect.new()
-	mm_bg.position = Vector2(mm_x, mm_y)
-	mm_bg.size = Vector2(mm_w, mm_h)
-	mm_bg.color = Color(0.08, 0.08, 0.08, 0.9)
-	minimap.add_child(mm_bg)
-	
-	# Title
-	var title := Label.new()
-	title.text = "TELEPORT TARGET"
-	title.position = Vector2(mm_x, mm_y - 28)
-	title.size = Vector2(mm_w, 24)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_color_override("font_color", Color(1, 1, 0.7, 1))
-	title.add_theme_font_size_override("font_size", 18)
-	minimap.add_child(title)
-	
-	# Find all survivors
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
-	
 	for s: Node in survivors:
 		if not is_instance_valid(s):
 			continue
-		# Map survivor world position to mini-map position
-		var world_pos: Vector2 = s.global_position
-		var mm_pos: Vector2 = Vector2(
-			mm_x + (world_pos.x / map_size.x) * mm_w,
-			mm_y + (world_pos.y / map_size.y) * mm_h
-		)
+		var real_pos: Vector2 = s.global_position
 		
-		# Create clickable dot for this survivor
-		var dot := Button.new()
-		dot.name = "Dot_%s" % s.name
-		dot.position = mm_pos - Vector2(8, 8)
-		dot.size = Vector2(16, 16)
-		dot.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
-		dot.add_theme_font_size_override("font_size", 14)
-		dot.text = "●"
-		dot.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-		dot.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
-		dot.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
-		dot.pressed.connect(_on_minimap_dot_pressed.bind(world_pos))
-		minimap.add_child(dot)
+		# Circle 1: near the real survivor (within 50-120px offset)
+		var offset1: Vector2 = Vector2(randf_range(-100, 100), randf_range(-100, 100))
+		if offset1.length() < 50.0:
+			offset1 = offset1.normalized() * 50.0
+		_create_teleport_circle(real_pos + offset1, circle_tex)
+		
+		# Circle 2: decoy at a random position on the map
+		_create_teleport_circle(_get_random_map_position(), circle_tex)
 	
-	# Cancel hint — press [E] again to cancel
-	var cancel_hint := Label.new()
-	cancel_hint.text = "Press [E] to cancel"
-	cancel_hint.position = Vector2(mm_x + mm_w - 160, mm_y + mm_h + 8)
-	cancel_hint.size = Vector2(160, 24)
-	cancel_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	cancel_hint.add_theme_color_override("font_color", Color(1, 0.6, 0.6, 0.9))
-	cancel_hint.add_theme_font_size_override("font_size", 14)
-	minimap.add_child(cancel_hint)
+	# Position cancel hint above the killer (killer can't move while charging)
+	var hint := Label.new()
+	hint.name = "TeleportCancelHint"
+	if is_instance_valid(_player):
+		hint.global_position = _player.global_position + Vector2(-80, -50)
+	hint.text = "[E] to cancel"
+	hint.add_theme_color_override("font_color", Color(1, 0.6, 0.6, 0.9))
+	hint.add_theme_font_size_override("font_size", 14)
+	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	hint.add_theme_constant_override("outline_size", 2)
+	hint.size = Vector2(160, 24)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(hint)
+	_teleport_circles.append(hint)
 
 
-func _on_minimap_dot_pressed(world_pos: Vector2) -> void:
-	"""Teleport killer to the clicked survivor position."""
-	if is_instance_valid(_killer_bot) and _killer_bot.has_method("teleport_to_position"):
-		_killer_bot.teleport_to_position(world_pos)
-	_close_teleport_minimap()
+func _make_teleport_circle_texture(size: int, radius: float) -> Texture2D:
+	"""Generate a soft white circle texture for teleport markers."""
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var cx: float = size * 0.5
+	var cy: float = size * 0.5
+	for x in range(size):
+		for y in range(size):
+			var dx: float = x - cx
+			var dy: float = y - cy
+			var dist: float = sqrt(dx * dx + dy * dy)
+			if dist <= radius:
+				# Filled circle with soft gradient
+				var t: float = dist / radius
+				var alpha: float = 1.0 - t * 0.4
+				img.set_pixel(x, y, Color(1, 1, 1, alpha))
+			# Bright ring at radius edge
+			if abs(dist - radius) < 2.0 and dist > 0:
+				img.set_pixel(x, y, Color(1, 1, 1, 1.0))
+	return ImageTexture.create_from_image(img)
+
+
+func _create_teleport_circle(world_pos: Vector2, tex: Texture2D) -> void:
+	"""Create one clickable, pulsing teleport circle in world space."""
+	var area := Area2D.new()
+	area.name = "TeleportCircle_%d" % _teleport_circles.size()
+	area.global_position = world_pos
+	add_child(area)
+	
+	# Collision shape for click detection
+	var shape_node := CollisionShape2D.new()
+	var circle_shape := CircleShape2D.new()
+	circle_shape.radius = 40.0
+	shape_node.shape = circle_shape
+	area.add_child(shape_node)
+	
+	# Visual sprite with the circle texture
+	var sprite := Sprite2D.new()
+	sprite.texture = tex
+	sprite.modulate = Color(1, 0.3, 0.3, 0.7)
+	sprite.centered = true
+	area.add_child(sprite)
+	
+	# Connect click handler
+	area.input_event.connect(_on_teleport_circle_clicked.bind(area))
+	
+	# Pulsing animation
+	var pulse := create_tween()
+	pulse.set_loops()
+	pulse.tween_property(sprite, "scale", Vector2(1.35, 1.35), 0.9)
+	pulse.tween_property(sprite, "scale", Vector2(0.9, 0.9), 0.9)
+	
+	# Fade in
+	sprite.modulate = Color(1, 0.3, 0.3, 0.0)
+	var fade := create_tween()
+	fade.tween_property(sprite, "modulate", Color(1, 0.3, 0.3, 0.7), 0.3)
+	
+	_teleport_circles.append(area)
+
+
+func _on_teleport_circle_clicked(_viewport: Node, event: InputEvent, _shape_idx: int, area: Area2D) -> void:
+	"""Handle click on a teleport circle — teleport killer to that position."""
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		get_viewport().set_input_as_handled()
+		var target_pos: Vector2 = area.global_position
+		
+		# Teleport the killer (player) to this position
+		if is_instance_valid(_player) and _player.has_method("teleport_to_position"):
+			_player.teleport_to_position(target_pos)
+		elif is_instance_valid(_killer_bot) and _killer_bot.has_method("teleport_to_position"):
+			_killer_bot.teleport_to_position(target_pos)
+		
+		_close_teleport_minimap()
+
+
+func _get_random_map_position() -> Vector2:
+	"""Get a random position on the map (for decoy circles)."""
+	var map_size: Vector2 = Vector2(512, 512)
+	if _map_manager and _map_manager.blueprint_size:
+		map_size = Vector2(_map_manager.blueprint_size)
+	# Stay away from edges
+	var margin: float = 100.0
+	var rx: float = randf_range(margin, map_size.x - margin)
+	var ry: float = randf_range(margin, map_size.y - margin)
+	# Ensure at least 200px from any survivor so it's clearly a choice
+	var min_dist_from_survivors: float = 200.0
+	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
+	for s: Node in survivors:
+		if is_instance_valid(s):
+			var dist: float = Vector2(rx, ry).distance_to(s.global_position)
+			if dist < min_dist_from_survivors:
+				# Push it further away
+				var dir: Vector2 = (Vector2(rx, ry) - s.global_position).normalized()
+				rx = s.global_position.x + dir.x * min_dist_from_survivors
+				ry = s.global_position.y + dir.y * min_dist_from_survivors
+	return Vector2(rx, ry)
 
 
 func _close_teleport_minimap() -> void:
-	"""Remove the teleport mini-map overlay."""
-	if is_instance_valid(_teleport_minimap):
-		_teleport_minimap.queue_free()
-		_teleport_minimap = null
+	"""Remove all teleport circles and cleanup."""
+	for c: Node in _teleport_circles:
+		if is_instance_valid(c):
+			c.queue_free()
+	_teleport_circles.clear()
 
 
 # ---------- TELEPORT SOUND + INDICATOR ----------

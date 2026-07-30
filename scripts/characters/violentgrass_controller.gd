@@ -25,9 +25,9 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var hit_cooldown: float = 2.5
 @export var hit_range: float = 120.0  # Extended range — hits outside collision body
 
-# Teleportation ability
-@export var teleport_cooldown: float = 15.0
-@export var teleport_range: float = 400.0
+# Teleportation ability (nerfed: circles + decoy guessing game)
+@export var teleport_cooldown: float = 20.0
+@export var teleport_range: float = 350.0
 
 # ---------- SIZE ----------
 @export var size_mult: float = 1.0:
@@ -112,6 +112,9 @@ func _input(event: InputEvent) -> void:
 		use_hit()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		# During teleport scan, left click targets circles instead of hitting
+		if current_state == State.TELEPORT_CHARGING:
+			return  # Let circle Area2D handle the click
 		use_hit()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ability_2"):
@@ -122,7 +125,8 @@ func _input(event: InputEvent) -> void:
 			_start_teleport_charge()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_released("ability_2") and current_state == State.TELEPORT_CHARGING:
-		_execute_teleport_release()
+		# Release without clicking a circle = cancel (nerf: no direction teleport)
+		_cancel_teleport_charge()
 		get_viewport().set_input_as_handled()
 
 
