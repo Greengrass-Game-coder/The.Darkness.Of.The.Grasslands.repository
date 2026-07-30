@@ -26,8 +26,10 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var hit_range: float = 120.0  # Extended range — hits outside collision body
 
 # Teleportation ability (nerfed: circles + decoy guessing game)
-@export var teleport_cooldown: float = 20.0
 @export var teleport_range: float = 350.0
+const TELEPORT_COOLDOWN_USED: float = 45.0   # Cooldown after teleporting
+const TELEPORT_COOLDOWN_CANCEL: float = 25.0 # Cooldown after cancel
+const teleport_cooldown: float = TELEPORT_COOLDOWN_USED  # Backward compat (AI bot refs this)
 
 # ---------- SIZE ----------
 @export var size_mult: float = 1.0:
@@ -355,17 +357,17 @@ func _on_ability_vfx_finished() -> void:
 # ---------- TELEPORT CHARGE & CAST ----------
 
 func _start_teleport_charge() -> void:
-	"""Start charging teleport — press E to charge, release to teleport."""
+	"""Start charging teleport — press E to charge."""
 	if current_state != State.IDLE and current_state != State.WALKING:
 		return
 	if teleport_on_cooldown:
 		return
 	
-	# Emit scan signal so game_map shows the teleport mini-map
+	# Cooldown is set AFTER the action completes (teleport=45s, cancel=25s)
+	
+	# Emit scan signal so game_map shows the teleport circles
 	teleport_scan_started.emit()
 	
-	teleport_on_cooldown = true
-	_teleport_cd_timer = teleport_cooldown
 	_change_state(State.TELEPORT_CHARGING)
 	
 	# Show VFX and start charge animation
@@ -394,12 +396,12 @@ func _execute_teleport_release() -> void:
 
 
 func _cancel_teleport_charge() -> void:
-	"""Cancel the teleport charge — return to idle, close mini-map."""
+	"""Cancel the teleport charge — 25s cooldown penalty."""
 	if current_state != State.TELEPORT_CHARGING:
 		return
 	_hide_vfx()
-	teleport_on_cooldown = false
-	_teleport_cd_timer = 0.0
+	teleport_on_cooldown = true
+	_teleport_cd_timer = TELEPORT_COOLDOWN_CANCEL
 	_change_state(State.IDLE)
 	teleport_cancelled.emit()
 
@@ -433,6 +435,10 @@ func teleport_to_position(target_pos: Vector2) -> void:
 		# Visual effect shift
 		modulate = Color(0.7, 0.3, 0.9, 0.5)
 		get_tree().create_timer(0.3).timeout.connect(_end_teleport_visual)
+	
+	# Set cooldown AFTER teleport completes (45s penalty)
+	teleport_on_cooldown = true
+	_teleport_cd_timer = TELEPORT_COOLDOWN_USED
 	
 	# Emit teleported signal so game_map can play sound + show indicator
 	teleported.emit(global_position)
