@@ -23,8 +23,8 @@ var lms_enabled: bool = false
 var pending_join_code: String = ""
 
 ## Which character scene to spawn for the player
-var selected_survivor: String = "Greengrass"
-var selected_killer: String = "Violentgrass"
+var selected_survivor: String = "Greengrass"  # Will be set from CharacterData
+var selected_killer: String = "Violentgrass"  # Will be set from CharacterData
 
 ## User settings (persisted across scenes, not yet saved to disk)
 var hide_leaderboard: bool = false

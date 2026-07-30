@@ -98,8 +98,8 @@ func _ready() -> void:
 		_base_sprite_scale = animated_sprite.scale.x
 	_apply_size()
 	# Collision: killer on layer 2, only collide with survivor (layer 1) + walls (layer 3)
-	collision_layer = 2
-	collision_mask = 1 | 4  # layer 1 (survivor) + layer 3 (walls)
+	collision_layer = 2  # Killer layer
+	collision_mask = 1 | 4  # Survivor (1) + Walls (4)
 	stamina_changed.emit(current_stamina, max_stamina)
 	_setup_ability_vfx_frames()
 	if not ability_vfx.animation_finished.is_connected(_on_ability_vfx_finished):

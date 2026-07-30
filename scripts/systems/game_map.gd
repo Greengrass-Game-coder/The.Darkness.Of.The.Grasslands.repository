@@ -1013,7 +1013,8 @@ func _play_killer_cutscene() -> void:
 	
 	# Killer name — appears 2.5s later with fade + zoom
 	# Show "Killer_AI" when no human killer (AI bot is the killer)
-	var is_human_killer: bool = GameState.is_killer
+	var gs_k = get_node_or_null("/root/GameState")
+	var is_human_killer: bool = gs_k != null and gs_k.is_killer
 	var killer_name: String = "Violentgrass" if is_human_killer else "Killer_AI"
 	var line2 := Label.new()
 	line2.name = "Line2_KillerName"
@@ -1198,7 +1199,8 @@ func _silence_all_chase() -> void:
 func _on_killer_teleport_scan() -> void:
 	"""Show mini-map overlay when killer activates teleport scan.
 	Works for both human killers (GameState.is_killer) and AI bot killers."""
-	if GameState.is_killer or is_instance_valid(_killer_bot):
+	var gs_t = get_node_or_null("/root/GameState")
+	if (gs_t != null and gs_t.is_killer) or is_instance_valid(_killer_bot):
 		_show_teleport_minimap()
 
 

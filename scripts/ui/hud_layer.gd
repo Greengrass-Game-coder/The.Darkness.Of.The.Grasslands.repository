@@ -396,8 +396,9 @@ func _apply_epilepsy_mode() -> void:
 func _trigger_vignette() -> void:
 	if not is_instance_valid(_vignette_overlay):
 		return
-	var enabled: bool = "epilepsy_safe_mode" in GameState and GameState.epilepsy_safe_mode
-	var target_alpha: float = 0.25 if enabled else 0.4
+	var gs_vig2 = get_node_or_null("/root/GameState")
+	var enabled2: bool = gs_vig2 != null and "epilepsy_safe_mode" in gs_vig2 and gs_vig2.epilepsy_safe_mode
+	var target_alpha: float = 0.25 if enabled2 else 0.4
 	_vignette_overlay.color = Color(0, 0, 0, target_alpha)
 	var tween := create_tween()
 	tween.tween_property(_vignette_overlay, "color", Color(0, 0, 0, 0), 0.8).set_ease(Tween.EASE_OUT)
@@ -457,7 +458,8 @@ func update_ending_vignette(time_remaining: float, ending_start_time: float) -> 
 		_ending_vignette.color = Color(0.4, 0.0, 0.0, 0.0)
 		return
 
-	var epilepsy_on: bool = "epilepsy_safe_mode" in GameState and GameState.epilepsy_safe_mode
+	var gs_he = get_node_or_null("/root/GameState")
+	var epilepsy_on: bool = gs_he != null and "epilepsy_safe_mode" in gs_he and gs_he.epilepsy_safe_mode
 	var seconds_left: int = int(time_remaining)
 	var progress: float = 1.0 - (time_remaining / 30.0)
 

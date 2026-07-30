@@ -10,7 +10,7 @@ extends CanvasLayer
 @export var panel_size: Vector2 = Vector2(600, 400)
 
 var _character_data: Dictionary = {}  # type -> [name, skins...]
-var _current_tab: String = survivors
+var _current_tab: String = "survivors"
 
 
 func _ready() -> void:
@@ -30,13 +30,14 @@ func _scan_characters() -> void:
 	var _survivor_dir: String = "res://scenes/"
 	var _killer_dir: String = "res://scenes/"
 	
-	# Check known survivors
-	if ResourceLoader.exists("res://scenes/greengrass.tscn"):
-		_scan_skins("survivors", "Greengrass")
-	
-	# Check known killers
-	if ResourceLoader.exists("res://scenes/violentgrass.tscn"):
-		_scan_skins("killers", "Violentgrass")
+	# Dynamic scan — all characters from catalog
+	for cd in CharacterData.get_catalog():
+		var dir_name: String = cd.character_type + "s"
+		if ResourceLoader.exists(cd.scene_path):
+			_scan_skins(dir_name, cd.display_name)
+		# Fallback: check standard scene paths
+		elif ResourceLoader.exists("res://scenes/" + cd.display_name.to_lower() + ".tscn"):
+			_scan_skins(dir_name, cd.display_name)
 
 
 func _scan_skins(type: String, base_name: String) -> void:
@@ -160,8 +161,10 @@ func _get_content_text() -> String:
 
 func open() -> void:
 	"""Open the LMS Linking panel."""
-	self.visible = GameState.lms_enabled
-	if GameState.lms_enabled:
+	var gs_l = get_node_or_null("/root/GameState")
+	var lms_on: bool = gs_l != null and "lms_enabled" in gs_l and gs_l.lms_enabled
+	self.visible = lms_on
+	if lms_on:
 		var content = get_node_or_null("ContentLabel")
 		if content:
 			content.label_text = _get_content_text()

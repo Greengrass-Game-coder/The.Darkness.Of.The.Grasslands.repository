@@ -104,8 +104,8 @@ func _ready() -> void:
 	_apply_size()
 	# Collision: survivor on layer 1, only collide with walls (layer 3)
 	# Killer collision removed to prevent body-blocking the killer (asymmetric: killer pushes through)
-	collision_layer = 1
-	collision_mask = 4  # only walls (layer 3)
+	collision_layer = 1  # Survivor layer
+	collision_mask = 4  # Only collide with walls (layer 3)
 	hp_changed.emit(current_hp, max_hp)
 	stamina_changed.emit(current_stamina, max_stamina)
 	_setup_ability_vfx_frames()
@@ -422,7 +422,7 @@ func _check_punch_hit() -> Array[Node2D]:
 	query.shape = shape
 	query.transform = Transform2D(0, global_position)
 	query.exclude = [self]
-	query.collision_mask = 2  # Detect killers (layer 2)
+	query.collision_mask = 2  # Detect killers only
 	var results: Array[Dictionary] = space_state.intersect_shape(query)
 	var hits: Array[Node2D] = []
 	for r in results:

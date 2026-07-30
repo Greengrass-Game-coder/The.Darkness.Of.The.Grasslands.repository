@@ -199,7 +199,7 @@ func _ai_flee(delta: float) -> void:
 	# Wall avoidance raycast
 	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 	var wall_query := PhysicsRayQueryParameters2D.create(global_position, global_position + move_dir * 80.0)
-	wall_query.collision_mask = 4
+	wall_query.collision_mask = 4  # Wall layer (bit 3) — same as all characters
 	wall_query.exclude = [self]
 	var wall_result: Dictionary = space_state.intersect_ray(wall_query)
 	

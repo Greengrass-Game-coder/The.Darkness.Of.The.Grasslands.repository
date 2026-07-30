@@ -29,3 +29,4 @@ addons/ziva_agent/
 # Editor/OS
 .DS_Store
 Thumbs.db
+nul
