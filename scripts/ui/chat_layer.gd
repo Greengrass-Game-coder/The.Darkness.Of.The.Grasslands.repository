@@ -117,23 +117,37 @@ func _on_input_mouse_entered() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	"""Use _input() to catch T/Slash BEFORE GUI/shortcut pipeline consumes them.
+	"""Use _input() to catch T/Slash BEFORE GUI pipeline consumes them.
 	
-	T is bound to 'ability_4' action, which gets consumed by the engine's
+	T is bound to 'ability_4' action, which would be consumed by the engine's
 	input processing before _unhandled_input would see it. By using _input(),
-	we catch the raw key event at the earliest stage."""
+	we catch the raw key event at the earliest stage.
+	
+	IMPORTANT: We do NOT call set_input_as_handled() for non-Escape keys here,
+	because doing so would prevent the LineEdit from receiving text input
+	through the GUI system. Game-input blocking is done in _unhandled_input()."""
 	if event is InputEventKey and event.pressed and not event.echo:
 		if _is_open:
-			# Chat is open — absorb ALL keyboard input to prevent game movement
+			# Only consume Escape here — everything else flows to LineEdit
 			if event.keycode == KEY_ESCAPE:
 				_close_chat()
-			get_viewport().set_input_as_handled()
+				get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_T or event.keycode == KEY_SLASH:
 			# Open chat
 			_open_chat()
 			if event.keycode == KEY_SLASH:
 				_chat_input.text = "/"
 			get_viewport().set_input_as_handled()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	"""Block game movement/ability keys when chat is open.
+	
+	This fires AFTER the GUI system has processed the event, so the LineEdit
+	gets text input normally. Remaining keyboard events (WASD, Q, E, etc.)
+	are consumed here to prevent the player from moving while typing."""
+	if _is_open and event is InputEventKey and event.pressed and not event.echo:
+		get_viewport().set_input_as_handled()
 
 
 func _open_chat() -> void:
