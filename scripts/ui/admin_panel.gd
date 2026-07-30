@@ -16,6 +16,7 @@ var _force_killer_btn: Button = null
 var _status_label: BitmapLabel = null
 var _player_list_label: BitmapLabel = null
 var _is_limited: bool = false
+var _is_moderator: bool = false  # TheAcTualDummy — moderator level
 var _gui_forced: bool = false  # Toggled by "G Gui" command
 
 
@@ -44,6 +45,7 @@ func _update_visibility() -> void:
 		if not visible or _needs_rebuild():
 			var was_limited: bool = _is_limited
 			_is_limited = GameState.is_limited_admin
+			_is_moderator = GameState.logged_in_username.to_lower() == "theactualdummy"
 			if was_limited != _is_limited:
 				_build_ui()
 			_refresh_visibility()
@@ -71,6 +73,7 @@ func _build_ui() -> void:
 		child.queue_free()
 	
 	_is_limited = GameState.is_limited_admin
+	_is_moderator = GameState.logged_in_username.to_lower() == "theactualdummy"
 	
 	# Background
 	var bg := ColorRect.new()
@@ -83,7 +86,10 @@ func _build_ui() -> void:
 	# Title (BitmapLabel)
 	var title := BitmapLabel.new()
 	title.name = "Title"
-	if _is_limited:
+	if _is_moderator:
+		title.label_text = "MODERATOR"
+		title.font_color = Color(0.3, 0.8, 1.0, 1)  # Cyan for moderator
+	elif _is_limited:
 		title.label_text = "LIMITED ADMIN"
 		title.font_color = Color(1.0, 0.7, 0.2, 1)  # Amber for limited
 	else:
@@ -97,7 +103,9 @@ func _build_ui() -> void:
 	# Status label
 	var status := BitmapLabel.new()
 	status.name = "StatusLabel"
-	if _is_limited:
+	if _is_moderator:
+		status.label_text = "Moderator (TheAcTualDummy)"
+	elif _is_limited:
 		status.label_text = "Reserved Tester (limited)"
 	else:
 		status.label_text = "Private Server"
@@ -123,8 +131,8 @@ func _build_ui() -> void:
 	_double_trouble_btn = dt_btn
 	y_offset += 36
 	
-	if not _is_limited:
-		# Force Next Killer toggle (limited users cannot force)
+	if not _is_limited or _is_moderator:
+		# Force Next Killer toggle (moderators and full admins only)
 		var fk_btn := Button.new()
 		fk_btn.name = "ForceKillerBtn"
 		fk_btn.text = "Force Next Killer: OFF"
@@ -182,8 +190,8 @@ func _on_double_trouble_toggled(button_pressed: bool) -> void:
 
 
 func _on_force_killer_toggled(button_pressed: bool) -> void:
-	if _is_limited:
-		return  # Limited users cannot force killer
+	if _is_limited and not _is_moderator:
+		return  # Only moderators and full admins can force killer
 	GameState.force_killer = button_pressed
 	_force_killer_btn.text = "Force Next Killer: ON" if button_pressed else "Force Next Killer: OFF"
 	force_killer_toggled.emit(button_pressed)

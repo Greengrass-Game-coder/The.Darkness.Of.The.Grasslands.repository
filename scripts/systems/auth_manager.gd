@@ -17,7 +17,7 @@ const ENCRYPTION_KEY: String = "TDotG_2024_S3cur3_K3y!"  # XOR obfuscation key
 
 # Reserved usernames — case-insensitive, cannot be registered by other players
 # These users get a limited (non-destructive) admin panel
-const RESERVED_USERNAMES: Array[String] = ["Prograss", "Orange guy", "Juangoat", "Charon"]
+const RESERVED_USERNAMES: Array[String] = ["Prograss", "Orange guy", "Juangoat", "Charon", "TheAcTualDummy"]
 
 var current_username: String = ""
 var is_admin: bool = false
@@ -145,7 +145,7 @@ func _auto_login_from_session() -> bool:
 		GameState.is_limited_admin = false
 		is_admin = true
 		print("AuthManager: Session restored for co-owner Charon")
-	elif lower in ["prograss", "orange guy", "juangoat"]:
+	elif lower in ["prograss", "orange guy", "juangoat", "theactualdummy"]:
 		GameState.is_admin = true
 		GameState.is_limited_admin = true
 	GameState.logged_in_username = username
