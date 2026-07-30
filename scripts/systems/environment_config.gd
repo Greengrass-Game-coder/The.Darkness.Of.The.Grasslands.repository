@@ -20,14 +20,14 @@ enum EnvType {
 		print("EnvironmentConfig: Switched to ", get_environment_name(v as int))
 
 ## Dev WebSocket URL ----- LocalXpose tunnel
-const DEV_WS_URL: String = "wss://ytuqmca2hq.loclx.io"
+const DEV_WS_URL: String = "wss://unwjbc37l.loclx.io"
 ## Production WebSocket URL (unused, placeholder)
-const PROD_WS_URL: String = "wss://ytuqmca2hq.loclx.io"
+const PROD_WS_URL: String = "wss://unwjbc37l.loclx.io"
 
 ## Dev HTTP URL
-const DEV_HTTP_URL: String = "https://ytuqmca2hq.loclx.io"
+const DEV_HTTP_URL: String = "https://unwjbc37l.loclx.io"
 ## Production HTTP URL (unused, placeholder)
-const PROD_HTTP_URL: String = "https://ytuqmca2hq.loclx.io"
+const PROD_HTTP_URL: String = "https://unwjbc37l.loclx.io"
 
 
 func get_environment_name(env: int) -> String:
