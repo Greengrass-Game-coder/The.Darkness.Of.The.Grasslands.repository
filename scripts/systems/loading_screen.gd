@@ -65,14 +65,14 @@ func _ready() -> void:
 	var load_timeout: float = Time.get_ticks_msec() + 3000.0
 	
 	while not _load_complete:
-		var statuses: Array = []
-		var status: int = ResourceLoader.THREAD_LOAD_INVALID_RESOURCE
+		var load_statuses: Array = []
+		var load_status: int = ResourceLoader.THREAD_LOAD_INVALID_RESOURCE
 		var progress: float = 0.0
 		
 		if err == OK:
-			ResourceLoader.load_threaded_get_status(PRELOAD_SCENE, statuses)
-			status = statuses[0] if statuses.size() > 0 else ResourceLoader.THREAD_LOAD_INVALID_RESOURCE
-			progress = statuses[1] if statuses.size() > 1 else 0.0
+			ResourceLoader.load_threaded_get_status(PRELOAD_SCENE, load_statuses)
+			load_status = load_statuses[0] if load_statuses.size() > 0 else ResourceLoader.THREAD_LOAD_INVALID_RESOURCE
+			progress = load_statuses[1] if load_statuses.size() > 1 else 0.0
 		
 		# Update UI
 		_load_progress = progress
@@ -84,7 +84,7 @@ func _ready() -> void:
 		
 		var timed_out: bool = Time.get_ticks_msec() >= load_timeout
 		
-		if status == ResourceLoader.THREAD_LOAD_LOADED:
+		if load_status == ResourceLoader.THREAD_LOAD_LOADED:
 			_load_complete = true
 			_load_progress = 1.0
 			if progress_bar:
@@ -92,7 +92,7 @@ func _ready() -> void:
 			if loading_label:
 				loading_label.text = "Loading... 100%"
 			break
-		elif status == ResourceLoader.THREAD_LOAD_IN_PROGRESS and not timed_out:
+		elif load_status == ResourceLoader.THREAD_LOAD_IN_PROGRESS and not timed_out:
 			await get_tree().process_frame
 		elif timed_out:
 			# Timed out ----- do a direct load instead

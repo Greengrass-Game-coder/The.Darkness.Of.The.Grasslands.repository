@@ -94,9 +94,10 @@ func _physics_process(delta: float) -> void:
 	var effective_flee: float = flee_range if _has_los_to_killer else safe_los_distance
 	var killer_close: bool = is_instance_valid(_target_killer) and dist_to_killer <= effective_flee
 	
-	# PRIORITY 0: Block if killer is close, facing the bot, and not already fleeing
-	if is_instance_valid(_target_killer) and current_hp > 0.0 and not killer_close:
-		if dist_to_killer <= block_threshold and not block_on_cooldown and not _fleeing:
+	# PRIORITY 0: Block if killer is facing the bot and within block range
+	# (Only when not already fleeing — prevents interrupting a retreat)
+	if is_instance_valid(_target_killer) and current_hp > 0.0 and not block_on_cooldown:
+		if dist_to_killer <= block_threshold and not _fleeing:
 			var killer_dir: Vector2 = _target_killer.get("facing_direction") if "facing_direction" in _target_killer else Vector2.DOWN
 			var to_bot: Vector2 = (global_position - _target_killer.global_position).normalized()
 			if killer_dir.dot(to_bot) > 0.3:

@@ -109,11 +109,11 @@ func transition_to(scene_path: String, loading_text: String = "") -> void:
 		return
 
 	# Wait for threaded load
-	var statuses: Array = []
+	var load_statuses: Array = []
 	while true:
-		ResourceLoader.load_threaded_get_status(scene_path, statuses)
-		var status: int = statuses[0] if statuses.size() > 0 else 0
-		if status == ResourceLoader.THREAD_LOAD_LOADED:
+		ResourceLoader.load_threaded_get_status(scene_path, load_statuses)
+		var load_status: int = load_statuses[0] if load_statuses.size() > 0 else 0
+		if load_status == ResourceLoader.THREAD_LOAD_LOADED:
 			break
 		await get_tree().process_frame
 
