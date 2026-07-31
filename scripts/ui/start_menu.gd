@@ -240,8 +240,8 @@ func _on_save_display_name() -> void:
 	
 	# Save to persistent storage
 	var sm = get_node_or_null("/root/SaveManager")
-	if sm and sm.has_method("autosave"):
-		sm.autosave()
+	if sm and sm.has_method("autosave") and gs and "logged_in_username" in gs and not gs.logged_in_username.is_empty():
+		sm.autosave(gs.logged_in_username)
 
 
 func _save_avatar_setting(avatar_type: String) -> void:
@@ -253,8 +253,8 @@ func _save_avatar_setting(avatar_type: String) -> void:
 	gs.avatar_type = avatar_type
 	
 	var sm = get_node_or_null("/root/SaveManager")
-	if sm and sm.has_method("autosave"):
-		sm.autosave()
+	if sm and sm.has_method("autosave") and gs and "logged_in_username" in gs and not gs.logged_in_username.is_empty():
+		sm.autosave(gs.logged_in_username)
 
 
 func _get_safe_username() -> String:
