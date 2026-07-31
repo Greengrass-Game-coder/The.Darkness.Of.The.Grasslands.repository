@@ -28,6 +28,7 @@ var _target_killer: Node2D = null
 var _target_puzzle: Area2D = null
 var _solved_names: Array[String] = []
 var _patrol_dir: Vector2 = Vector2.RIGHT
+var _patrol_target: Vector2 = Vector2.ZERO
 var _patrol_timer: float = 0.0
 var _solving: bool = false
 var _solve_timer: float = 0.0
@@ -40,11 +41,22 @@ var _has_los_to_killer: bool = false
 var _double_backed: bool = false
 var _stamina_saver: bool = false                  # Don't sprint when killer is far
 
+# NavigationAgent2D for pathfinding around walls
+var _navigation_agent: NavigationAgent2D = null
+var _nav_target: Vector2 = Vector2.ZERO
+var _nav_target_set: bool = false
 
 
 func _ready() -> void:
 	super()
 	modulate = Color(0.7, 0.7, 1.0, 1.0)
+	
+	# Create NavigationAgent2D for pathfinding
+	_navigation_agent = NavigationAgent2D.new()
+	_navigation_agent.name = "NavigationAgent"
+	_navigation_agent.path_desired_distance = 8.0
+	_navigation_agent.target_desired_distance = 8.0
+	add_child(_navigation_agent)
 	
 	var label := BitmapLabel.new()
 	label.name = "BotLabel"
@@ -223,7 +235,8 @@ func _ai_go_to_puzzle(delta: float) -> void:
 		_ai_patrol(delta)
 		return
 	
-	var dir: Vector2 = _target_puzzle.global_position - global_position
+	var target_pos: Vector2 = _target_puzzle.global_position
+	var dir: Vector2 = target_pos - global_position
 	var dist_to_puzzle: float = dir.length()
 	
 	if dist_to_puzzle <= puzzle_approach_range:
@@ -234,6 +247,11 @@ func _ai_go_to_puzzle(delta: float) -> void:
 		_play_animation("idle")
 		velocity = Vector2.ZERO
 		return
+	
+	# Use NavigationAgent2D to find path around walls to puzzle
+	var nav_dir: Vector2 = _navigate_to(target_pos)
+	if nav_dir.length_squared() > 0.01:
+		dir = nav_dir
 	
 	# Conserve stamina if killer might be nearby
 	var killer_threat: bool = is_instance_valid(_target_killer) and \
@@ -270,98 +288,54 @@ func _ai_flee(delta: float) -> void:
 	var away_dir: Vector2 = global_position - _target_killer.global_position
 	var dist_from_killer: float = away_dir.length()
 	
+	# ── Calculate flee target position ──
+	# Flee to a point away from the killer, navigating around walls
+	var flee_target: Vector2 = global_position + away_dir.normalized() * 250.0
+	
 	# ── Double-back mechanic ──
 	# Randomly reverse direction to throw off killer prediction
 	if not _double_backed and randf() < double_back_chance * delta * 10.0:
 		_strafe_dir *= -1.0
 		_double_backed = true
-		_strafe_change_timer = 0.1  # force a sharp turn next frame
+		_strafe_change_timer = 0.1
 	if _double_backed:
 		_double_backed = false
 	
 	# ── Circle toward nearest puzzle while fleeing ──
-	# If a puzzle exists, bias flee direction toward it (safe flanking route)
 	var puzzle_bias: Vector2 = Vector2.ZERO
 	_target_puzzle = _find_nearest_unsolved_puzzle()
 	if is_instance_valid(_target_puzzle):
 		var to_puzzle: Vector2 = _target_puzzle.global_position - global_position
 		var puzzle_dist: float = to_puzzle.length()
-		# Only bias if puzzle is not in the killer's direction
 		var to_killer: Vector2 = _target_killer.global_position - global_position
 		if to_puzzle.dot(to_killer) < 0.0 and puzzle_dist < puzzle_circle_range:
-			puzzle_bias = to_puzzle.normalized() * 0.2
+			puzzle_bias = to_puzzle.normalized() * 0.15
 	
-	# Strafe direction changes periodically for unpredictable movement
+	# Update strafe direction periodically
 	_strafe_change_timer -= delta
 	if _strafe_change_timer <= 0.0:
 		_strafe_dir = 1.0 if randf() > 0.5 else -1.0
 		_strafe_change_timer = randf_range(0.5, 1.5)
 	
 	var strafe: Vector2 = Vector2(-away_dir.y, away_dir.x).normalized() * _strafe_dir
-	var strafe_amount: float = randf_range(0.2, 0.5)
+	var strafe_amount: float = randf_range(0.15, 0.35)
 	
-	var move_dir: Vector2 = (away_dir.normalized() + strafe * strafe_amount + puzzle_bias).normalized()
+	# ── Navigation-based flee direction ──
+	# Use NavigationAgent2D to find a path around walls, then add strafe/puzzle bias
+	var nav_dir: Vector2 = _navigate_to(flee_target)
+	if nav_dir.length_squared() < 0.01:
+		nav_dir = away_dir.normalized()  # Fallback
 	
-	# Multi-raycast wall avoidance — check 7 directions for better coverage
-	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
-	var ray_dists: Array[float] = [120.0, 100.0, 80.0, 60.0, 100.0, 80.0, 60.0]
-	var ray_offsets: Array[float] = [0.0, -30.0, -60.0, -90.0, 30.0, 60.0, 90.0]  # Degrees
-	var blocked: bool = false
-	
-	for i in range(ray_offsets.size()):
-		var rotated_dir: Vector2 = move_dir.rotated(deg_to_rad(ray_offsets[i]))
-		var query := PhysicsRayQueryParameters2D.create(
-			global_position,
-			global_position + rotated_dir * ray_dists[i]
-		)
-		query.collision_mask = 4  # Wall layer
-		query.exclude = [self]
-		var result: Dictionary = space_state.intersect_ray(query)
-		if not result.is_empty():
-			blocked = true
-			break
-	
-	if blocked:
-		# Try strafe first
-		var try_dir: Vector2 = strafe.normalized()
-		var try_query := PhysicsRayQueryParameters2D.create(
-			global_position,
-			global_position + try_dir * 80.0
-		)
-		try_query.collision_mask = 4
-		try_query.exclude = [self]
-		var try_result: Dictionary = space_state.intersect_ray(try_query)
-		if try_result.is_empty():
-			move_dir = try_dir
-		else:
-			# Try the opposite strafe direction
-			try_dir = -strafe.normalized()
-			try_query = PhysicsRayQueryParameters2D.create(
-				global_position,
-				global_position + try_dir * 80.0
-			)
-			try_query.collision_mask = 4
-			try_query.exclude = [self]
-			try_result = space_state.intersect_ray(try_query)
-			if try_result.is_empty():
-				move_dir = try_dir
-			else:
-				# Last resort: reverse away from wall
-				move_dir = (away_dir.normalized() * -1.0).normalized()
+	var move_dir: Vector2 = (nav_dir + strafe * strafe_amount + puzzle_bias).normalized()
 	
 	# ── Smart stamina management: burst sprinting ──
-	# Sprint in bursts: sprint for ~2-3s, then walk for ~1s to regen
-	# Don't sprint if killer is far enough away to be safe
 	var use_sprint: bool = false
 	if not _stamina_exhausted:
 		if dist_from_killer < flee_range * 0.5:
-			# Killer is close — sprint hard
 			use_sprint = true
 		elif dist_from_killer < flee_range:
-			# Killer is moderately close — burst sprint
 			_stamina_saver = not _stamina_saver if randf() < 0.01 else _stamina_saver
 			use_sprint = _stamina_saver
-		# If killer is far, don't sprint — conserve stamina
 	
 	var speed: float = sprint_speed if use_sprint else move_speed
 	
@@ -389,20 +363,22 @@ func _ai_flee(delta: float) -> void:
 func _ai_patrol(delta: float) -> void:
 	# Bias patrol toward nearest unsolved puzzle
 	_target_puzzle = _find_nearest_unsolved_puzzle()
-	if is_instance_valid(_target_puzzle):
-		var to_puzzle: Vector2 = _target_puzzle.global_position - global_position
-		var puzzle_dir: Vector2 = to_puzzle.normalized()
-		_patrol_dir = (_patrol_dir + puzzle_dir * 0.3).normalized()
 	
 	_patrol_timer -= delta
 	if _patrol_timer <= 0.0:
 		if is_instance_valid(_target_puzzle):
 			# Patrol toward puzzle zone
-			_patrol_dir = _random_dir()
-			_patrol_timer = patrol_change_interval * 2.0  # Longer patrol toward puzzles
+			_patrol_target = _target_puzzle.global_position + Vector2(randf_range(-100, 100), randf_range(-100, 100))
+			_patrol_timer = patrol_change_interval * 2.0
 		else:
-			_patrol_dir = _random_dir()
+			_patrol_target = global_position + _random_dir() * randf_range(150, 300)
 			_patrol_timer = patrol_change_interval
+	
+	# Use NavigationAgent2D to navigate to patrol target
+	if _patrol_target.length_squared() > 0.0:
+		var nav_dir: Vector2 = _navigate_to(_patrol_target)
+		if nav_dir.length_squared() > 0.01:
+			_patrol_dir = nav_dir
 	
 	velocity = _patrol_dir * move_speed * 0.6
 	_update_direction(velocity)
@@ -434,3 +410,44 @@ func _on_puzzle_solved() -> void:
 
 func is_bot() -> bool:
 	return true
+
+
+# ── Navigation helpers ──
+
+func _navigate_to(target_pos: Vector2) -> Vector2:
+	"""
+	Set a navigation target and return the movement direction toward it.
+	Returns the direction to the next path waypoint, or Vector2.ZERO if
+	no path is available (navigation not synced yet).
+	Falls back to direct direction if NavigationAgent2D isn't ready.
+	"""
+	if not is_instance_valid(_navigation_agent):
+		return Vector2.ZERO
+
+	# Update target if it changed
+	if _nav_target.distance_squared_to(target_pos) > 100.0 or not _nav_target_set:
+		_navigation_agent.target_position = target_pos
+		_nav_target = target_pos
+		_nav_target_set = true
+
+	# Check if navigation map is synced
+	if NavigationServer2D.map_get_iteration_id(_navigation_agent.get_navigation_map()) == 0:
+		# Navigation not ready yet — fall back to direct direction
+		return (target_pos - global_position).normalized()
+
+	if _navigation_agent.is_navigation_finished():
+		return (target_pos - global_position).normalized()
+
+	var next_pos: Vector2 = _navigation_agent.get_next_path_position()
+	var dir: Vector2 = (next_pos - global_position).normalized()
+	if dir.length_squared() < 0.01:
+		return (target_pos - global_position).normalized()
+	return dir
+
+
+func _set_nav_target(target_pos: Vector2) -> void:
+	"""Force-set a navigation target (used for flee direction updates)."""
+	if is_instance_valid(_navigation_agent):
+		_navigation_agent.target_position = target_pos
+		_nav_target = target_pos
+		_nav_target_set = true

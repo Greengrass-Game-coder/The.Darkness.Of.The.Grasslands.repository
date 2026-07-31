@@ -142,6 +142,9 @@ func _ready() -> void:
 	# Build wall collision
 	_map_manager.build_collision(self)
 	
+	# Build navigation mesh for AI pathfinding
+	_map_manager.build_navigation(self)
+	
 	# Add map border walls
 	_add_map_border_walls()
 	
@@ -2305,7 +2308,12 @@ func _on_map_chat_sent(text: String, is_admin: bool) -> void:
 				# Send to server so it handles the command
 				var nm: Node = get_node("/root/NetworkManager")
 				if is_instance_valid(nm) and nm.has_method("send_admin_command"):
-					nm.send_admin_command(text.trim_prefix("G "))
+					var admin_cmd: String = text
+					if admin_cmd.begins_with("G "):
+						admin_cmd = admin_cmd.trim_prefix("G ")
+					elif admin_cmd.begins_with("g "):
+						admin_cmd = admin_cmd.trim_prefix("g ")
+					nm.send_admin_command(admin_cmd)
 				return
 			else:
 				# Local mode: set flag directly
@@ -2318,7 +2326,12 @@ func _on_map_chat_sent(text: String, is_admin: bool) -> void:
 	if is_admin and GameState.connected_to_server:
 		var nm: Node = get_node("/root/NetworkManager")
 		if is_instance_valid(nm) and nm.has_method("send_admin_command"):
-			nm.send_admin_command(text.trim_prefix("G "))
+			var admin_cmd: String = text
+			if admin_cmd.begins_with("G "):
+				admin_cmd = admin_cmd.trim_prefix("G ")
+			elif admin_cmd.begins_with("g "):
+				admin_cmd = admin_cmd.trim_prefix("g ")
+			nm.send_admin_command(admin_cmd)
 		return
 	
 	if GameState.connected_to_server:

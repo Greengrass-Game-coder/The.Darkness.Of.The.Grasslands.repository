@@ -117,8 +117,10 @@ func _build_ui() -> void:
 	# Message container
 	var vbox := VBoxContainer.new()
 	vbox.name = "MessageContainer"
-	vbox.size = scroll.size
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Add spacing between messages to prevent overlap
+	vbox.add_theme_constant_override("separation", 4)
 	scroll.add_child(vbox)
 	_message_container = vbox
 	
@@ -207,7 +209,7 @@ func _on_text_submitted(text: String) -> void:
 		_close_chat()
 		return
 	
-	var is_admin_cmd: bool = text.begins_with("G ")
+	var is_admin_cmd: bool = text.begins_with("G ") or text.begins_with("g ")
 	chat_sent.emit(text, is_admin_cmd)
 	
 	# Add to local display
@@ -280,7 +282,7 @@ func _add_message_label(msg: String) -> void:
 	label.label_text = msg
 	label.font_scale = 0.16
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.size.y = 28
+	label.size.y = 30  # Slightly taller for visual breathing room
 	
 	# Determine sender color for tag formatting
 	if msg.begins_with("["):
@@ -299,11 +301,20 @@ func _add_message_label(msg: String) -> void:
 		else:
 			label.font_color = Color(0.9, 0.9, 0.9, 1)
 	elif msg.begins_with("***"):
-		label.font_color = Color(0.5, 0.5, 0.5, 1)
+		label.font_color = Color(0.6, 0.6, 0.7, 1)  # Slightly brighter gray for readability
 	else:
 		label.font_color = Color(0.9, 0.9, 0.9, 1)
 	
 	_message_container.add_child(label)
+	
+	# Add a thin separator line after system messages for visual distinction
+	if msg.begins_with("***"):
+		var separator := ColorRect.new()
+		separator.name = "MsgSep"
+		separator.size.y = 1
+		separator.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		separator.color = Color(0.4, 0.4, 0.4, 0.3)
+		_message_container.add_child(separator)
 
 
 func _scroll_to_bottom() -> void:

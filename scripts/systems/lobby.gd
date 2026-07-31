@@ -224,7 +224,12 @@ func _on_chat_sent(text: String, is_admin: bool) -> void:
 	if is_admin and GameState.connected_to_server:
 		var nm: Node = get_node("/root/NetworkManager")
 		if is_instance_valid(nm) and nm.has_method("send_admin_command"):
-			nm.send_admin_command(text.trim_prefix("G "))
+			var admin_cmd: String = text
+			if admin_cmd.begins_with("G "):
+				admin_cmd = admin_cmd.trim_prefix("G ")
+			elif admin_cmd.begins_with("g "):
+				admin_cmd = admin_cmd.trim_prefix("g ")
+			nm.send_admin_command(admin_cmd)
 		return
 	
 	# Normal chat: forward to server if connected

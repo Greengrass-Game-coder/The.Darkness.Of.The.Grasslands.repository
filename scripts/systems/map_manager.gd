@@ -160,6 +160,101 @@ func build_collision(parent_node: Node) -> void:
 	print("MapManager: Created ", total_polygons, " wall collision polygons (seamless)")
 
 
+func build_navigation(parent_node: Node) -> void:
+	"""
+	Build a NavigationRegion2D from the blueprint's walkable areas.
+	Creates a NavigationPolygon where the outer boundary is the full map
+	and wall regions are holes (obstacles).
+	"""
+	if not blueprint_image:
+		push_error("MapManager: No blueprint loaded for navigation")
+		return
+
+	var grid_w: int = ceili(float(blueprint_size.x) / GRID_SIZE)
+	var grid_h: int = ceili(float(blueprint_size.y) / GRID_SIZE)
+
+	# Build wall grid
+	var wall_grid: Array[Array] = []
+	wall_grid.resize(grid_h)
+	for gy in range(grid_h):
+		wall_grid[gy] = []
+		wall_grid[gy].resize(grid_w)
+		for gx in range(grid_w):
+			wall_grid[gy][gx] = _is_grid_cell_wall(gx, gy)
+
+	# Find connected wall regions (to use as holes)
+	var visited: Array[Array] = []
+	visited.resize(grid_h)
+	for gy in range(grid_h):
+		visited[gy] = []
+		visited[gy].resize(grid_w)
+		for gx in range(grid_w):
+			visited[gy][gx] = false
+
+	var dirs: Array[Vector2i] = [
+		Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)
+	]
+
+	var wall_outlines: Array[Array] = []
+
+	for start_gy in range(grid_h):
+		for start_gx in range(grid_w):
+			if not wall_grid[start_gy][start_gx] or visited[start_gy][start_gx]:
+				continue
+
+			# BFS for connected wall region
+			var region_cells: Array[Vector2i] = []
+			var queue: Array[Vector2i] = [Vector2i(start_gx, start_gy)]
+			visited[start_gy][start_gx] = true
+
+			while queue.size() > 0:
+				var cell: Vector2i = queue.pop_front()
+				region_cells.append(cell)
+				for d in dirs:
+					var nx: int = cell.x + d.x
+					var ny: int = cell.y + d.y
+					if nx >= 0 and nx < grid_w and ny >= 0 and ny < grid_h \
+							and wall_grid[ny][nx] and not visited[ny][nx]:
+						visited[ny][nx] = true
+						queue.append(Vector2i(nx, ny))
+
+			if region_cells.size() >= 2:
+				var poly: Array[Vector2] = _extract_region_polygon(region_cells)
+				if poly.size() >= 3:
+					wall_outlines.append(poly)
+
+	# Create NavigationPolygon
+	var nav_poly := NavigationPolygon.new()
+
+	# Outer boundary: full map area
+	var map_w: float = blueprint_size.x
+	var map_h: float = blueprint_size.y
+	var margin: float = 8.0  # Small inward margin to keep agents away from walls
+	var outer_boundary: PackedVector2Array = [
+		Vector2(margin, margin),
+		Vector2(map_w - margin, margin),
+		Vector2(map_w - margin, map_h - margin),
+		Vector2(margin, map_h - margin)
+	]
+	nav_poly.add_outline(outer_boundary)
+
+	# Add wall regions as holes (inner outlines)
+	for wall_poly in wall_outlines:
+		if wall_poly.size() >= 3:
+			var hole: PackedVector2Array = PackedVector2Array(wall_poly)
+			nav_poly.add_outline(hole)
+
+	nav_poly.make_polygons()
+
+	# Create NavigationRegion2D
+	var nav_region := NavigationRegion2D.new()
+	nav_region.name = "NavigationRegion"
+	nav_region.navigation_polygon = nav_poly
+	parent_node.add_child(nav_region)
+
+	print("MapManager: Created navigation region with %d wall holes" % wall_outlines.size())
+
+
 func get_spawn_point(for_killer: bool = false) -> Vector2:
 	"""
 	Get a random spawn point. If for_killer is false (survivor),
