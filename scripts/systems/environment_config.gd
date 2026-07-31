@@ -19,15 +19,15 @@ enum EnvType {
 		environment_changed.emit(v as int)
 		print("EnvironmentConfig: Switched to ", get_environment_name(v as int))
 
-## Dev WebSocket URL ----- TCP tunnel
-const DEV_WS_URL: String = "ws://hsq41xtxar.localto.net"
+## Dev WebSocket URL ----- Pinggy tunnel
+const DEV_WS_URL: String = "wss://zizir-2a00-5400-e052-6ab2-f420-3134-12-9e7d.run.pinggy-free.link"
 ## Production WebSocket URL (unused, placeholder)
-const PROD_WS_URL: String = "ws://hsq41xtxar.localto.net"
+const PROD_WS_URL: String = "wss://zizir-2a00-5400-e052-6ab2-f420-3134-12-9e7d.run.pinggy-free.link"
 
 ## Dev HTTP URL
-const DEV_HTTP_URL: String = "http://hsq41xtxar.localto.net"
+const DEV_HTTP_URL: String = "https://zizir-2a00-5400-e052-6ab2-f420-3134-12-9e7d.run.pinggy-free.link"
 ## Production HTTP URL (unused, placeholder)
-const PROD_HTTP_URL: String = "http://hsq41xtxar.localto.net"
+const PROD_HTTP_URL: String = "https://zizir-2a00-5400-e052-6ab2-f420-3134-12-9e7d.run.pinggy-free.link"
 
 
 func get_environment_name(env: int) -> String:

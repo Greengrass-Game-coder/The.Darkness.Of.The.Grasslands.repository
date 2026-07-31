@@ -30,15 +30,22 @@ func _ready() -> void:
 
 func _setup_buttons() -> void:
 	"""Connect menu button signals."""
-	var find_btn: Button = %FindGameBtn
-	var settings_btn: Button = %SettingsBtn
-	var account_btn: Button = %AccountSettingsBtn
-	var logout_btn: Button = %LogoutBtn
+	var buttons: VBoxContainer = $MenuButtons if has_node("MenuButtons") else null
+	if not buttons:
+		return
+	var find_btn: Button = buttons.get_node("FindGameBtn") as Button
+	var settings_btn: Button = buttons.get_node("SettingsBtn") as Button
+	var account_btn: Button = buttons.get_node("AccountSettingsBtn") as Button
+	var logout_btn: Button = buttons.get_node("LogoutBtn") as Button
 	
-find_btn.pressed.connect(_on_find_game_pressed)
-	settings_btn.pressed.connect(_on_settings_pressed)
-	account_btn.pressed.connect(_on_account_settings_pressed)
-	logout_btn.pressed.connect(_on_logout_pressed)
+	if find_btn:
+		find_btn.pressed.connect(_on_find_game_pressed)
+	if settings_btn:
+		settings_btn.pressed.connect(_on_settings_pressed)
+	if account_btn:
+		account_btn.pressed.connect(_on_account_settings_pressed)
+	if logout_btn:
+		logout_btn.pressed.connect(_on_logout_pressed)
 
 
 func _setup_account_panel() -> void:
@@ -67,11 +74,11 @@ func _load_current_settings() -> void:
 	
 	# Load display name
 	var name_input: LineEdit = %AccountPanel/DisplayNameSection/NameInput
-	if gs.has("display_name"):
+	if "display_name" in gs:
 		name_input.text = gs.display_name
 	
 	# Load avatar
-	if gs.has("avatar_type") and gs.avatar_type != "Lobby Person":
+	if "avatar_type" in gs and gs.avatar_type != "Lobby Person":
 		_selected_avatar = gs.avatar_type
 		_highlight_selected_avatar()
 

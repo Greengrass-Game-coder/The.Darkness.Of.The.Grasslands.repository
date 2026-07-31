@@ -1,222 +1,191 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://u72n7taqak6k"]
 
-[ext_resource type="Script" path="res://scripts/ui/start_menu.gd" id="1_8m3vc"]
+[ext_resource type="Script" uid="uid://bwo5lw1uy8ayb" path="res://scripts/ui/start_menu.gd" id="1_8m3vc"]
 
-[node name="StartMenu" type="Control"]
+[node name="StartMenu" type="Control" unique_id=1195528351]
+layout_mode = 3
 anchors_preset = 0
 offset_right = 1920.0
 offset_bottom = 1080.0
 script = ExtResource("1_8m3vc")
 
-[node name="Background" type="ColorRect" parent="."]
-anchors_preset = 0
+[node name="Background" type="ColorRect" parent="." unique_id=1090200762]
+layout_mode = 0
 offset_right = 1920.0
 offset_bottom = 1080.0
 color = Color(0.02, 0.02, 0.05, 1)
 
-[node name="TitleLabel" type="Label" parent="."]
-offset_left = 560.0
-offset_top = 80.0
-offset_right = 1360.0
-offset_bottom = 180.0
-theme_overrides/colors/font_color = Color(0.6, 0.1, 0.15, 1)
-theme_overrides/font_sizes/font_size = 48
+[node name="TitleLabel" type="Label" parent="." unique_id=1088153809]
+modulate = Color(0.14184064, 0.32113057, 4.813075e-08, 1)
+layout_mode = 0
+offset_left = 215.99997
+offset_top = 25.999985
+offset_right = 728.0
+offset_bottom = 89.999985
+scale = Vector2(2.9199986, 2.9199986)
+text = "THE DARKNESS
+OF THE GRASSLANDS"
 horizontal_alignment = 1
 vertical_alignment = 1
-text = "THE DARKNESS\nOF THE GRASSLANDS"
 
-[node name="SubtitleLabel" type="Label" parent="."]
-offset_left = 660.0
-offset_top = 200.0
-offset_right = 1260.0
-offset_bottom = 240.0
-theme_overrides/colors/font_color = Color(0.6, 0.6, 0.6, 1)
-theme_overrides/font_sizes/font_size = 18
+[node name="SubtitleLabel" type="Label" parent="." unique_id=934871066]
+layout_mode = 0
+offset_left = 359.0
+offset_top = 233.00002
+offset_right = 959.0
+offset_bottom = 273.0
+scale = Vector2(2.04, 2.04)
+text = "BE ONE OF THEM."
 horizontal_alignment = 1
 vertical_alignment = 1
-text = "Enter the darkness..."
 
-[node name="MenuButtons" type="VBoxContainer" parent="."]
+[node name="MenuButtons" type="VBoxContainer" parent="." unique_id=1384308476]
+layout_mode = 0
 offset_left = 710.0
 offset_top = 320.0
 offset_right = 1210.0
 offset_bottom = 620.0
-theme_overrides/constants/separation = 16
 
-[node name="FindGameBtn" type="Button" parent="MenuButtons"]
+[node name="FindGameBtn" type="Button" parent="MenuButtons" unique_id=2146826561]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(500, 60)
 layout_mode = 2
 size_flags_horizontal = 4
-custom_minimum_size = Vector2(500, 60)
 text = "FIND A GAME"
-theme_overrides/colors/font_color = Color(0.8, 0.8, 0.8, 1)
-theme_overrides/colors/font_hover_color = Color(1, 1, 1, 1)
-theme_overrides/colors/font_pressed_color = Color(0.6, 0.6, 0.6, 1)
-theme_overrides/colors/button_normal = Color(0.15, 0.15, 0.2, 0.9)
-theme_overrides/colors/button_hover = Color(0.25, 0.25, 0.35, 0.9)
-theme_overrides/colors/button_pressed = Color(0.1, 0.1, 0.15, 0.9)
-theme_overrides/font_sizes/font_size = 22
 
-[node name="SettingsBtn" type="Button" parent="MenuButtons"]
+[node name="SettingsBtn" type="Button" parent="MenuButtons" unique_id=2143062250]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(500, 60)
 layout_mode = 2
 size_flags_horizontal = 4
-custom_minimum_size = Vector2(500, 60)
 text = "SETTINGS"
-theme_overrides/colors/font_color = Color(0.8, 0.8, 0.8, 1)
-theme_overrides/colors/font_hover_color = Color(1, 1, 1, 1)
-theme_overrides/colors/font_pressed_color = Color(0.6, 0.6, 0.6, 1)
-theme_overrides/colors/button_normal = Color(0.15, 0.15, 0.2, 0.9)
-theme_overrides/colors/button_hover = Color(0.25, 0.25, 0.35, 0.9)
-theme_overrides/colors/button_pressed = Color(0.1, 0.1, 0.15, 0.9)
-theme_overrides/font_sizes/font_size = 22
 
-[node name="AccountSettingsBtn" type="Button" parent="MenuButtons"]
+[node name="AccountSettingsBtn" type="Button" parent="MenuButtons" unique_id=1841129816]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(500, 60)
 layout_mode = 2
 size_flags_horizontal = 4
-custom_minimum_size = Vector2(500, 60)
 text = "ACCOUNT SETTINGS"
-theme_overrides/colors/font_color = Color(0.8, 0.8, 0.8, 1)
-theme_overrides/colors/font_hover_color = Color(1, 1, 1, 1)
-theme_overrides/colors/font_pressed_color = Color(0.6, 0.6, 0.6, 1)
-theme_overrides/colors/button_normal = Color(0.15, 0.15, 0.2, 0.9)
-theme_overrides/colors/button_hover = Color(0.25, 0.25, 0.35, 0.9)
-theme_overrides/colors/button_pressed = Color(0.1, 0.1, 0.15, 0.9)
-theme_overrides/font_sizes/font_size = 22
 
-[node name="LogoutBtn" type="Button" parent="MenuButtons"]
+[node name="LogoutBtn" type="Button" parent="MenuButtons" unique_id=226807416]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(500, 60)
 layout_mode = 2
 size_flags_horizontal = 4
-custom_minimum_size = Vector2(500, 60)
 text = "LOGOUT"
-theme_overrides/colors/font_color = Color(0.7, 0.3, 0.3, 1)
-theme_overrides/colors/font_hover_color = Color(1, 0.4, 0.4, 1)
-theme_overrides/colors/font_pressed_color = Color(0.5, 0.2, 0.2, 1)
-theme_overrides/colors/button_normal = Color(0.15, 0.15, 0.2, 0.9)
-theme_overrides/colors/button_hover = Color(0.25, 0.2, 0.2, 0.9)
-theme_overrides/colors/button_pressed = Color(0.1, 0.1, 0.15, 0.9)
-theme_overrides/font_sizes/font_size = 22
 
-[node name="AccountPanel" type="Control" parent="."]
+[node name="AccountPanel" type="Control" parent="." unique_id=2027008881]
+unique_name_in_owner = true
 visible = false
+anchors_preset = 0
 offset_left = 360.0
 offset_top = 100.0
 offset_right = 1560.0
 offset_bottom = 900.0
 
-[node name="PanelBg" type="ColorRect" parent="AccountPanel"]
-anchors_preset = 0
+[node name="PanelBg" type="ColorRect" parent="AccountPanel" unique_id=202954359]
+layout_mode = 0
 offset_right = 1200.0
 offset_bottom = 800.0
 color = Color(0.06, 0.06, 0.1, 0.95)
 
-[node name="PanelTitle" type="Label" parent="AccountPanel"]
+[node name="PanelTitle" type="Label" parent="AccountPanel" unique_id=1340350786]
+layout_mode = 0
 offset_left = 40.0
 offset_top = 30.0
 offset_right = 1160.0
 offset_bottom = 80.0
-theme_overrides/colors/font_color = Color(0.8, 0.8, 0.8, 1)
-theme_overrides/font_sizes/font_size = 28
-horizontal_alignment = 1
 text = "ACCOUNT SETTINGS"
+horizontal_alignment = 1
 
-[node name="CloseBtn" type="Button" parent="AccountPanel"]
+[node name="CloseBtn" type="Button" parent="AccountPanel" unique_id=1423694489]
+layout_mode = 0
 offset_left = 1120.0
 offset_top = 15.0
 offset_right = 1170.0
 offset_bottom = 65.0
 text = "X"
-theme_overrides/colors/font_color = Color(0.8, 0.3, 0.3, 1)
-theme_overrides/font_sizes/font_size = 20
 
-[node name="DisplayNameSection" type="Control" parent="AccountPanel"]
+[node name="DisplayNameSection" type="Control" parent="AccountPanel" unique_id=273364527]
+anchors_preset = 0
 offset_left = 40.0
 offset_top = 120.0
 offset_right = 1160.0
 offset_bottom = 260.0
 
-[node name="SectionLabel" type="Label" parent="AccountPanel/DisplayNameSection"]
+[node name="SectionLabel" type="Label" parent="AccountPanel/DisplayNameSection" unique_id=1416947123]
+layout_mode = 0
 offset_right = 1120.0
 offset_bottom = 30.0
-theme_overrides/colors/font_color = Color(0.7, 0.7, 0.7, 1)
-theme_overrides/font_sizes/font_size = 18
 text = "DISPLAY NAME"
 
-[node name="DescLabel" type="Label" parent="AccountPanel/DisplayNameSection"]
+[node name="DescLabel" type="Label" parent="AccountPanel/DisplayNameSection" unique_id=1559148641]
+layout_mode = 0
 offset_top = 35.0
 offset_right = 1120.0
 offset_bottom = 55.0
-theme_overrides/colors/font_color = Color(0.5, 0.5, 0.5, 1)
-theme_overrides/font_sizes/font_size = 12
 text = "Shown in chat and leaderboard. Your login username is always used for killer intro and admin."
 
-[node name="NameInput" type="LineEdit" parent="AccountPanel/DisplayNameSection"]
+[node name="NameInput" type="LineEdit" parent="AccountPanel/DisplayNameSection" unique_id=652212234]
+layout_mode = 0
 offset_top = 65.0
 offset_right = 800.0
 offset_bottom = 105.0
 placeholder_text = "Enter display name (leave empty to use username)"
-theme_overrides/colors/font_color = Color(0.9, 0.9, 0.9, 1)
-theme_overrides/colors/caret_color = Color(0.8, 0.8, 0.8, 1)
-theme_overrides/font_sizes/font_size = 16
 max_length = 24
 
-[node name="SaveNameBtn" type="Button" parent="AccountPanel/DisplayNameSection"]
+[node name="SaveNameBtn" type="Button" parent="AccountPanel/DisplayNameSection" unique_id=1455440138]
+layout_mode = 0
 offset_left = 820.0
 offset_top = 65.0
 offset_right = 960.0
 offset_bottom = 105.0
 text = "SAVE"
-theme_overrides/colors/font_color = Color(0.7, 0.9, 0.7, 1)
-theme_overrides/font_sizes/font_size = 16
 
-[node name="NameStatus" type="Label" parent="AccountPanel/DisplayNameSection"]
+[node name="NameStatus" type="Label" parent="AccountPanel/DisplayNameSection" unique_id=725028856]
+layout_mode = 0
 offset_top = 115.0
 offset_right = 1120.0
 offset_bottom = 140.0
-theme_overrides/colors/font_color = Color(0.5, 0.5, 0.5, 1)
-theme_overrides/font_sizes/font_size = 12
-text = ""
 
-[node name="AvatarSection" type="Control" parent="AccountPanel"]
+[node name="AvatarSection" type="Control" parent="AccountPanel" unique_id=1703092852]
+anchors_preset = 0
 offset_left = 40.0
 offset_top = 280.0
 offset_right = 1160.0
 offset_bottom = 560.0
 
-[node name="SectionLabel" type="Label" parent="AccountPanel/AvatarSection"]
+[node name="SectionLabel" type="Label" parent="AccountPanel/AvatarSection" unique_id=81839590]
+layout_mode = 0
 offset_right = 1120.0
 offset_bottom = 30.0
-theme_overrides/colors/font_color = Color(0.7, 0.7, 0.7, 1)
-theme_overrides/font_sizes/font_size = 18
 text = "PROFILE PICTURE"
 
-[node name="DescLabel" type="Label" parent="AccountPanel/AvatarSection"]
+[node name="DescLabel" type="Label" parent="AccountPanel/AvatarSection" unique_id=527353448]
+layout_mode = 0
 offset_top = 35.0
 offset_right = 1120.0
 offset_bottom = 55.0
-theme_overrides/colors/font_color = Color(0.5, 0.5, 0.5, 1)
-theme_overrides/font_sizes/font_size = 12
 text = "Select an avatar or upload your own PNG (max 64x64). Inappropriate images may result in a ban."
 
-[node name="AvatarGrid" type="GridContainer" parent="AccountPanel/AvatarSection"]
+[node name="AvatarGrid" type="GridContainer" parent="AccountPanel/AvatarSection" unique_id=1063120705]
+layout_mode = 0
 offset_left = 20.0
 offset_top = 70.0
 offset_right = 1100.0
 offset_bottom = 270.0
-theme_overrides/constants/separation = 8
 columns = 6
 
-[node name="AvatarStatus" type="Label" parent="AccountPanel/AvatarSection"]
+[node name="AvatarStatus" type="Label" parent="AccountPanel/AvatarSection" unique_id=1903635972]
+layout_mode = 0
 offset_top = 280.0
 offset_right = 1120.0
 offset_bottom = 305.0
-theme_overrides/colors/font_color = Color(0.5, 0.5, 0.5, 1)
-theme_overrides/font_sizes/font_size = 12
-text = ""
 
-[node name="UsernameDisplay" type="Label" parent="AccountPanel"]
+[node name="UsernameDisplay" type="Label" parent="AccountPanel" unique_id=447528584]
+layout_mode = 0
 offset_left = 40.0
 offset_top = 740.0
 offset_right = 1160.0
 offset_bottom = 770.0
-theme_overrides/colors/font_color = Color(0.4, 0.4, 0.4, 1)
-theme_overrides/font_sizes/font_size = 12
 text = "Logged in as: [username]"
