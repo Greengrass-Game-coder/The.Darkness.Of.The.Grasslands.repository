@@ -270,14 +270,14 @@ func _update_direction(input_dir: Vector2) -> void:
 func _play_animation(anim: String) -> void:
 	match anim:
 		"idle":
-			var dir_name: String = ["down", "left", "right", "up"][current_direction as int]
+			var dir_name: String = ["down", "left", "right", "up"][int(current_direction)]
 			var full_anim: String = "idle_" + dir_name
 			if animated_sprite.sprite_frames.has_animation(full_anim):
 				animated_sprite.play(full_anim)
 			else:
 				animated_sprite.play("idle")
 		"walk":
-			var dir_name: String = ["down", "left", "right", "up"][current_direction as int]
+			var dir_name: String = ["down", "left", "right", "up"][int(current_direction)]
 			var full_anim: String = "walk_" + dir_name
 			if animated_sprite.sprite_frames.has_animation(full_anim):
 				animated_sprite.play(full_anim)

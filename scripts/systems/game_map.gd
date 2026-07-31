@@ -1642,8 +1642,8 @@ func _check_kill_timer_bonus() -> void:
 	# The +30s is actually added there. See _on_player_died() for implementation.
 
 func add_timer_bonus(seconds: float) -> void:
-	"""Add time to the match timer with animated red count-up."""
-	_bonus_target = min(_time_remaining + seconds, MATCH_DURATION)
+	"""Add time to the match timer with animated red count-up. No cap — timer can grow past 4 minutes."""
+	_bonus_target = _time_remaining + seconds
 	print("GameMap: Timer +", seconds, "s (target ", _bonus_target, "s)")
 
 

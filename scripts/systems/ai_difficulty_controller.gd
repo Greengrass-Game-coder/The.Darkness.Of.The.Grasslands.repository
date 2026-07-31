@@ -61,8 +61,8 @@ func update_difficulty(time_remaining: float, survivor_count: int, target_hp: fl
 	_bot_target_hp = target_hp
 
 	# Calculate difficulty from 3 axes:
-	# 1. Time pressure: 0.0 at 240s, 1.0 at 0s (linear)
-	var time_factor: float = 1.0 - (time_remaining / 240.0)
+	# 1. Time pressure: 0.0 at 240s+, 1.0 at 0s (clamped so extra time doesn't reduce difficulty)
+	var time_factor: float = clampf(1.0 - (time_remaining / 240.0), 0.0, 1.0)
 
 	# 2. Survivor count: more aggressive when fewer survivors remain
 	var survivor_factor: float = 1.0 - (float(survivor_count) / 4.0)
