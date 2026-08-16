@@ -1,4 +1,3 @@
-class_name SoundManager
 extends Node
 ## Professional sound system — wraps SFXManager with positional audio,
 ## audio bus management, volume persistence, and ambient sound support.
@@ -55,14 +54,14 @@ func play_music(stream: AudioStream, loop: bool = true, volume_db: float = 0.0) 
 		if loop:
 			if stream is AudioStreamWAV:
 				(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
-			_music_player.finished.connect(func(): _music_player.play() if _music_player else null)
+			_music_player.finished.connect(func(): if _music_player: _music_player.play())
 	else:
 		tween.tween_property(_music_player, "volume_db", volume_db, 0.5)
 		_music_player.play()
 		if loop:
 			if stream is AudioStreamWAV:
 				(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
-			_music_player.finished.connect(func(): _music_player.play() if _music_player else null)
+			_music_player.finished.connect(func(): if _music_player: _music_player.play())
 
 
 func stop_music(duration: float = 0.5) -> void:
@@ -104,11 +103,11 @@ func play_positional(sound_path: String, position: Vector2, max_distance: float 
 	)
 
 
-func play_sfx(name: String) -> void:
+func play_sfx(sfx_name: String) -> void:
 	"""Delegate to SFXManager or play directly."""
 	var sm := get_node_or_null("/root/SFXManager")
 	if sm and sm.has_method("play_sfx"):
-		sm.play_sfx(name)
+		sm.play_sfx(sfx_name)
 	else:
 		_synth_beep(440.0, 0.1, 0.3)
 
@@ -164,7 +163,7 @@ func play_ambient(sound_path: String, volume_db: float = -12.0) -> void:
 		(_ambient_player.stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
 	_ambient_player.volume_db = volume_db
 	_ambient_player.play()
-	_ambient_player.finished.connect(func(): _ambient_player.play() if _ambient_player else null)
+	_ambient_player.finished.connect(func(): if _ambient_player: _ambient_player.play())
 
 
 func stop_ambient() -> void:

@@ -24,13 +24,20 @@ var _fade_rect: ColorRect = null
 var _bar_bg: ColorRect = null
 var _bar_fill: ColorRect = null
 var _loading_label: Label = null
+# When true (set by go() for a one-shot transition), the fader keeps its opaque
+# black cover and does NOT run the boot "fade in & free yourself" path. It is
+# only freed by _do_transition() after the scene has actually changed. Without
+# this, _ready()'s deferred free raced with the scene load and could cancel the
+# transition (player stuck in the match instead of returning to the lobby).
+var _skip_ready_fade: bool = false
 
 
 func _ready() -> void:
 	layer = 100  # Above everything
 	_create_elements()
-	# Start fully visible, fade in on first frame
-	if _fade_rect:
+	# Persistent/fade-in usage: start fully visible and reveal on first frame.
+	# One-shot transitions (go) keep the opaque cover until the scene changes.
+	if _fade_rect and not _skip_ready_fade:
 		_fade_rect.color = Color(0, 0, 0, 0)
 		_fade_in()
 
@@ -88,7 +95,7 @@ func transition_to(scene_path: String, loading_text: String = "") -> void:
 	tween.tween_property(_fade_rect, "color", Color(0, 0, 0, 1), FADE_DURATION)
 	await tween.finished
 
-	# Show loading elements
+	# Show loading elements briefly (cosmetic only).
 	if not loading_text.is_empty():
 		_loading_label.text = loading_text
 		_loading_label.visible = true
@@ -101,34 +108,32 @@ func transition_to(scene_path: String, loading_text: String = "") -> void:
 		lt.tween_property(_bar_fill, "size:x", LOAD_BAR_WIDTH, 0.5)
 		await lt.finished
 
-	# Preload scene in background
-	var err: int = ResourceLoader.load_threaded_request(scene_path)
-	if err != OK:
-		# Direct load
-		_do_transition()
-		return
-
-	# Wait for threaded load
-	var load_statuses: Array = []
-	while true:
-		ResourceLoader.load_threaded_get_status(scene_path, load_statuses)
-		var load_status: int = load_statuses[0] if load_statuses.size() > 0 else 0
-		if load_status == ResourceLoader.THREAD_LOAD_LOADED:
-			break
-		await get_tree().process_frame
-
+	# IMPORTANT: switch the scene with a plain, synchronous change_scene_to_file.
+	# Do NOT use load_threaded_request + status polling here — the threaded loader
+	# never reports THREAD_LOAD_LOADED in some environments, which made the old
+	# while-true loop hang forever on a black loading screen and the player never
+	# got back to the lobby. A synchronous change is guaranteed to complete.
 	_do_transition()
 
 
 func _do_transition() -> void:
 	get_tree().change_scene_to_file(_target_scene)
 	transition_finished.emit()
+	# Reveal the newly-loaded scene by fading the black cover away, then free.
+	if _fade_rect:
+		_fade_rect.color = Color(0, 0, 0, 1)
+		var tween := create_tween()
+		tween.tween_property(_fade_rect, "color", Color(0, 0, 0, 0), FADE_DURATION)
+		await tween.finished
 	queue_free()
 
 
 ## Static convenience — instantiate and transition
 static func go(scene_path: String, loading_text: String = "") -> void:
 	var fader := SceneFader.new()
+	# Must be set BEFORE add_child so _ready() doesn't run the self-freeing
+	# fade-in that would otherwise race with (and cancel) this transition.
+	fader._skip_ready_fade = true
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree:
 		tree.root.add_child(fader)

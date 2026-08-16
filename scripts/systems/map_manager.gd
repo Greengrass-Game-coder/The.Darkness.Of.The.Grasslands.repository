@@ -223,28 +223,34 @@ func build_navigation(parent_node: Node) -> void:
 				if poly.size() >= 3:
 					wall_outlines.append(poly)
 
-	# Create NavigationPolygon
+	# Create NavigationPolygon with baking settings
 	var nav_poly := NavigationPolygon.new()
+	nav_poly.agent_radius = 12.0
+	nav_poly.cell_size = GRID_SIZE * 0.5
+	nav_poly.baking_rect = Rect2(0.0, 0.0, blueprint_size.x, blueprint_size.y)
+	nav_poly.sample_partition_type = NavigationPolygon.SAMPLE_PARTITION_TRIANGULATE
+
+	# Build source geometry: traversable boundary + wall obstructions
+	var source_geometry := NavigationMeshSourceGeometryData2D.new()
 
 	# Outer boundary: full map area
 	var map_w: float = blueprint_size.x
 	var map_h: float = blueprint_size.y
 	var margin: float = 8.0  # Small inward margin to keep agents away from walls
-	var outer_boundary: PackedVector2Array = [
+	source_geometry.add_traversable_outline(PackedVector2Array([
 		Vector2(margin, margin),
 		Vector2(map_w - margin, margin),
 		Vector2(map_w - margin, map_h - margin),
 		Vector2(margin, map_h - margin)
-	]
-	nav_poly.add_outline(outer_boundary)
+	]))
 
-	# Add wall regions as holes (inner outlines)
+	# Add wall regions as obstructions (carved out of the traversable area)
 	for wall_poly in wall_outlines:
 		if wall_poly.size() >= 3:
-			var hole: PackedVector2Array = PackedVector2Array(wall_poly)
-			nav_poly.add_outline(hole)
+			source_geometry.add_projected_obstruction(PackedVector2Array(wall_poly), true)
 
-	nav_poly.make_polygons()
+	# Bake the navigation mesh (rasterization handles holes & overlaps correctly)
+	NavigationServer2D.bake_from_source_geometry_data(nav_poly, source_geometry)
 
 	# Create NavigationRegion2D
 	var nav_region := NavigationRegion2D.new()

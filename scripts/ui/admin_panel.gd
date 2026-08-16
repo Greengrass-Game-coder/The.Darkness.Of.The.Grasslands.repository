@@ -7,6 +7,7 @@ extends CanvasLayer
 
 signal double_trouble_toggled(enabled: bool)
 signal force_killer_toggled(enabled: bool)
+signal role_switch_requested(role: String)  # "killer" or "survivor"
 
 @export var panel_position: Vector2 = Vector2(1000, 8)
 @export var panel_size: Vector2 = Vector2(200, 250)
@@ -144,6 +145,35 @@ func _build_ui() -> void:
 		_force_killer_btn = fk_btn
 		y_offset += 36
 	
+	# Role switcher (debug/testing — switch between killer and survivor roles)
+	var role_header := BitmapLabel.new()
+	role_header.name = "RoleHeader"
+	role_header.label_text = "Role (test):"
+	role_header.position = panel_position + Vector2(8, y_offset)
+	role_header.size = Vector2(panel_size.x - 16, 16)
+	role_header.font_scale = 0.10
+	role_header.font_color = Color(0.8, 0.8, 0.8, 1)
+	add_child(role_header)
+	y_offset += 20
+
+	var killer_btn := Button.new()
+	killer_btn.name = "RoleKillerBtn"
+	killer_btn.text = "Switch to KILLER"
+	killer_btn.position = panel_position + Vector2(8, y_offset)
+	killer_btn.size = Vector2(panel_size.x - 16, 30)
+	killer_btn.pressed.connect(func() -> void: role_switch_requested.emit("killer"))
+	add_child(killer_btn)
+	y_offset += 36
+
+	var survivor_btn := Button.new()
+	survivor_btn.name = "RoleSurvivorBtn"
+	survivor_btn.text = "Switch to SURVIVOR"
+	survivor_btn.position = panel_position + Vector2(8, y_offset)
+	survivor_btn.size = Vector2(panel_size.x - 16, 30)
+	survivor_btn.pressed.connect(func() -> void: role_switch_requested.emit("survivor"))
+	add_child(survivor_btn)
+	y_offset += 36
+
 	# Separator
 	var sep := ColorRect.new()
 	sep.name = "Sep"

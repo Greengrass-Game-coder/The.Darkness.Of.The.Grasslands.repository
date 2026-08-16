@@ -35,6 +35,7 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
 theme_override_constants/shadow_offset_x = 4
 theme_override_constants/shadow_offset_y = 4
 theme_override_font_sizes/font_size = 36
+text = "THE DARKNESS OF THE GRASSLANDS"
 horizontal_alignment = 1
 
 [node name="SubtitleLabel" type="Label" parent="." unique_id=448475634]
@@ -97,13 +98,13 @@ placeholder_text = "Enter password"
 max_length = 32
 secret = true
 
-[node name="ServerURLLabel" type="Label" parent="CenterPanel/VBoxContainer"]
+[node name="ServerURLLabel" type="Label" parent="CenterPanel/VBoxContainer" unique_id=488011416]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
 theme_override_font_sizes/font_size = 10
 text = "Server URL (optional):"
 
-[node name="ServerURLInput" type="LineEdit" parent="CenterPanel/VBoxContainer"]
+[node name="ServerURLInput" type="LineEdit" parent="CenterPanel/VBoxContainer" unique_id=560607444]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)

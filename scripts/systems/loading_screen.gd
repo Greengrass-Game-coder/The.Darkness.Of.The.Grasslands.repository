@@ -36,6 +36,18 @@ var _load_progress: float = 0.0
 
 
 func _ready() -> void:
+	# SMART LOADING: if the heavy scene we would pre-load (game_map) is ALREADY
+	# in the resource cache (e.g. the player played a match earlier this session),
+	# there's nothing to load — so skip the loading screen entirely and go
+	# straight to the lobby. Only show the loading screen when real loading is
+	# actually needed.
+	if ResourceLoader.has_cached(PRELOAD_SCENE):
+		print("LoadingScreen: %s already pre-loaded — skipping loading screen" % PRELOAD_SCENE)
+		for child: Node in get_children():
+			child.visible = false
+		_finish_loading()
+		return
+
 	# Pick and display a random loading image
 	var chosen: String = LOADING_IMAGES[randi() % LOADING_IMAGES.size()]
 	var tex: Texture2D = load(chosen)

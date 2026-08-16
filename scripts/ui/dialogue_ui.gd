@@ -231,9 +231,20 @@ func _advance() -> void:
 
 # Returns true if all non-"Bye" choices at this line are consumed
 func is_all_questions_exhausted_at(choice_line: int) -> bool:
-	if not _dl or not _dl.choices.has(choice_line):
+	if _dl:
+		return is_all_questions_exhausted_in(_dl, choice_line)
+	return true
+
+
+# Returns true if all non-"Bye" choices at the given line of the given dialogue
+# resource are consumed. Unlike is_all_questions_exhausted_at, this does NOT
+# depend on the currently-loaded _dl — it checks a specific dialogue resource,
+# so a caller can correctly query Browngrass's state even right after a
+# different dialogue (e.g. Evil Potato) was played.
+func is_all_questions_exhausted_in(dialogue: DialogueLine, choice_line: int) -> bool:
+	if not dialogue or not dialogue.choices.has(choice_line):
 		return true
-	var opts: Array = _dl.choices[choice_line]
+	var opts: Array = dialogue.choices[choice_line]
 	var non_bye_available := false
 	for opt in opts:
 		if opt.get("text", "") == "Bye":

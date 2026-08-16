@@ -23,32 +23,84 @@ const GREENGRASS_SCENE: PackedScene = preload("res://scenes/greengrass.tscn")
 const VIOLENTGRASS_SCENE: PackedScene = preload("res://scenes/violentgrass.tscn")
 const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller.gd")
 const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_survivor_bot_controller.gd")
+const LMS_AURA_SHADER: Shader = preload("res://shaders/player_aura.gdshader")
 
 # Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
 ## Settings: configurable folder names for killer + survivor chase themes (auto-searches)
 @export var killer_chase_folder: String = "Violentgrass"   # Folder under Killer Chase Themes/ for killer player
-@export var survivor_chase_folder: String = "Greengrass"    # Folder under Killer Chase Themes/ for survivor player
+@export var survivor_chase_folder: String = "Violentgrass"  # Folder under Killer Chase Themes/ for survivor player (Monster Greengrass theme is unused)
 const CHASE_BASE_DIR: String = "res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/"
 const CHASE_LAYER_FILES: Array[String] = ["Layer1.wav", "Layer2.wav", "Layer3.wav", "Chase.wav"]
 # Killer chase: only Chase layer (no build-up) — distance in pixels
+# EXIT must exceed the survivor bots' flee_range (500px) so an active chase
+# doesn't cut off mid-chase when the (fleeing) survivor drifts past the enter
+# distance. Chase stays on until the killer is genuinely far (~700px).
 const KILLER_CHASE_ENTER: Array[float] = [0.0, 0.0, 0.0, 250.0]
-const KILLER_CHASE_EXIT: Array[float]  = [0.0, 0.0, 0.0, 300.0]
+const KILLER_CHASE_EXIT: Array[float]  = [0.0, 0.0, 0.0, 700.0]
 # Survivor chase: all 4 layers with build-up
 const SURVIVOR_CHASE_ENTER: Array[float] = [500.0, 300.0, 150.0, 80.0]
 const SURVIVOR_CHASE_EXIT: Array[float]  = [600.0, 400.0, 250.0, 150.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
 const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
+# Killer (Violentgrass) build-up: each build-up layer plays for this many seconds
+# before advancing to the next (Layer1 → Layer2 → Layer3 → Chase). Matches the
+# ~9.6s duration of the Layer1/2/3 WAV files.
+const CHASE_BUILD_STEP_DURATION: float = 9.6
+
+# ── LMS (Last Man Standing) finale ──
+# When it's down to 1 killer + 1 survivor, play the special LMS music and glue
+# the 2-frame ViolentBells VFX to the camera screen.
+const LMS_MUSIC_PATH: String = "res://The Darkness Of The Grasslands assets/Music/Match/SPECIAL LMSES/Greengrass_VS_Violentgrass_Violent_bells_LMS.wav"
+const LMS_VFX_FRAME_1: String = "res://The Darkness Of The Grasslands assets/VFX/ViolentbellsVFX-[ANIM]/FRAME1.png"
+const LMS_VFX_FRAME_2: String = "res://The Darkness Of The Grasslands assets/VFX/ViolentbellsVFX-[ANIM]/FRAME2.png"
+const LMS_VFX_FPS: float = 4.0      # 2-frame alternation speed (slower, less distracting)
+const LMS_VFX_ALPHA: float = 0.55   # Max opacity of the VFX overlay (more transparent = easier to see through)
+const LMS_VFX_FADE_DISTANCE: float = 300.0  # Killer within this many px of the survivor → VFX fades out so the final fight is visible
+const LMS_VFX_FADE_SPEED: float = 3.0       # How fast the VFX alpha adjusts (higher = snappier fade)
+const LMS_KILL_ZOOM_IN: float = 0.5  # Tight zoom during kill punch-in (smaller = closer)
+const LMS_KILL_ZOOM_HOLD: float = 0.6  # Seconds spent tight before pulling back out
+const LMS_REVEAL_DURATION: float = 4.0  # Seconds the survivor-reveal arrow stays on screen
+const LMS_MUSIC_DURATION: float = 100.0  # Fallback countdown length (actual WAV is ~99.7s)
+# ── LMS end-of-song camera heartbeat (keyed to MUSIC playback, not match clock) ──
+# While the LMS song still has LMS_HEARTBEAT_FROM seconds left to play, the camera
+# does a gentle screen zoom in/out pulse at a constant 200 BPM. Amplitude is
+# small on purpose so players don't get motion sick.
+const LMS_HEARTBEAT_FROM: float = 93.0  # Song has 1m33s left → heartbeat begins
+const LMS_HEARTBEAT_BPM_START: float = 200.0
+const LMS_HEARTBEAT_BPM_END: float = 200.0  # Constant 200 BPM (user requested 200, not 150-175)
+const LMS_HEARTBEAT_AMOUNT: float = 0.06  # Zoom difference per heartbeat beat (subtle)
+# ── LMS music pinch (zoomin at 26.5s, zoomout at 27s of the MUSIC) ──
+const LMS_PINCH_IN_AT: float = 26.5   # Music play position (s) → zoom in a little
+const LMS_PINCH_OUT_AT: float = 27.0  # Music play position (s) → zoom back out
+const LMS_PINCH_ZOOM_IN_MULT: float = 1.12  # default_zoom / mult = zoom-in level ("a little")
 
 var _time_remaining: float = MATCH_DURATION
 var _map_manager: MapManager = null
 var _player: Node2D = null
 var _killer_bot: Node2D = null
+var _aura_nodes: Dictionary = {}  # character Node → aura AnimatedSprite2D (for cleanup)
+# True once the killer intro finishes and the fight is live. Guards the per-frame
+# "everyone dead" round-end check from firing before anyone has even spawned.
+var _match_live: bool = false
+# True once the AI killer bot is eliminated (survivor mode). Lets the per-frame
+# check end the round even if the bot's hp_changed signal is somehow missed.
+var _killer_bot_eliminated: bool = false
 var _survivor_bots: Array[Node2D] = []
 var _alive_survivor_bot_count: int = 0
+# Cached list of all nodes in the "survivors" group (human + bots).
+# Refreshed on spawn/elimination to avoid a group query every frame in _update_chase_music.
+var _cached_survivors: Array[Node] = []
 var _chase_layers_enabled: Array[bool] = [false, false, false, false]  # Active state per layer
 var _chase_players: Array[AudioStreamPlayer] = []
 var _chase_active_layer: int = -1  # Highest active layer index
+# Killer (Violentgrass) time-based build-up state
+var _chase_build_step: int = 0     # 0=Layer1, 1=Layer2, 2=Layer3, 3=Chase
+var _chase_build_elapsed: float = 0.0  # Seconds spent on the current build-up layer
+# One volume-crossfade tween per chase player. Killing the previous tween before
+# starting a new one prevents old ramps from fighting — which was making the
+# layers stack (multiple layers audible at once).
+var _chase_volume_tweens: Array[Tween] = []
 var _current_interactable: Area2D = null
 var _last_hp: float = -1.0
 var _solved_puzzles: Array[String] = []
@@ -70,6 +122,20 @@ var _teleport_markers_active: bool = false     # Whether markers are being shown
 var _teleport_marker_targets: Array[Vector2] = []  # World positions of each marker target
 var _teleport_marker_buttons: Array[Button] = []   # The UI buttons for each marker
 
+# Teleport red-glitch FX state (full-screen red glitch + zoom-in, slow zoom-out)
+var _teleport_fx_layer: CanvasLayer = null
+var _teleport_fx_rect: TextureRect = null
+var _teleport_fx_mat: ShaderMaterial = null
+var _teleport_fx_timer: float = 0.0
+var _teleport_fx_active: bool = false
+var _teleport_fx_zoom_out_started: bool = false
+var _teleport_fx_zoom_out_started_at: float = 0.0
+const TELEPORT_FX_INTENSITY_IN: float = 0.9    # Fully red/glitchy peak at start
+const TELEPORT_FX_DURATION: float = 1.8        # Total overlay lifetime (seconds)
+const TELEPORT_FX_ZOOM_IN: float = 2.2         # Zoom level during teleport (dramatic close-up)
+const TELEPORT_FX_ZOOM_OUT_MS: float = 1800.0  # Slow zoom-out duration after landing (ms)
+const TELEPORT_FX_ZOOM_IN_HOLD_S: float = 0.35 # Hold the zoomed-in red state before slow reveal
+
 # Match-ending effect
 var _ending_vignette: ColorRect = null
 var _ending_music_switched: bool = false
@@ -90,7 +156,31 @@ var _ending_red_flash_timer: float = 0.0
 var _ending_red_show_left: bool = true
 
 # Guard to prevent double lobby redirect
-var _match_ending_lobby: bool = false
+var _round_ended: bool = false
+
+# LMS (Last Man Standing) finale state
+var _lms_active: bool = false          # True once 1 killer + 1 survivor remain
+# True when the whole match is a 1v1 (1 killer + 1 survivor, i.e. 2 combatants).
+# In that case the map music never plays — the intro cutscene is the "loading"
+# beat and the LMS finale takes over as the sole score.
+var _is_1v1: bool = false
+# True when the round ended with the KILLER winning (all survivors eliminated).
+# When true, the match-end shows Violentgrass's killer outro frozen on its last
+# frame with the analysis overlaid before returning to the lobby.
+var _killer_won: bool = false
+# Analysis overlay shown over the frozen killer-outro frame (continue → lobby).
+var _killer_win_analysis_layer: CanvasLayer = null
+var _lms_music_player: AudioStreamPlayer = null
+var _lms_vfx_layer: CanvasLayer = null
+var _lms_vfx_rect: TextureRect = null
+var _lms_vfx_timer: float = 0.0        # Frame-alternation accumulator
+var _lms_vfx_show_frame2: bool = false
+var _lms_alpha_current: float = 0.0    # Current VFX overlay opacity (lerped)
+var _lms_alpha_target: float = 0.0     # Desired VFX opacity this frame
+# ── LMS end-of-song camera heartbeat / pinch state ──
+var _lms_heartbeat_phase: float = 0.0  # Accumulator for BPM-synced zoom pulse
+var _lms_heartbeat_active: bool = false  # True once 93s-remaining heartbeat enters
+var _lms_pinch_done: bool = false      # One-shot 27s→26.5s zoom pinch already fired
 
 # Match stats
 var _total_damage_taken: float = 0.0
@@ -109,8 +199,12 @@ var _timer_flash_red: float = 0.0  # Timer turns red when decreasing
 var _bonus_target: float = 0.0  # Target _time_remaining after bonus animation
 var _bonus_tick_timer: float = 0.0  # Accumulator for 1-second ticks
 
+# Timer pause state (puzzle-complete / kill events): when > 0 the match timer is
+# paused while a time adjustment is applied, then resumes counting down.
+var _timer_pause_remaining: float = 0.0
+
 # Multiplayer integration
-var _multiplayer_sync: MultiplayerGameSync = null
+var _multiplayer_sync: Node = null
 
 # AI difficulty controller
 var _ai_difficulty: AIDifficultyController = null
@@ -120,8 +214,8 @@ func _ready() -> void:
 	# Ensure input actions are registered
 	_setup_input_actions()
 	
-	# Set up background music
-	_setup_music()
+	# Background music is set up AFTER spawn (we need to know the combatant
+	# count to decide whether a 1v1 should skip the map music entirely).
 	
 	# Load and set up the map
 	_map_manager = MapManager.new()
@@ -154,7 +248,8 @@ func _ready() -> void:
 	# Start match timer
 	match_timer.start(1.0)
 	_time_remaining = MATCH_DURATION
-	_match_ending_lobby = false
+	_round_ended = false
+	_killer_won = false
 	_update_timer_label()
 	
 	# Determine if this player should be the killer based on rings
@@ -167,6 +262,16 @@ func _ready() -> void:
 	# Spawn the player character (also spawns killer bot if survivor)
 	spawn_player(should_be_killer)
 	
+	# Figure out how many combatants are in this match. A 1v1 (exactly a killer
+	# + one survivor = 2 people) NEVER plays the map music — the killer intro
+	# cutscene acts as the "loading" beat, then the LMS finale starts straight
+	# away so the LMS track is the sole score. Bigger matches keep the map music.
+	_is_1v1 = _character_name == "Greengrass" or _alive_survivor_bot_count <= 1
+	if _is_1v1:
+		print("GameMap: 1v1 (2 combatants) — skipping map music, LMS starts after intro")
+	else:
+		_setup_music()
+	
 	# Setup chat system
 	_setup_chat()
 	
@@ -175,6 +280,9 @@ func _ready() -> void:
 	
 	# Setup admin panel (for in-game admin controls)
 	_setup_admin_panel()
+	
+	# Show role-switch hint (F2 / admin panel) — always visible & discoverable
+	_create_role_hint()
 	
 	# Replace HUD labels with BitmapLabel versions
 	_replace_hud_labels()
@@ -228,7 +336,7 @@ func _setup_input_actions() -> void:
 			var keys: Array = actions[action_name] as Array
 			for keycode: int in keys:
 				var ev := InputEventKey.new()
-				ev.keycode = keycode
+				ev.keycode = keycode as Key
 				InputMap.action_add_event(action_name, ev)
 
 
@@ -243,6 +351,7 @@ func _setup_music() -> void:
 			player.stream = stream
 			player.autoplay = true
 			player.bus = &"Master"
+			player.volume_db = -12.0  # Lowered so rhythm-puzzle BPM audio stays audible
 			player.finished.connect(_on_map_music_finished)
 			add_child(player)
 			print("GameMap: Playing background music")
@@ -251,6 +360,10 @@ func _setup_music() -> void:
 func _switch_to_ending_music() -> void:
 	"""Switch map music to match-ending track at 30s remaining.
 	Plays as background music — chase can still play on top."""
+	if _lms_active:
+		# During the LMS finale the LMS track is the sole score; don't layer the
+		# generic MATCH_ENDING song on top of it.
+		return
 	if _ending_music_switched:
 		return
 	_ending_music_switched = true
@@ -269,7 +382,7 @@ func _switch_to_ending_music() -> void:
 	player.stream = ending_stream
 	player.autoplay = true
 	player.bus = &"Master"
-	player.volume_db = -2.0
+	player.volume_db = -12.0  # Lowered so rhythm-puzzle BPM audio stays audible
 	player.finished.connect(_on_map_music_finished)
 	add_child(player)
 	
@@ -437,10 +550,12 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 		_spawn_bot_killer()
 		# Attach dynamic difficulty controller to AI bot
 		_attach_ai_difficulty()
+		_refresh_survivor_cache()
 		# Survivor player: load all 4 chase layers from survivor's theme folder
 		_setup_chase_music(survivor_chase_folder)
 	else:
 		_spawn_survivor_bots()
+		_refresh_survivor_cache()
 		# Killer player: load only Chase layer from killer's theme folder
 		_setup_chase_music(killer_chase_folder)
 	
@@ -455,6 +570,10 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	# Connect teleported signal for sound + indicator
 	if _player.has_signal("teleported") and not _player.teleported.is_connected(_on_player_teleported):
 		_player.teleported.connect(_on_player_teleported)
+	
+	# Connect teleport FX start (red-glitch + zoom-in) for the human killer player
+	if _player.has_signal("teleport_fx_started") and not _player.teleport_fx_started.is_connected(_on_teleport_fx_started):
+		_player.teleport_fx_started.connect(_on_teleport_fx_started)
 	
 	# Connect teleport cancel to close mini-map
 	if _player.has_signal("teleport_cancelled") and not _player.teleport_cancelled.is_connected(_close_teleport_minimap):
@@ -472,6 +591,101 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 		cam.make_current()
 	
 	print("GameMap: Spawned ", _character_name, " at ", spawn_pos)
+
+
+# ═══════════════ ROLE SWITCHER (debug/testing) ═══════════════
+
+func _clear_role_entities() -> void:
+	"""Free all role-specific entities (player, bots, chase players, HUD bars)."""
+	# Player
+	if is_instance_valid(_player):
+		_player.queue_free()
+		_player = null
+	# Killer bot
+	if is_instance_valid(_killer_bot):
+		_killer_bot.queue_free()
+		_killer_bot = null
+	# Survivor bots
+	for bot: Node2D in _survivor_bots:
+		if is_instance_valid(bot):
+			bot.queue_free()
+	_survivor_bots.clear()
+	_alive_survivor_bot_count = 0
+	# AI difficulty controller (attached to killer bot)
+	if is_instance_valid(_ai_difficulty):
+		_ai_difficulty.queue_free()
+		_ai_difficulty = null
+	# Chase players
+	for p: AudioStreamPlayer in _chase_players:
+		if is_instance_valid(p):
+			p.queue_free()
+	_chase_players.clear()
+	_chase_active_layer = -1
+	_chase_layers_enabled = [false, false, false, false]
+	# HUD bars (health + stamina)
+	var hud_node: CanvasLayer = $HUD
+	if hud_node:
+		var hb: Node = hud_node.get_node_or_null("HealthBar")
+		if hb:
+			hb.queue_free()
+		var sb: Node = hud_node.get_node_or_null("StaminaBar")
+		if sb:
+			sb.queue_free()
+	# Fullscreen overlays (epilepsy + vignette + ending) — free them so they don't
+	# stack/get progressively greyer on repeated role switches.
+	if is_instance_valid(_epilepsy_overlay):
+		_epilepsy_overlay.queue_free()
+		_epilepsy_overlay = null
+	if is_instance_valid(_vignette_overlay):
+		_vignette_overlay.queue_free()
+		_vignette_overlay = null
+	if is_instance_valid(_ending_vignette):
+		_ending_vignette.queue_free()
+		_ending_vignette = null
+	# Match-ending screen nodes (Violentgrass-branded bg + overlay + red flash)
+	if is_instance_valid(_ending_screen_bg):
+		_ending_screen_bg.queue_free()
+		_ending_screen_bg = null
+	if is_instance_valid(_ending_screen_overlay):
+		_ending_screen_overlay.queue_free()
+		_ending_screen_overlay = null
+	if is_instance_valid(_ending_red_left):
+		_ending_red_left.queue_free()
+		_ending_red_left = null
+	if is_instance_valid(_ending_red_right):
+		_ending_red_right.queue_free()
+		_ending_red_right = null
+	_ending_screen_created = false
+
+
+func _switch_role(role: String) -> void:
+	"""Debug/testing helper: switch the player between killer and survivor roles.
+	Called via F2 hotkey or the role buttons in the admin panel."""
+	var is_killer: bool = role.to_lower() == "killer"
+	if is_killer == GameState.is_killer:
+		return  # Already that role
+	_clear_role_entities()
+	GameState.is_killer = is_killer
+	spawn_player(is_killer)
+	print("GameMap: [RoleSwitcher] switched to %s" % ("KILLER (Violentgrass)" if is_killer else "SURVIVOR (Greengrass)"))
+
+
+func _toggle_role() -> void:
+	"""Toggle between killer and survivor roles (F2 hotkey)."""
+	_switch_role("survivor" if GameState.is_killer else "killer")
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# F2 toggles killer/survivor role for easy testing
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F2:
+		_toggle_role()
+		get_viewport().set_input_as_handled()
+	# F3 toggles the admin GUI panel (reliable key shortcut, no chat needed)
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F3:
+		var a_panel: AdminPanel = get_node_or_null("AdminPanel")
+		if a_panel:
+			a_panel.toggle_gui()
+		get_viewport().set_input_as_handled()
 
 
 # ═══════════════ STAIRS SYSTEM ═══════════════
@@ -611,6 +825,18 @@ func _create_stamina_bar(player: Node2D) -> void:
 
 func _process(delta: float) -> void:
 	"""Update HUD, interact detection, cooldowns, and settings each frame."""
+	# HARD GUARANTEE: the round ends the instant the timer hits 0. Checked first
+	# every frame so nothing (paused timer, bonus count-up, dying player) can
+	# keep the round going past 00:00.
+	if _time_remaining <= 0.0 and not _round_ended:
+		_time_remaining = 0.0
+		if match_timer:
+			match_timer.stop()
+		_update_timer_label()
+		_killer_won = false  # timer-out, not a killer win by elimination
+		_end_match()
+		return
+	
 	if not is_instance_valid(_player):
 		return
 	
@@ -639,26 +865,50 @@ func _process(delta: float) -> void:
 			_bonus_target = 0.0
 			_bonus_tick_timer = 0.0
 	
+	# Pause the match timer while a time adjustment is being applied (puzzle
+	# completion or kill +30s bonus), then resume once the pause duration elapses
+	# AND the bonus count-up animation has finished.
+	if _timer_pause_remaining > 0.0:
+		_timer_pause_remaining -= delta
+		if match_timer:
+			match_timer.paused = true
+		if _timer_pause_remaining <= 0.0 and _bonus_target <= 0.0:
+			_timer_pause_remaining = 0.0
+			if match_timer:
+				match_timer.paused = false
+	elif _bonus_target > 0.0 and match_timer:
+		# Pause while the kill +30s bonus is still counting up.
+		match_timer.paused = true
+	
 	_update_ability_cooldowns()
 	_check_interact_input(delta)
 	_check_settings_updates()
 	_check_damage_vignette()
 	_update_chase_music(delta)
+	_update_lms_vfx(delta)
+	_update_lms_heartbeat(delta)
 	_update_killer_speed(delta)
+	_check_everyone_dead()
 	
-	# Match-ending effects (last 31 seconds) — skip during bonus animation
-	if _time_remaining <= 31.0 and _bonus_target <= 0.0:
+	# Match-ending effects (last 31 seconds) — skip during bonus animation.
+	# These only play when a match ENDS with survivors still in play. Once the
+	# LMS finale starts (1 survivor left) the LMS track/VFX own the ending, so
+	# the generic ending music, vignette and Violentgrass ending screen are all
+	# disabled here.
+	if not _lms_active and _time_remaining <= 31.0 and _bonus_target <= 0.0:
 		_ending_start_time += delta
 		_update_ending_vignette()
 		_switch_to_ending_music()
-		# Match ending screen (Violentgrass) — create once, update each frame
-		if not _ending_screen_created:
-			_create_match_ending_screen()
-		_update_match_ending_screen(delta)
+		# Match ending screen (Violentgrass) — ONLY for the killer (Violentgrass)
+		# player. Survivors do NOT see the killer's branded ending screen or overlay.
+		if _character_name == "Violentgrass":
+			if not _ending_screen_created:
+				_create_match_ending_screen()
+			_update_match_ending_screen(delta)
 	
 	# HARD FALLBACK: force lobby redirect when timer hits 0 for both killer and survivor
-	if _time_remaining <= 0.0 and not _match_ending_lobby:
-		_match_ending_lobby = true
+	if _time_remaining <= 0.0 and not _round_ended:
+		_killer_won = false  # timer-out, not a killer win by elimination
 		_end_match()
 		return
 	
@@ -668,8 +918,8 @@ func _process(delta: float) -> void:
 	# Update screen-edge teleport markers (reposition as camera moves)
 	_update_teleport_markers()
 	
-	# +30s timer bonus when killer eliminates a survivor (local mode)
-	_check_kill_timer_bonus()
+	# Update teleport red-glitch overlay (time + fade while teleporting)
+	_update_teleport_fx(delta)
 	
 	# Decrease timer flash (puzzle reward red flash)
 	if _timer_flash_red > 0.0:
@@ -693,7 +943,7 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 	if is_killer:
 		abilities = [
 			{"icon": "res://assets/generated/icon_ability_hit.png", "key": "Q", "cooldown_var": "hit_on_cooldown"},
-			{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "R", "cooldown_var": "teleport_on_cooldown"},
+			{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "E", "cooldown_var": "teleport_on_cooldown"},
 		]
 	else:
 		abilities = [
@@ -714,8 +964,8 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		var icon := TextureRect.new()
 		icon.name = "Icon"
 		
-		# Lock overlay — only for Grass Punch (slot index 1 = E)
-		if i == 1:
+		# Lock overlay — only for survivors' Spare Flower (slot index 1), never the killer
+		if i == 1 and not is_killer:
 			var lock_overlay := ColorRect.new()
 			lock_overlay.name = "LockOverlay"
 			lock_overlay.size = Vector2(56, 56)
@@ -765,9 +1015,9 @@ func _update_ability_cooldowns() -> void:
 	if not icons or not is_instance_valid(_player):
 		return
 	
+	var data_abilities: Array[Dictionary] = _get_ability_data()
 	for i in range(icons.get_child_count()):
 		var slot: Node = icons.get_child(i)
-		var data_abilities: Array[Dictionary] = _get_ability_data()
 		if i >= data_abilities.size():
 			continue
 		var cooldown_var_name: String = data_abilities[i]["cooldown_var"]
@@ -801,7 +1051,7 @@ func _get_ability_data() -> Array[Dictionary]:
 	if is_killer:
 		return [
 			{"icon": "", "key": "Q", "cooldown_var": "hit_on_cooldown"},
-			{"icon": "", "key": "R", "cooldown_var": "teleport_on_cooldown"},
+			{"icon": "", "key": "E", "cooldown_var": "teleport_on_cooldown"},
 		]
 	else:
 		return [
@@ -887,14 +1137,17 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 			# Killer eliminated (tanky — 6666 HP, 25 dmg per punch = ~267 hits)
 			print("GameMap: Killer eliminated — ending match")
 			match_timer.stop()
-			if not _match_ending_lobby:
-				_match_ending_lobby = true
+			# Survivors win — no killer outro.
+			_killer_won = false
+			if not _round_ended:
 				match_ended.emit()
 				_end_match()
 		else:
 			# Survivor eliminated — +30s timer bonus if bot killer exists
 			if is_instance_valid(_killer_bot):
-				_on_killer_eliminated("Player")
+				_on_survivor_eliminated("Player")
+			# The killer (AI bot or human) won here.
+			_killer_won = true
 			# Start death sequence
 			_start_death_sequence()
 
@@ -930,6 +1183,7 @@ func _bots_create_survivor(spawn_pos: Vector2, name_str: String) -> void:
 	# Disable bot camera so it doesn't steal focus from the player
 	var bot_cam: Camera2D = bot.get_node_or_null("Camera2D") as Camera2D
 	if bot_cam:
+		bot_cam.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 		bot_cam.enabled = false
 	add_child(bot)
 	if bot.has_signal("bot_solved_puzzle"):
@@ -954,11 +1208,15 @@ func _spawn_bot_killer() -> void:
 	# Connect killer hit signal for damage tracking
 	if bot.has_signal("hit_landed") and not bot.hit_landed.is_connected(_on_killer_hit_landed):
 		bot.hit_landed.connect(_on_killer_hit_landed)
+	# GUARANTEED round-end: track the AI killer's HP so the round ends the moment
+	# the survivor eliminates it. Without this, killing the bot never ends the match.
+	if bot.has_signal("hp_changed") and not bot.hp_changed.is_connected(_on_killer_bot_hp_changed):
+		bot.hp_changed.connect(_on_killer_bot_hp_changed)
 	# Connect teleported signal for sound + indicator
 	if bot.has_signal("teleported") and not bot.teleported.is_connected(_on_player_teleported):
 		bot.teleported.connect(_on_player_teleported)
 	# Store killer's base sprint speed for scaling
-	if bot.has_method("get_sprint_speed"):
+	if "sprint_speed" in bot:
 		_killer_base_sprint = bot.sprint_speed
 	else:
 		_killer_base_sprint = 350.0
@@ -1008,9 +1266,10 @@ func _add_map_border_walls() -> void:
 	print("GameMap: Added map border walls (", map_w, "x", map_h, ")")
 
 
-func _read_bot_chase_settings(_bot: Node2D) -> void:
-	"""(Reading from bot chase settings is now unused — game_map uses its own CHASE_ENTER/EXIT_DIST constants.)"""
-	pass
+func _refresh_survivor_cache() -> void:
+	"""Rebuild the cached list of nodes in the 'survivors' group.
+	Call after spawning or eliminating survivors instead of querying every frame."""
+	_cached_survivors = get_tree().get_nodes_in_group("survivors")
 
 
 func _setup_chase_music(folder_name: String) -> void:
@@ -1019,6 +1278,7 @@ func _setup_chase_music(folder_name: String) -> void:
 	_chase_players.clear()
 	_chase_layers_enabled = [false, false, false, false]
 	_chase_active_layer = -1
+	_chase_volume_tweens.clear()
 	
 	var dir: String = CHASE_BASE_DIR + folder_name + "/"
 	
@@ -1032,13 +1292,18 @@ func _setup_chase_music(folder_name: String) -> void:
 		var p := AudioStreamPlayer.new()
 		p.name = "ChaseLayer_%d" % i
 		p.stream = load(file_path)
-		# Enable seamless looping on short WAV layers
-		var sdata = p.stream
+		# Force-disable stream looping; we restart via _on_chase_loop instead.
+		# Chase.wav's baked-in LOOP_FORWARD causes rapid finished signals in this
+		# scene context, so we override it to 0 (disabled) here.
+		var sdata := p.stream
 		if sdata is AudioStreamWAV:
-			sdata.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		p.autoplay = true
+			sdata.loop_mode = 0
+		p.bus = &"Master"
 		p.volume_db = -80.0  # Muted until triggered
+		p.autoplay = true
 		add_child(p)
+		# Restart playback on finish (matches the working background-music pattern).
+		p.finished.connect(_on_chase_loop.bind(p))
 		_chase_players.append(p)
 	
 	var loaded: int = _chase_players.size()
@@ -1063,9 +1328,10 @@ func _play_killer_cutscene() -> void:
 	var cutscene := CutscenePlayer.new()
 	cutscene.name = "KillerCutscene"
 	cutscene.fps = 8.0  # 43 frames at 8fps ≈ 5.4 seconds
+	cutscene.fade_in_duration = 1.0  # Fade the killer intro in from black
 	add_child(cutscene)
 	
-	var folder_path: String = "res://The Darkness Of The Grasslands assets/Cutscenes/Killer intros/Violentgrass+killer+intro"
+	var folder_path: String = "res://The Darkness Of The Grasslands assets/Cutscenes/Killer intros/Violentgrass killer intro"
 	var audio_path: String = ""  # No audio yet — user can add later
 	
 	# Pause the match timer while cutscene plays
@@ -1186,10 +1452,18 @@ func _play_killer_cutscene() -> void:
 	if match_timer:
 		match_timer.paused = false
 	print("GameMap: Killer intro finished, match started")
+	_match_live = true
+	# LMS from match start when the entire match is a 1v1 (only a killer + one
+	# survivor). Survivor mode is always 1v1 vs the AI killer bot; killer mode
+	# counts as 1v1 when only a single survivor bot was spawned. Bigger matches
+	# (e.g. 6 survivors vs 1 killer) do NOT start LMS until the killer whittles
+	# them down — see _on_bot_hp_changed.
+	if _character_name == "Greengrass" or _alive_survivor_bot_count <= 1:
+		_start_lms()
 
 
 func _on_chase_loop(player: AudioStreamPlayer) -> void:
-	"""Loop the chase track by replaying on finish."""
+	"""Loop a chase layer by replaying it on finish (matches the background music pattern)."""
 	if is_instance_valid(player):
 		player.play()
 
@@ -1197,37 +1471,42 @@ func _on_chase_loop(player: AudioStreamPlayer) -> void:
 func _update_chase_music(_delta: float) -> void:
 	"""Update chase music based on player role.
 	
-	- If player IS the killer → play killer's chase theme (only Chase layer) when close to survivors
-	- If player IS a survivor → play survivor's chase theme (all 4 build-up layers) when killer is close
+	- If player IS the killer → play ONLY the single Chase.wav track (no build-up
+	  layers) when close to survivors; stop only when genuinely far away.
+	- If player IS a survivor → play survivor's chase theme that starts its build
+	  (Layer1 → Layer2 → Layer3 is the best, one at a time, each for
+	  CHASE_BUILD_STEP_DURATION) while the killer is near, and only goes away when
+	  the killer is truly far.
 	
 	Only ONE layer plays at a time (no stacking)."""
+
 	if _chase_players.is_empty():
+		return
+
+	# During the LMS finale the LMS track is the sole score — chase themes are
+	# muted and cannot play at all until the round is over.
+	if _lms_active:
+		if _chase_active_layer >= 0:
+			_silence_all_chase()
 		return
 	
 	var is_killer: bool = _character_name == "Violentgrass"
 	var chase_source: Node2D = null
-	var enter_dist: Array[float]
-	var exit_dist: Array[float]
 	
 	if is_killer:
 		# Player is the killer — measure distance from player to nearest survivor
 		chase_source = _player if is_instance_valid(_player) else null
-		enter_dist = KILLER_CHASE_ENTER
-		exit_dist = KILLER_CHASE_EXIT
 	else:
 		# Player is a survivor — measure distance from killer bot to nearest survivor
 		chase_source = _killer_bot if is_instance_valid(_killer_bot) else null
-		enter_dist = SURVIVOR_CHASE_ENTER
-		exit_dist = SURVIVOR_CHASE_EXIT
 	
 	if not is_instance_valid(chase_source):
 		_silence_all_chase()
 		return
 	
-	# Measure distance from chase source to nearest survivor
-	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
+	# Measure distance from chase source to nearest survivor (uses cached group list)
 	var closest_dist: float = INF
-	for s in survivors:
+	for s in _cached_survivors:
 		if is_instance_valid(s):
 			var d: float = chase_source.global_position.distance_to(s.global_position)
 			if d < closest_dist:
@@ -1238,39 +1517,84 @@ func _update_chase_music(_delta: float) -> void:
 		return
 	
 	var dist: float = closest_dist
-	
-	# Determine which layer should be active based on distance
 	var target_layer: int = -1
-	for i: int in range(enter_dist.size() - 1, -1, -1):
-		if dist <= enter_dist[i]:
-			target_layer = i
-			break
 	
-	# Apply hysteresis: use EXIT distance to leave current layer
-	if _chase_active_layer >= 0 and target_layer < _chase_active_layer:
-		if dist > exit_dist[_chase_active_layer]:
-			target_layer = -1  # Go straight to silence
-	
-	if target_layer < -1:
+	if is_killer:
+		# ── KILLER (Violentgrass): ONLY the Chase.wav track (no build-up layers) ──
+		# Within chase-enter range → play the single Chase layer loud.
+		# The chase only stops when the killer is genuinely far beyond the exit.
+		if _chase_active_layer >= 3:
+			# Chase already playing → keep it until truly far away.
+			if dist > KILLER_CHASE_EXIT[3]:
+				_silence_all_chase()
+				return
+			target_layer = 3
+		elif dist <= KILLER_CHASE_ENTER[3]:
+			# Close enough to the nearest survivor → full Chase music.
+			target_layer = 3
+		# else: not near any survivor and no active chase → stays silent.
+	else:
+		# ── SURVIVOR: DISTANCE-BASED build-up (one layer at a time, NOT stacked) ──
+		# Only ONE layer is audible at any moment. Which layer depends on how close
+		# the killer (bot) is to the survivor:
+		#   dist <= 500 → Layer1 (ENTER[0])
+		#   dist <= 300 → Layer2 (ENTER[1])
+		#   dist <= 150 → Layer3 (ENTER[2])
+		#   dist <=  80 → Chase  (ENTER[3])
+		# Higher = more intense. When the survivor gets closer it climbs toward
+		# Chase; when they get farther it drops back down. The switch between
+		# layers is a smooth crossfade (see the transition block below).
 		target_layer = -1
+		for i: int in range(3, -1, -1):
+			if dist <= SURVIVOR_CHASE_ENTER[i]:
+				target_layer = i
+				break
+		
+		if target_layer < 0:
+			if _chase_active_layer >= 0:
+				# Already in a chase but the killer drifted past the outer enter.
+				# Keep the current layer (hysteresis) unless genuinely far away.
+				if dist > SURVIVOR_CHASE_EXIT[0]:
+					_silence_all_chase()
+					return
+				target_layer = _chase_active_layer
+			else:
+				# Not near the killer and no chase → stays silent.
+				_silence_all_chase()
+				return
 	
-	# Handle layer transitions
+	# Handle layer transitions (smooth: no restart gap; one layer audible at a time)
 	if target_layer != _chase_active_layer:
-		var _old_layer: int = _chase_active_layer
-		_chase_active_layer = target_layer
+		var was_silent: bool = _chase_active_layer < 0
 		
-		# INSTANTLY mute all players
-		for i: int in _chase_players.size():
-			if is_instance_valid(_chase_players[i]):
-				_chase_layers_enabled[i] = false
-				_chase_players[i].volume_db = -80.0
-		
-		# Fade-IN only the target layer
-		if target_layer >= 0 and target_layer < _chase_players.size():
-			_chase_layers_enabled[target_layer] = true
-			if is_instance_valid(_chase_players[target_layer]):
-				var tween := create_tween()
-				tween.tween_property(_chase_players[target_layer], "volume_db", CHASE_LAYER_VOLUME[target_layer], CHASE_VOL_FADE_MS)
+		if target_layer < 0:
+			# Leaving the chase → full stop + reset so the next entry rebuilds fresh ("rework").
+			_silence_all_chase()
+		else:
+			_chase_active_layer = target_layer
+			
+			if was_silent:
+				# Fresh chase entry → (re)start ALL layers together so they run
+				# synced/armed, only the active layer audible. Starts from Layer1
+				# (or the depth matching current distance) and layers up from there.
+				_kill_all_chase_tweens()
+				for i: int in _chase_players.size():
+					if is_instance_valid(_chase_players[i]):
+						_chase_layers_enabled[i] = false
+						_chase_players[i].volume_db = -80.0
+						_chase_players[i].play(0.0)
+			
+			# Smooth swap: crossfade the incoming layer up, all others down (no restart).
+			# Kill each player's previous ramp first so an old tween can't keep a layer
+			# loud that should now be silent — that race was making the layers STACK
+			# (several audible at once). Only the target layer is audible.
+			for i: int in _chase_players.size():
+				if not is_instance_valid(_chase_players[i]):
+					continue
+				_chase_layers_enabled[i] = i == target_layer
+				var vol: float = CHASE_LAYER_VOLUME[i] if i == target_layer else -80.0
+				_kill_chase_tween(i)
+				_start_chase_tween(i, vol)
 		
 		# Duck background music when chase active
 		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
@@ -1284,12 +1608,44 @@ func _update_chase_music(_delta: float) -> void:
 
 
 func _silence_all_chase() -> void:
-	"""Silence all chase layers."""
+	"""Silence AND fully stop all chase layers, then reset the build so the next
+	chase entry rebuilds fresh from Layer1 (the 'rework')."""
+	_kill_all_chase_tweens()
 	for i in range(_chase_players.size()):
 		var player: AudioStreamPlayer = _chase_players[i]
 		if is_instance_valid(player):
 			player.volume_db = -80.0
+			player.stop()
 	_chase_active_layer = -1
+	# Reset the build-up sequence so the next chase restarts from Layer1.
+	_chase_build_step = 0
+	_chase_build_elapsed = 0.0
+
+
+func _kill_chase_tween(i: int) -> void:
+	"""Kill the crossfade tween currently driving chase player i (if any)."""
+	if _chase_volume_tweens.size() > i and _chase_volume_tweens[i] != null:
+		var t: Tween = _chase_volume_tweens[i]
+		if t.is_valid():
+			t.kill()
+		_chase_volume_tweens[i] = null
+
+
+func _kill_all_chase_tweens() -> void:
+	for i in _chase_volume_tweens.size():
+		var t: Tween = _chase_volume_tweens[i]
+		if t != null and t.is_valid():
+			t.kill()
+	_chase_volume_tweens.clear()
+
+
+func _start_chase_tween(i: int, vol: float) -> void:
+	"""Start a crossfade tween that moves chase player i's volume to vol."""
+	while _chase_volume_tweens.size() <= i:
+		_chase_volume_tweens.append(null)
+	var ctween := create_tween()
+	ctween.tween_property(_chase_players[i], "volume_db", vol, CHASE_VOL_FADE_MS)
+	_chase_volume_tweens[i] = ctween
 
 
 # ---------- TELEPORT ZOOM (map-view circles) ----------
@@ -1307,8 +1663,12 @@ func _on_teleport_zoom_started() -> void:
 
 
 func _on_teleport_zoom_ended() -> void:
-	"""Restore camera, show survivors, and close teleport overlay."""
-	_restore_camera_view()
+	"""Restore camera, show survivors, and close teleport overlay.
+	When a human-killer teleport FX is playing, the red-glitch tween drives the
+	camera (zoom-in → slow zoom-out) instead of the instant restore, so we skip
+	_restore_camera_view here and let the FX finish the job."""
+	if not _teleport_fx_zoom_out_started and not _teleport_fx_active:
+		_restore_camera_view()
 	_show_survivors_after_teleport()
 	_close_teleport_minimap()
 
@@ -1520,10 +1880,116 @@ const TELEPORT_SOUND_PATH: String = "res://The Darkness Of The Grasslands assets
 func _on_player_teleported(new_pos: Vector2) -> void:
 	"""Called when Violentgrass (player or AI bot) completes a teleport.
 	Plays a positional sound at the destination and shows an arrow indicator
-	on survivor HUDs pointing toward the teleport location."""
+	on survivor HUDs pointing toward the teleport location. If the HUMAN played
+	this teleport, the red-glitch overlay fades away and the camera slowly zooms
+	out to reveal the destination."""
+	if _character_name == "Violentgrass":
+		_start_teleport_zoom_out()
 	_play_teleport_sound_at(new_pos)
 	_close_teleport_minimap()
 	_show_teleport_indicator(new_pos)
+
+
+# ---------- TELEPORT RED-GLITCH FX (human killer) ----------
+
+func _on_teleport_fx_started() -> void:
+	"""The human killer is executing a teleport: flash the screen red + glitchy
+	and zoom IN dramatically, hiding the position jump. CameraZoomController then
+	slow-zooms OUT once the teleport completes (_on_player_teleported)."""
+	if _character_name != "Violentgrass":
+		return
+	_show_teleport_fx()
+	_teleport_fx_zoom_out_started = false
+	var zoom_ctrl: Node = _player.get_node_or_null("ZoomController")
+	if is_instance_valid(zoom_ctrl) and zoom_ctrl.has_method("tween_zoom_to"):
+		zoom_ctrl.tween_zoom_to(TELEPORT_FX_ZOOM_IN, 0.35)  # Quick zoom-in as we jump
+
+
+func _show_teleport_fx() -> void:
+	"""Create/re-show the full-screen red-glitch overlay. When zooming out on
+	arrival, _update_teleport_fx flattens the intensity down so it fades out."""
+	if _teleport_fx_layer and is_instance_valid(_teleport_fx_layer):
+		_teleport_fx_layer.visible = true
+		_teleport_fx_rect.material = _teleport_fx_mat
+		_teleport_fx_timer = 0.0
+		_teleport_fx_active = true
+		_teleport_fx_mat.set_shader_parameter("intensity", TELEPORT_FX_INTENSITY_IN)
+		_teleport_fx_mat.set_shader_parameter("time", 0.0)
+		return
+	if not ResourceLoader.exists("res://shaders/teleport_glitch.gdshader"):
+		push_error("GameMap: teleport_glitch shader missing.")
+		return
+
+	_teleport_fx_layer = CanvasLayer.new()
+	_teleport_fx_layer.name = "TeleportFxLayer"
+	_teleport_fx_layer.layer = 65  # Above gameplay/markers, below HUD (120+)
+	add_child(_teleport_fx_layer)
+
+	_teleport_fx_rect = TextureRect.new()
+	_teleport_fx_rect.name = "TeleportFx"
+	_teleport_fx_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_teleport_fx_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# 1x1 white texture so the rect issues a draw call; the shader only samples
+	# SCREEN_TEXTURE so the rect's own texture content is irrelevant.
+	var fx_img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	fx_img.set_pixel(0, 0, Color.WHITE)
+	_teleport_fx_rect.texture = ImageTexture.create_from_image(fx_img)
+
+	_teleport_fx_mat = ShaderMaterial.new()
+	_teleport_fx_mat.shader = load("res://shaders/teleport_glitch.gdshader")
+	_teleport_fx_mat.set_shader_parameter("intensity", TELEPORT_FX_INTENSITY_IN)
+	_teleport_fx_mat.set_shader_parameter("time", 0.0)
+	_teleport_fx_rect.material = _teleport_fx_mat
+
+	_teleport_fx_layer.add_child(_teleport_fx_rect)
+	_teleport_fx_timer = 0.0
+	_teleport_fx_active = true
+
+
+func _update_teleport_fx(delta: float) -> void:
+	"""Advance the red-glitch overlay's time + fade it out after the slow
+	zoom-out begins. When intensity hits 0 the overlay hides."""
+	if not _teleport_fx_active or not is_instance_valid(_teleport_fx_mat):
+		return
+	_teleport_fx_timer += delta
+	_teleport_fx_mat.set_shader_parameter("time", _teleport_fx_timer)
+
+	# Once the slow zoom-out is playing, fade the red down over ~0.7s.
+	if _teleport_fx_zoom_out_started:
+		var fade_progress: float = (_teleport_fx_timer - _teleport_fx_zoom_out_started_at) / 0.7
+		var intensity: float = clampf(1.0 - fade_progress, 0.0, 1.0)
+		_teleport_fx_mat.set_shader_parameter("intensity", intensity)
+		if intensity <= 0.01:
+			_teleport_fx_active = false
+			if is_instance_valid(_teleport_fx_layer):
+				_teleport_fx_layer.visible = false
+
+
+func _start_teleport_zoom_out() -> void:
+	"""After the human killer arrives, hold the red close-up for a moment, then
+	slowly zoom the camera back out and fade the red-glitch overlay. Only
+	triggers once per teleport."""
+	if _teleport_fx_zoom_out_started:
+		return
+	_teleport_fx_zoom_out_started = true
+
+	# Let the zoom-IN (and red flash) read for a beat before the slow reveal.
+	await get_tree().create_timer(TELEPORT_FX_ZOOM_IN_HOLD_S).timeout
+	if not _teleport_fx_zoom_out_started:
+		return
+	if not is_instance_valid(self):
+		return
+
+	_teleport_fx_zoom_out_started_at = _teleport_fx_timer
+
+	var zoom_ctrl: Node = _player.get_node_or_null("ZoomController")
+	if is_instance_valid(zoom_ctrl) and zoom_ctrl.has_method("tween_zoom_to"):
+		zoom_ctrl.tween_zoom_to(1.25, TELEPORT_FX_ZOOM_OUT_MS / 1000.0)  # Slow reveal
+		# When the slow zoom-out finishes, re-enable camera smoothing (map-view
+		# disabled it) so follow behavior is fully normal again.
+		await get_tree().create_timer(TELEPORT_FX_ZOOM_OUT_MS / 1000.0).timeout
+		if is_instance_valid(zoom_ctrl) and zoom_ctrl.has_method("restore_normal_zoom_silent"):
+			zoom_ctrl.restore_normal_zoom_silent()
 
 
 func _play_teleport_sound_at(pos: Vector2) -> void:
@@ -1636,24 +2102,29 @@ func _update_killer_speed(_delta: float) -> void:
 
 # ---------- KILL ELIMINATION TIMER BONUS (+30s) ----------
 
-func _check_kill_timer_bonus() -> void:
-	"""Detect when the killer bot eliminates a survivor and add 30s to timer."""
-	if not is_instance_valid(_killer_bot):
-		return
-	# Trick: track a count we can observe. In local mode, the bot "kills" by
-	# proximity — the player dies when the killer touches them (via _on_player_died).
-	# The +30s is actually added there. See _on_player_died() for implementation.
-
 func add_timer_bonus(seconds: float) -> void:
 	"""Add time to the match timer with animated red count-up. No cap — timer can grow past 4 minutes."""
 	_bonus_target = _time_remaining + seconds
+	_force_timer_pause(seconds * 0.15)  # Keep the countdown paused while the bonus plays out
 	print("GameMap: Timer +", seconds, "s (target ", _bonus_target, "s)")
+
+
+func _force_timer_pause(duration: float) -> void:
+	"""Pause the match countdown for 'duration' seconds (e.g. while applying a
+	time adjustment for a puzzle completion or kill). The pause is lifted after
+	the duration AND once any bonus count-up animation has finished."""
+	_timer_pause_remaining = max(_timer_pause_remaining, duration)
+	if match_timer:
+		match_timer.paused = true
 
 
 # ---------- KILLER ELIMINATION TRACKING ----------
 
-func _on_killer_eliminated(_player_name: String) -> void:
-	"""Called when killer eliminates a survivor. +30s timer bonus + ending music handling."""
+func _on_survivor_eliminated(player_name: String) -> void:
+	"""Called when a survivor is eliminated (killed by the killer). +30s timer bonus + ending music handling."""
+	# Multiplayer: report the elimination to the server (broadcast to all players)
+	if _multiplayer_sync:
+		_multiplayer_sync.send_player_eliminated(player_name)
 	add_timer_bonus(30.0)
 	
 	# Handle music transitions when kill happens during ending countdown
@@ -1680,6 +2151,9 @@ func _rewind_ending_music() -> void:
 
 func _restore_map_music() -> void:
 	"""Stop ending music and restore normal map music (kill pushed past 31s)."""
+	if _lms_active:
+		# During the LMS finale the LMS track stays; don't restore map music.
+		return
 	var ending_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
 	if is_instance_valid(ending_player):
 		ending_player.stop()
@@ -1699,10 +2173,398 @@ func _restore_map_music() -> void:
 	player.stream = stream
 	player.autoplay = true
 	player.bus = &"Master"
-	player.volume_db = 0.0
+	player.volume_db = -12.0  # Lowered so rhythm-puzzle BPM audio stays audible
 	player.finished.connect(_on_map_music_finished)
 	add_child(player)
 	print("GameMap: Restored map music (kill pushed timer past 31s)")
+
+
+# ═══════════════ LMS (LAST MAN STANDING) FINALE ═══════════════
+
+func _start_lms() -> void:
+	"""Begin the Last-Man-Standing finale: special LMS music + VFX glued to screen.
+	Only triggers once, when 1 killer + 1 survivor remain."""
+	if _lms_active or _round_ended:
+		return
+	_lms_active = true
+	print("GameMap: LMS — 1 killer + 1 survivor remain. Starting finale.")
+
+	# Mute any chase theme immediately — the LMS track is now the sole score.
+	_silence_all_chase()
+
+	# Change the match clock to the length of the LMS music: the countdown restarts
+	# from the LMS track's duration so the finale (and round) fits the song.
+	var lms_duration: float = LMS_MUSIC_DURATION
+	var lms_stream: AudioStream = null
+	if ResourceLoader.exists(LMS_MUSIC_PATH):
+		lms_stream = load(LMS_MUSIC_PATH)
+		if is_instance_valid(lms_stream) and lms_stream.get_length() > 0.0:
+			lms_duration = lms_stream.get_length()
+	if lms_duration > 0.0:
+		_time_remaining = lms_duration
+		_bonus_target = 0.0
+		_timer_pause_remaining = 0.0
+		if match_timer:
+			match_timer.paused = false
+		_update_timer_label()
+		print("GameMap: LMS — match clock set to ", lms_duration, "s (LMS music length)")
+
+	# Stop background map music + ending music so the LMS track is the sole score.
+	for n: String in ["MapMusicPlayer", "MusicPlayer"]:
+		var mp: AudioStreamPlayer = get_node_or_null(n)
+		if is_instance_valid(mp):
+			# Fade quickly rather than cut.
+			var fade := create_tween()
+			fade.tween_property(mp, "volume_db", -80.0, 0.4)
+			fade.tween_callback(mp.stop)
+
+	# If the LMS kick-in happened while the generic match-ending effects were
+	# already showing (kill during the final 30s), hide them — the LMS finale
+	# owns the ending now, so no ending vignette / Violentgrass ending screen may
+	# linger beneath the LMS VFX or pop back in.
+	for overlay: Node in [_ending_vignette, _ending_screen_bg, _ending_screen_overlay,
+			_ending_red_left, _ending_red_right]:
+		if is_instance_valid(overlay):
+			overlay.visible = false
+	_ending_red_active = false
+	_ending_screen_created = false
+	_ending_music_switched = false
+
+	# Play the special Greengrass/Violentgrass LMS track.
+	if not ResourceLoader.exists(LMS_MUSIC_PATH):
+		push_error("GameMap: LMS music not found: ", LMS_MUSIC_PATH)
+	else:
+		_lms_music_player = AudioStreamPlayer.new()
+		_lms_music_player.name = "LmsMusicPlayer"
+		_lms_music_player.stream = lms_stream
+		_lms_music_player.bus = &"Master"
+		_lms_music_player.volume_db = -8.0
+		_lms_music_player.autoplay = true
+		_lms_music_player.finished.connect(_on_lms_music_loop)
+		add_child(_lms_music_player)
+
+	# Glue the ViolentBells VFX to the camera (full-screen overlay, resized to cover).
+	_show_lms_vfx()
+
+	# Give each remaining duelist their signature LMS aura: red/black for the
+	# Violentgrass killer, green/black for the Greengrass survivor.
+	_apply_lms_auras()
+
+
+func _apply_lms_auras() -> void:
+	"""Apply the red/black aura to the Violentgrass killer and the green/black
+	aura to the Greengrass survivor(s) once LMS begins."""
+	var violent: Node2D = null
+	var green_list: Array[Node2D] = []
+	# The human player carries one of the two roles.
+	if is_instance_valid(_player):
+		if _character_name == "Violentgrass":
+			violent = _player
+		else:
+			green_list.append(_player)
+	# The killer bot is always Violentgrass.
+	if is_instance_valid(_killer_bot):
+		violent = _killer_bot
+	# Survivor bots are always Greengrass.
+	for bot: Node2D in _survivor_bots:
+		if is_instance_valid(bot):
+			green_list.append(bot)
+
+	if violent:
+		_apply_aura_to(violent, Color(0.85, 0.05, 0.05, 1.0), "Violentgrass aura (red/black)")
+	for g: Node2D in green_list:
+		_apply_aura_to(g, Color(0.05, 0.8, 0.25, 1.0), "Greengrass aura (green/black)")
+
+
+func _apply_aura_to(character: Node2D, color: Color, label: String) -> void:
+	"""Attach the aura rim-glow shader to a character's AnimatedSprite2D."""
+	var spr: AnimatedSprite2D = character.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	if not is_instance_valid(spr):
+		return
+	var shade := ShaderMaterial.new()
+	shade.shader = LMS_AURA_SHADER
+	shade.set_shader_parameter("aura_color", color)
+	shade.set_shader_parameter("aura_strength", 1.0)
+	shade.set_shader_parameter("enabled", true)
+	spr.material = shade
+	# Track for cleanup (so freeing characters doesn't leave dangling refs).
+	_aura_nodes[character] = spr
+	print("GameMap: Applied ", label)
+
+
+func _clear_lms_auras() -> void:
+	"""Remove every LMS aura shader so no character keeps a colored glow outside
+	the finale (and so characters freed on scene-change aren't left hanging)."""
+	for character: Node in _aura_nodes.keys():
+		var spr: AnimatedSprite2D = _aura_nodes[character]
+		if is_instance_valid(spr):
+			spr.material = null
+	_aura_nodes.clear()
+
+
+func _on_lms_music_loop() -> void:
+	"""Loop the LMS track until the match ends."""
+	if is_instance_valid(_lms_music_player):
+		_lms_music_player.play()
+
+
+func _show_lms_vfx() -> void:
+	"""Create a full-screen CanvasLayer with the 2-frame ViolentBells VFX.
+	Uses STRETCH_KEEP_ASPECT_COVERED so the frames 'glue' to the camera/backing
+	regardless of window size (resized to cover the whole viewport)."""
+	if _lms_vfx_layer and is_instance_valid(_lms_vfx_layer):
+		return
+	if not ResourceLoader.exists(LMS_VFX_FRAME_1) or not ResourceLoader.exists(LMS_VFX_FRAME_2):
+		push_error("GameMap: LMS VFX frames not found.")
+		return
+
+	_lms_vfx_layer = CanvasLayer.new()
+	_lms_vfx_layer.name = "LmsVfxLayer"
+	_lms_vfx_layer.layer = 60  # Above chase/gameplay, below HUD (120+)
+	add_child(_lms_vfx_layer)
+
+	_lms_vfx_rect = TextureRect.new()
+	_lms_vfx_rect.name = "LmsVfx"
+	_lms_vfx_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_lms_vfx_rect.texture = load(LMS_VFX_FRAME_1)
+	_lms_vfx_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_lms_vfx_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_lms_vfx_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Start fully transparent on purpose — the fade-in-to-visible is driven every
+	# frame by _update_lms_vfx (lerped alpha), so it fades in smoothly FIRST, and
+	# later fades back OUT when the killer gets near the survivor.
+	_lms_vfx_rect.modulate.a = 0.0
+	_lms_vfx_layer.add_child(_lms_vfx_rect)
+
+	_lms_alpha_current = 0.0
+	_lms_alpha_target = LMS_VFX_ALPHA
+
+	_lms_vfx_timer = 0.0
+	_lms_vfx_show_frame2 = false
+
+
+func _update_lms_vfx(delta: float) -> void:
+	"""Alternate the 2 VFX frames on a timer while LMS is active, and drive the
+	overlay alpha: it fades IN when LMS starts (so it never pops in), and fades
+	OUT when the killer is near the survivor (so the final fight is visible)."""
+	if not _lms_active or not is_instance_valid(_lms_vfx_rect):
+		return
+
+	# Proximity-based alpha: fade out when the killer closes in on the survivor.
+	_lms_alpha_target = LMS_VFX_ALPHA
+	var killer_pos: Vector2 = _get_lms_killer_position()
+	var survivor_pos: Vector2 = _get_lms_survivor_position()
+	if killer_pos != Vector2.INF and survivor_pos != Vector2.INF:
+		if killer_pos.distance_to(survivor_pos) <= LMS_VFX_FADE_DISTANCE:
+			_lms_alpha_target = 0.0
+
+	# Smoothly lerp the actual alpha toward the target (covers both the initial
+	# fade-in and the near-killer fade-out).
+	_lms_alpha_current = lerpf(_lms_alpha_current, _lms_alpha_target,
+			minf(delta * LMS_VFX_FADE_SPEED, 1.0))
+	_lms_vfx_rect.modulate.a = _lms_alpha_current
+
+	# Frame alternation (2-frame animation).
+	_lms_vfx_timer += delta
+	if _lms_vfx_timer < 1.0 / LMS_VFX_FPS:
+		return
+	_lms_vfx_timer -= 1.0 / LMS_VFX_FPS
+	_lms_vfx_show_frame2 = not _lms_vfx_show_frame2
+	_lms_vfx_rect.texture = load(LMS_VFX_FRAME_2 if _lms_vfx_show_frame2 else LMS_VFX_FRAME_1)
+
+
+func _get_lms_killer_position() -> Vector2:
+	"""World position of the LMS killer: the human player if they're the killer,
+	otherwise the killer bot. Returns Vector2.INF if unavailable."""
+	if _character_name == "Violentgrass" or (GameState != null and GameState.is_killer):
+		if is_instance_valid(_player):
+			return _player.global_position
+		return Vector2.INF
+	if is_instance_valid(_killer_bot):
+		return _killer_bot.global_position
+	return Vector2.INF
+
+
+func _get_lms_survivor_position() -> Vector2:
+	"""World position of the LMS survivor: the human player if they're the
+	survivor, otherwise the first alive survivor bot. Returns Vector2.INF if
+	unavailable."""
+	if _character_name != "Violentgrass" and not (GameState != null and GameState.is_killer):
+		if is_instance_valid(_player):
+			return _player.global_position
+		return Vector2.INF
+	for bot: Node2D in _survivor_bots:
+		if is_instance_valid(bot) and bot.has_method("is_alive"):
+			if bot.is_alive():
+				return bot.global_position
+		elif is_instance_valid(bot):
+			return bot.global_position
+	return Vector2.INF
+
+
+func _update_lms_heartbeat(delta: float) -> void:
+	"""LMS end-of-song camera drama, driven by the MUSIC'S OWN PLAYBACK position
+	(never the match countdown):
+	- At 26.5s of music played: zoom in a little; at 27s of music: zoom back out
+	  (a quick pinch near the 26.5s mark of the song).
+	- While the song still has LMS_HEARTBEAT_FROM (1m33s) left: gentle screen
+	  zoom in/out at a constant 200 BPM, with a small amplitude so players
+	  don't get motion sick.
+	"""
+	if not _lms_active or _round_ended:
+		return
+	if not is_instance_valid(_player):
+		return
+	var zoom_ctrl: Node = _player.get_node_or_null("ZoomController")
+	if not is_instance_valid(zoom_ctrl) or not zoom_ctrl.has_method("set_zoom_silent"):
+		return
+
+	# Read the LMS track's playback position (this is the timeline we follow,
+	# NOT the match clock). If the player is missing, bail out and leave zoom.
+	if not is_instance_valid(_lms_music_player):
+		return
+	var pos: float = _lms_music_player.get_playback_position()
+	var song_len: float = LMS_MUSIC_DURATION
+	if is_instance_valid(_lms_music_player.stream) and _lms_music_player.stream.get_length() > 0.0:
+		song_len = _lms_music_player.stream.get_length()
+
+	# One-shot music pinch: zoom in a little at 26.5s, zoom back out at 27s.
+	if not _lms_pinch_done:
+		if pos >= LMS_PINCH_OUT_AT:
+			# At 27s of music → zoom back out (and never run again).
+			_lms_pinch_done = true
+			zoom_ctrl.set_zoom_silent(zoom_ctrl.default_zoom, true)
+		elif pos >= LMS_PINCH_IN_AT:
+			# Between 26.5s and 27s of music → zoom in a little.
+			zoom_ctrl.set_zoom_silent(zoom_ctrl.default_zoom / LMS_PINCH_ZOOM_IN_MULT, true)
+
+	# Heartbeat WINDOW: it must NEVER start before the 26.5/27s pinch, so we use
+	# whichever is later — the song reaching the 1m33s-remaining point (93s left)
+	# OR the 27s-in pinch already having happened. For our ~99.7s track the pinch
+	# comes first, so the heartbeat only begins at ~27s of music and runs to the
+	# end. For a longer track, "1m33s till it ends" would take over automatically.
+	var heartbeat_start: float = maxf(LMS_PINCH_OUT_AT, song_len - LMS_HEARTBEAT_FROM)
+	var remaining: float = song_len - pos
+	if pos < heartbeat_start or remaining <= 0.5:
+		_lms_heartbeat_active = false
+		return
+	_lms_heartbeat_active = true
+
+	# Constant 200 BPM from the moment the heartbeat starts (27s) until the song
+	# ends (user requested 200 BPM).
+	var total_span: float = maxf(song_len - heartbeat_start, 0.001)
+	var progress: float = clampf((pos - heartbeat_start) / total_span, 0.0, 1.0)
+	var bpm: float = lerpf(LMS_HEARTBEAT_BPM_START, LMS_HEARTBEAT_BPM_END, progress)
+	var beat_seconds: float = 60.0 / bpm  # one full in+out cycle per beat
+
+	_lms_heartbeat_phase += delta
+	# One full cycle per beat: zoom in for the first half, out for the second.
+	var cycle: float = fmod(_lms_heartbeat_phase, beat_seconds)
+	var half: float = beat_seconds * 0.5
+	if cycle < half:
+		var t0: float = cycle / half
+		zoom_ctrl.set_zoom_silent(zoom_ctrl.default_zoom / (1.0 + LMS_HEARTBEAT_AMOUNT * (1.0 - t0)), true)
+	else:
+		var t1: float = (cycle - half) / half
+		zoom_ctrl.set_zoom_silent(zoom_ctrl.default_zoom / (1.0 - LMS_HEARTBEAT_AMOUNT * t1), true)
+
+
+func _trigger_lms_kill_zoom() -> void:
+	"""Corrected 2→1 finale sequence, in order:
+	1) While the killer is killing a survivor → zoom in VERY tight on the kill.
+	2) Hold tight briefly.
+	3) Zoom back out.
+	4) Once the zoom-out completes → reveal the survivor's location to both sides
+	   and start the LMS finale (VFX + LMS music + match clock set to the song).
+	"""
+	if not is_instance_valid(_player):
+		_start_lms()
+		return
+	var zoom_ctrl: Node = _player.get_node_or_null("ZoomController")
+	if not is_instance_valid(zoom_ctrl) or not zoom_ctrl.has_method("set_zoom"):
+		_start_lms()
+		return
+	# 1) Zoom in VERY tight on the kill.
+	zoom_ctrl.set_zoom(LMS_KILL_ZOOM_IN, true)
+	# 2) Hold tight.
+	await get_tree().create_timer(LMS_KILL_ZOOM_HOLD).timeout
+	if _round_ended:
+		return
+	# 3) Zoom back out.
+	if is_instance_valid(zoom_ctrl) and zoom_ctrl.has_method("restore_normal_zoom"):
+		zoom_ctrl.restore_normal_zoom()
+	# 4) Wait for the zoom-out animation to finish, then reveal + start LMS.
+	await get_tree().create_timer(0.7).timeout
+	if _round_ended:
+		return
+	_show_lms_reveal()
+	_start_lms()
+
+
+func _show_lms_reveal() -> void:
+	"""After the kill-zoom zooms back out, reveal positions so BOTH sides know
+	where the survivor is: the killer sees an arrow to the last surviving survivor,
+	and the surviving survivor sees an arrow to the killer."""
+	if not is_instance_valid(_player):
+		return
+	var is_killer_role: bool = _character_name == "Violentgrass" or (GameState.is_killer if GameState else false)
+	var target_pos: Vector2 = Vector2.ZERO
+	if is_killer_role:
+		# Killer: point to the last surviving survivor bot.
+		for bot: Node2D in _survivor_bots:
+			if is_instance_valid(bot):
+				target_pos = bot.global_position
+				break
+	else:
+		# Survivor: point to the killer (AI killer bot or human killer).
+		if is_instance_valid(_killer_bot):
+			target_pos = _killer_bot.global_position
+		elif _character_name == "Violentgrass":
+			target_pos = _player.global_position
+	if target_pos == Vector2.ZERO:
+		return
+	_show_lms_reveal_arrow(target_pos)
+
+
+func _show_lms_reveal_arrow(target_pos: Vector2) -> void:
+	"""Draw a temporary edge-of-screen arrow pointing to target_pos on the HUD,
+	shown for BOTH roles (unlike the survivor-only teleport indicator)."""
+	if not is_instance_valid(_player):
+		return
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	var dir: Vector2 = (target_pos - _player.global_position).normalized() if is_instance_valid(_player) else Vector2.RIGHT
+
+	var arrow_label := Label.new()
+	arrow_label.name = "LmsRevealArrow"
+	arrow_label.text = "▶"
+	arrow_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.2, 0.95))
+	arrow_label.add_theme_font_size_override("font_size", 40)
+	arrow_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	arrow_label.add_theme_constant_override("outline_size", 4)
+	arrow_label.size = Vector2(44, 44)
+	arrow_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	arrow_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+
+	var margin: float = 60.0
+	var edge_x: float = viewport_size.x * 0.5 + dir.x * (viewport_size.x * 0.5 - margin)
+	var edge_y: float = viewport_size.y * 0.5 + dir.y * (viewport_size.y * 0.5 - margin)
+	edge_x = clampf(edge_x, margin, viewport_size.x - margin)
+	edge_y = clampf(edge_y, margin, viewport_size.y - margin)
+	arrow_label.position = Vector2(edge_x - 22, edge_y - 22)
+	var angle: float = atan2(dir.y, dir.x)
+	arrow_label.pivot_offset = Vector2(22, 22)
+	arrow_label.rotation = angle
+
+	$HUD.add_child(arrow_label)
+
+	# Fade out then remove.
+	var tween := create_tween()
+	tween.tween_interval(LMS_REVEAL_DURATION - 0.5)
+	tween.tween_property(arrow_label, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(arrow_label):
+			arrow_label.queue_free()
+	)
 
 
 func _on_bot_hp_changed(current_hp: float, _max_hp: float, bot: Node2D) -> void:
@@ -1714,16 +2576,30 @@ func _on_bot_hp_changed(current_hp: float, _max_hp: float, bot: Node2D) -> void:
 	if not _survivor_bots.has(bot):
 		return
 	
+	# Captured BEFORE decrement to detect the 2→1 kill (zoom punch moment).
+	var was_two_left: bool = _alive_survivor_bot_count == 2
+	
 	# Mark bot as eliminated
 	_alive_survivor_bot_count -= 1
 	_survivor_bots.erase(bot)
+	_refresh_survivor_cache()
 	
 	# Grey out the bot
 	bot.modulate = Color(0.4, 0.4, 0.4, 0.5)
 	bot.set_physics_process(false)
 	
 	print("GameMap: Survivor bot eliminated — %d bot(s) remaining" % _alive_survivor_bot_count)
-	_on_killer_eliminated("SurvivorBot")
+	_on_survivor_eliminated("SurvivorBot")
+	
+	# LMS trigger: when it drops to exactly 1 survivor (1 killer + 1 survivor left).
+	# If this kill took it from 2 → 1, run the corrected kill-zoom sequence:
+	# zoom in tight on the kill → zoom out → THEN reveal + VFX + LMS music + clock.
+	# (kill-zoom now calls _start_lms() itself after the zoom-out completes.)
+	if _alive_survivor_bot_count == 1 and not _lms_active:
+		if was_two_left:
+			_trigger_lms_kill_zoom()
+		else:
+			_start_lms()
 	
 	# Check if all survivors (human + bots) are eliminated
 	_check_all_survivors_eliminated()
@@ -1731,15 +2607,73 @@ func _on_bot_hp_changed(current_hp: float, _max_hp: float, bot: Node2D) -> void:
 
 func _check_all_survivors_eliminated() -> void:
 	"""End the match when all survivors (human + AI bots) are eliminated."""
+	var is_killer: bool = _character_name == "Violentgrass"
+	if is_killer:
+		# The human IS the killer — survivors are only the bots.
+		# The killer wins as soon as all bot survivors are eliminated.
+		if _alive_survivor_bot_count <= 0:
+			print("GameMap: All survivors eliminated — ending match")
+			match_timer.stop()
+			_killer_won = true
+			if not _round_ended:
+				match_ended.emit()
+				_end_match()
+		return
+	# Human is a survivor — all survivors gone only when bots AND human are dead.
 	if _alive_survivor_bot_count > 0:
 		return
-	# Also check if human player is dead
 	var player_hp: float = _player.get("current_hp") if is_instance_valid(_player) and "current_hp" in _player else 0.0
 	if player_hp <= 0.0:
 		print("GameMap: All survivors eliminated — ending match")
 		match_timer.stop()
-		if not _match_ending_lobby:
-			_match_ending_lobby = true
+		_killer_won = true
+		if not _round_ended:
+			match_ended.emit()
+			_end_match()
+
+
+# ---------- EVERYONE-DEAD ROUND-END GUARANTEE ----------
+
+func _on_killer_bot_hp_changed(current_hp: float, _max_hp: float) -> void:
+	"""Survivor mode: when the AI killer bot's HP hits 0, the survivor wins —
+	end the round immediately (not just when the timer runs out)."""
+	if current_hp > 0.0:
+		return
+	if _round_ended:
+		return
+	_killer_bot_eliminated = true
+	print("GameMap: Killer bot eliminated — survivors win. Ending match.")
+	match_timer.stop()
+	_killer_won = false
+	if not _round_ended:
+		match_ended.emit()
+		_end_match()
+
+
+func _check_everyone_dead() -> void:
+	"""GUARANTEED "everyone is dead" round-end, checked every frame from _process.
+	Ends the round the moment every combatant is eliminated, in BOTH roles:
+	- Killer (Violentgrass): all survivor bots dead → killer wins.
+	- Survivor (Greengrass): AI killer bot dead → survivors win, OR human survivor
+	  dead → round ends (also handled by the death sequence)."""
+	if _round_ended or not _match_live:
+		return
+	var is_killer: bool = _character_name == "Violentgrass"
+	if is_killer:
+		if _alive_survivor_bot_count <= 0:
+			print("GameMap: (guaranteed) All survivors eliminated — ending match")
+			match_timer.stop()
+			_killer_won = true
+			if not _round_ended:
+				match_ended.emit()
+				_end_match()
+		return
+	# Survivor mode: killer bot gone means the survivor won.
+	if _killer_bot_eliminated or (_killer_bot != null and not is_instance_valid(_killer_bot)):
+		print("GameMap: (guaranteed) Killer bot eliminated — survivors win. Ending match.")
+		match_timer.stop()
+		_killer_won = false
+		if not _round_ended:
 			match_ended.emit()
 			_end_match()
 
@@ -1754,8 +2688,9 @@ func _on_match_timer_timeout() -> void:
 		_time_remaining = 0.0
 		_update_timer_label()
 		match_timer.stop()
-		if not _match_ending_lobby:
-			_match_ending_lobby = true
+		# Timer-out is NOT a killer-win-by-elimination — no killer outro here.
+		_killer_won = false
+		if not _round_ended:
 			match_ended.emit()
 			print("GameMap: Match ended!")
 			_end_match()
@@ -1841,11 +2776,13 @@ func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
 			gs.set_player_rings(username, current_rings + rings_per_level)
 		print("GameMap: Puzzle reward — +$", money_per_level, ", +", rings_per_level, " ring (level ", puzzle_level, ")")
 	
-	# Decrease match timer by 3.25 seconds per puzzle level (flash red)
+	# Decrease match timer by 3.25 seconds per puzzle level (flash red).
+	# Pause the countdown while the deduction is applied, then resume.
 	var deduction: float = 3.25 * puzzle_level
 	_time_remaining = max(0.0, _time_remaining - deduction)
 	_timer_flash_red = 1.0
 	_update_timer_label()
+	_force_timer_pause(0.6)
 	
 	# Show success text
 	var prompt: Label = area.get_node_or_null("InteractPrompt")
@@ -1856,6 +2793,10 @@ func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
 	if area.has_node("ColorRect"):
 		var rect: ColorRect = area.get_node("ColorRect")
 		rect.color = Color(0.2, 0.8, 0.2, 0.5)
+	
+	# Multiplayer: report the puzzle solve to the server
+	if _multiplayer_sync:
+		_multiplayer_sync.send_puzzle_solved(area_name, puzzle_level)
 	
 	print("GameMap: Puzzle solved at ", area.position)
 
@@ -1887,6 +2828,9 @@ var _vignette_overlay: ColorRect = null
 
 func _create_epilepsy_overlay(player: Node2D) -> void:
 	"""Create epilepsy-safe desaturation overlay and damage vignette."""
+	# Guard: don't create duplicates if one already exists (e.g. on role switch).
+	if is_instance_valid(_epilepsy_overlay) or is_instance_valid(_vignette_overlay):
+		return
 	var hud: CanvasLayer = $HUD
 	
 	# Full-screen desaturation overlay
@@ -1987,6 +2931,9 @@ func _check_settings_updates() -> void:
 
 func _create_ending_vignette() -> void:
 	"""Create a dark-red overlay that pulses in the final 30 seconds."""
+	# Guard: don't create duplicates (e.g. on role switch).
+	if is_instance_valid(_ending_vignette):
+		return
 	var hud: CanvasLayer = $HUD
 	var vignette := ColorRect.new()
 	vignette.name = "EndingVignette"
@@ -2003,6 +2950,10 @@ func _update_ending_vignette() -> void:
 	Epilepsy mode ON  → dark red screen gets darker.
 	Epilepsy mode OFF → 10 crazy cycling colors based on seconds remaining.
 	"""
+	if _lms_active:
+		# During the LMS finale the LMS track/VFX own the ending — never show
+		# the generic match-ending vignette on top of it.
+		return
 	if not is_instance_valid(_ending_vignette):
 		return
 	if _time_remaining > 30.0:
@@ -2053,6 +3004,10 @@ func _update_ending_vignette() -> void:
 
 func _create_match_ending_screen() -> void:
 	"""Create the full-screen ending image + top overlay when timer ≤ 30s."""
+	if _lms_active:
+		# During the LMS finale the Violentgrass branded ending screen must not
+		# appear — the LMS VFX + music own the ending instead.
+		return
 	if _ending_screen_created:
 		return
 	_ending_screen_created = true
@@ -2117,6 +3072,9 @@ func _create_match_ending_screen() -> void:
 
 func _update_match_ending_screen(delta: float) -> void:
 	"""Update the ending screen: fade-in, shake intensity scales with time left, red UI flash at 18s."""
+	if _lms_active:
+		# During the LMS finale the Violentgrass ending screen is disabled.
+		return
 	if not _ending_screen_created:
 		return
 	if not is_instance_valid(_ending_screen_bg) or not is_instance_valid(_ending_screen_overlay):
@@ -2173,20 +3131,16 @@ func _update_match_ending_screen(delta: float) -> void:
 # ---------- DAMAGE VIGNETTE ----------
 
 func _check_damage_vignette() -> void:
-	"""Detect player HP changes to trigger vignette and track damage.
-	Uses _last_damage_time to avoid duplicating _on_player_hp_changed()."""
+	"""Detect player HP changes to trigger the visual vignette only.
+	Damage/SFX stats are owned by _on_player_hp_changed(); this must NOT
+	touch _total_damage_taken or _last_hp (which would double-count)."""
 	if not is_instance_valid(_player):
 		return
 	if not "current_hp" in _player:
 		return
 	var hp: float = _player.get("current_hp")
-	# Don't track _last_hp here — that's owned by _on_player_hp_changed().
-	# Only trigger the visual vignette effect.
 	if _last_hp >= 0 and hp < _last_hp:
-		var dmg: float = _last_hp - hp
-		_total_damage_taken += dmg
 		_trigger_vignette()
-	_last_hp = hp
 
 
 func _update_timer_label() -> void:
@@ -2235,7 +3189,28 @@ func _setup_admin_panel() -> void:
 	var panel := AdminPanel.new()
 	panel.name = "AdminPanel"
 	add_child(panel)
+	if not panel.role_switch_requested.is_connected(_switch_role):
+		panel.role_switch_requested.connect(_switch_role)
 	panel.hide()  # Start hidden — toggled via "G Gui"
+
+
+func _create_role_hint() -> void:
+	"""Add an always-visible hint showing how to switch roles (F2) and open the
+	admin panel (G Gui / F3). Makes the killer/survivor role switch discoverable."""
+	var hud: CanvasLayer = $HUD
+	if not hud or hud.get_node_or_null("RoleHint"):
+		return
+	var hint := Label.new()
+	hint.name = "RoleHint"
+	hint.text = "F2: Switch Killer / Survivor    |    F3 / Chat 'G Gui': Admin Panel"
+	hint.position = Vector2(8, 8)
+	hint.size = Vector2(660, 20)
+	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.7))
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+	hint.add_theme_constant_override("shadow_offset_x", 1)
+	hint.add_theme_constant_override("shadow_offset_y", 1)
+	hud.add_child(hint)
 
 
 func _apply_saved_settings() -> void:
@@ -2454,27 +3429,340 @@ func _update_death_fade(delta: float) -> void:
 
 func _end_match() -> void:
 	"""Store match stats in GameState and transition to lobby for analysis."""
+	# Guard: only end the round once.
+	if _round_ended:
+		return
+	_round_ended = true
+	
 	# Store stats in GameState for the lobby to display
 	GameState.show_analysis = true
 	GameState.match_character_name = _character_name
 	GameState.match_damage_taken = _total_damage_taken
 	GameState.match_damage_dealt = _total_damage_dealt
 	
-	# Clean up multiplayer sync
-	if _multiplayer_sync:
-		_multiplayer_sync.queue_free()
-		_multiplayer_sync = null
+	# Clean up everything so the round truly ends (no lingering audio/overlays).
+	_cleanup_for_lobby()
 	
-	# Transition to lobby with fade effect
+	# If the KILLER won (the last survivor died), we don't just cut to the lobby:
+	# cut to black, play Violentgrass's killer outro, freeze on its last frame and
+	# show the match analysis over that frozen frame before returning to the lobby.
+	if _killer_won:
+		get_tree().paused = false
+		_play_killer_win_outro()
+		return
+	
+	# Generic match-end → lobby (no loading bar).
 	get_tree().paused = false
-	SceneFader.go("res://scenes/lobby.tscn", "Match Complete — Loading Results...")
+	SceneFader.go("res://scenes/lobby.tscn", "")
 	print("GameMap: Match ended — transitioning to lobby for analysis")
+
+
+func _freeze_match_for_analysis() -> void:
+	"""Disable ALL match gameplay so nothing (player movement, abilities,
+	camera follow, bots, chase music updates) continues while the killer-win
+	outro and its analysis overlay are being shown. The match stays frozen
+	until the user continues to the lobby."""
+	# Stop the match clock (belts-and-suspenders; clean-up already stops it).
+	if match_timer:
+		match_timer.stop()
+	_timer_pause_remaining = 0.0
+	_bonus_target = 0.0
+	_bonus_tick_timer = 0.0
+	# Block the human player entirely (movement + abilities + input).
+	if is_instance_valid(_player):
+		_player.set_physics_process(false)
+		_player.set_process_unhandled_input(false)
+		_player.set_process_input(false)
+		_player.process_mode = Node.PROCESS_MODE_DISABLED
+	# Freeze every bot too.
+	if is_instance_valid(_killer_bot):
+		_killer_bot.set_physics_process(false)
+		_killer_bot.process_mode = Node.PROCESS_MODE_DISABLED
+	for bot: Node2D in _survivor_bots:
+		if is_instance_valid(bot):
+			bot.set_physics_process(false)
+			bot.process_mode = Node.PROCESS_MODE_DISABLED
+	# Freeze chase-music / LMS updates by clearing active state.
+	_chase_active_layer = -1
+	_chase_layers_enabled = [false, false, false, false]
+	_lms_active = false
+	print("GameMap: Match frozen for killer-win outro + analysis")
+
+
+func _play_killer_win_outro() -> void:
+	"""Killer won (Violentgrass killed Greengrass in LMS): go BLACK instantly,
+	then fade in the FIRST FRAME of the killer intro, then play the intro, freeze
+	on its last frame, overlay the match analysis, then go to the lobby."""
+	print("GameMap: Killer wins — black, then killer intro fades in + plays")
+	# FREEZE THE WHOLE MATCH: the killer has ended the round, so no gameplay
+	# (movement, abilities, camera) may continue while the intro AND the match
+	# analysis are shown. It stays frozen until the analysis is dismissed.
+	_freeze_match_for_analysis()
+	var hud: CanvasLayer = $HUD
+	if hud:
+		hud.visible = false
+	if map_visual:
+		map_visual.visible = false
+
+	# Phase 1 — GO BLACK INSTANTLY, then FADE IN THE FIRST FRAME OF THE INTRO.
+	# The CutscenePlayer builds a full-screen black background immediately (so the
+	# screen goes black the moment it's added) and its fade overlay starts opaque
+	# black, revealing the FIRST FRAME over fade_in_duration — then the intro plays.
+	# We point it at the KILLER INTRO folder (not the outro), as requested.
+	var intro_folder: String = "res://The Darkness Of The Grasslands assets/Cutscenes/Killer intros/Violentgrass killer intro"
+	var cutscene := CutscenePlayer.new()
+	cutscene.name = "KillerWinIntroCutscene"
+	cutscene.fps = 8.0  # 43 frames at 8fps ≈ 5.4s
+	cutscene.fade_in_duration = 1.0  # first frame fades in from the instant black
+	cutscene.hold_on_last_frame = true  # freeze so analysis can overlay it
+	add_child(cutscene)
+	cutscene.play_cutscene(intro_folder, "")
+
+	await cutscene.finished
+
+	# Cutscene is now frozen on its last frame — lay the analysis over it.
+	_show_killer_win_analysis()
+
+
+func _show_killer_win_analysis() -> void:
+	"""Build a compact ROUND-SUMMARY analysis over the frozen killer-outro frame,
+	then continue to the lobby when dismissed."""
+	var layer := CanvasLayer.new()
+	layer.name = "KillerWinAnalysis"
+	layer.layer = 15
+	add_child(layer)
+	
+	# Dim behind the panel (keeps the frozen outro frame partially visible)
+	var dim := ColorRect.new()
+	dim.name = "Dim"
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.anchors_preset = Control.PRESET_FULL_RECT
+	layer.add_child(dim)
+	
+	# Panel
+	var panel := Control.new()
+	panel.name = "Panel"
+	panel.position = Vector2(390, 130)
+	panel.size = Vector2(500, 460)
+	layer.add_child(panel)
+	
+	var bg := TextureRect.new()
+	bg.name = "Bg"
+	bg.size = Vector2(500, 460)
+	bg.texture = load("res://The Darkness Of The Grasslands assets/UI/Lobby/Shop and inventory background UI.png")
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.modulate = Color(1, 1, 1, 0.9)
+	panel.add_child(bg)
+	
+	var inner := ColorRect.new()
+	inner.name = "Inner"
+	inner.size = Vector2(480, 300)
+	inner.position = Vector2(10, 80)
+	inner.color = Color(0.05, 0.05, 0.1, 0.8)
+	panel.add_child(inner)
+	
+	var title := Label.new()
+	title.name = "Title"
+	title.text = "KILLER WINS — ROUND SUMMARY"
+	title.position = Vector2(20, 20)
+	title.size = Vector2(460, 40)
+	title.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
+	title.add_theme_font_size_override("font_size", 26)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(title)
+	
+	var sep := ColorRect.new()
+	sep.position = Vector2(50, 65)
+	sep.size = Vector2(400, 2)
+	sep.color = Color(1, 1, 1, 0.3)
+	panel.add_child(sep)
+	
+	# Character name
+	var name_lbl := Label.new()
+	name_lbl.name = "NameLabel"
+	name_lbl.text = GameState.match_character_name
+	name_lbl.position = Vector2(20, 100)
+	name_lbl.size = Vector2(460, 34)
+	name_lbl.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9, 1))
+	name_lbl.add_theme_font_size_override("font_size", 24)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(name_lbl)
+	
+	# Stats
+	var stats_data: Array[Dictionary] = [
+		{"label": "Damage Taken", "value": "%d" % GameState.match_damage_taken},
+		{"label": "Punches Landed", "value": "%d" % GameState.match_damage_dealt},
+	]
+	var stat_y: float = 165.0
+	for s in stats_data:
+		var lbl := Label.new()
+		lbl.text = s["label"]
+		lbl.position = Vector2(70, stat_y)
+		lbl.size = Vector2(250, 28)
+		lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
+		lbl.add_theme_font_size_override("font_size", 16)
+		panel.add_child(lbl)
+		var val := Label.new()
+		val.text = s["value"]
+		val.position = Vector2(320, stat_y)
+		val.size = Vector2(100, 28)
+		val.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+		val.add_theme_font_size_override("font_size", 16)
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		panel.add_child(val)
+		stat_y += 36.0
+	
+	var footer := Label.new()
+	footer.text = "MATCH COMPLETE"
+	footer.position = Vector2(20, 250)
+	footer.size = Vector2(460, 30)
+	footer.add_theme_color_override("font_color", Color(0.5, 1, 0.5, 1))
+	footer.add_theme_font_size_override("font_size", 18)
+	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(footer)
+	
+	var continue_btn := Button.new()
+	continue_btn.text = "Continue"
+	continue_btn.position = Vector2(150, 330)
+	continue_btn.size = Vector2(200, 44)
+	continue_btn.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	continue_btn.add_theme_font_size_override("font_size", 20)
+	continue_btn.pressed.connect(_continue_after_killer_win)
+	panel.add_child(continue_btn)
+	
+	# Zoom-in animation (like the lobby's analysis overlay)
+	panel.scale = Vector2(0.8, 0.8)
+	panel.modulate = Color(1, 1, 1, 0)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(panel, "scale", Vector2(1, 1), 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.tween_property(panel, "modulate", Color(1, 1, 1, 1), 0.2)
+	# Keep a reference so the layer can be cleaned up on continue
+	_killer_win_analysis_layer = layer
+
+
+func _continue_after_killer_win() -> void:
+	"""Dismiss the killer-win analysis and return to the lobby (no loading bar,
+	since the analysis was already shown over the outro frame)."""
+	if is_instance_valid(_killer_win_analysis_layer):
+		_killer_win_analysis_layer.queue_free()
+	_killer_win_analysis_layer = null
+	# Analysis already shown here — don't re-show it inside the lobby.
+	GameState.show_analysis = false
+	get_tree().paused = false
+	SceneFader.go("res://scenes/lobby.tscn", "")
+	print("GameMap: Killer-win analysis done — transitioning to lobby")
+
+
+func _cleanup_for_lobby() -> void:
+	"""Stop the timer, silence all music, free overlays/bots so the round fully ends."""
+	# Stop the match clock
+	if match_timer:
+		match_timer.stop()
+	_timer_pause_remaining = 0.0
+	_bonus_target = 0.0
+	_bonus_tick_timer = 0.0
+
+	# Strip the LMS auras off any characters so they don't linger into the lobby.
+	_clear_lms_auras()
+	
+	# Silence and free all chase layer players
+	for p: AudioStreamPlayer in _chase_players:
+		if is_instance_valid(p):
+			p.stop()
+			p.queue_free()
+	_chase_players.clear()
+	_chase_active_layer = -1
+	_chase_layers_enabled = [false, false, false, false]
+	
+	# Silence/free map music + ending music players
+	for player_name in ["MapMusicPlayer", "MusicPlayer", "LmsMusicPlayer"]:
+		var mp: AudioStreamPlayer = get_node_or_null(player_name)
+		if is_instance_valid(mp):
+			mp.stop()
+			mp.queue_free()
+	_ending_music_switched = false
+	# Free the LMS VFX overlay
+	if is_instance_valid(_lms_vfx_layer):
+		_lms_vfx_layer.queue_free()
+	_lms_vfx_layer = null
+	_lms_vfx_rect = null
+	_lms_active = false
+	_lms_vfx_timer = 0.0
+	_lms_vfx_show_frame2 = false
+	_lms_alpha_current = 0.0
+	_lms_alpha_target = 0.0
+	_lms_heartbeat_phase = 0.0
+	_lms_heartbeat_active = false
+	_lms_pinch_done = false
+
+	# Free the teleport red-glitch FX overlay
+	if is_instance_valid(_teleport_fx_layer):
+		_teleport_fx_layer.queue_free()
+	_teleport_fx_layer = null
+	_teleport_fx_rect = null
+	_teleport_fx_mat = null
+	_teleport_fx_active = false
+	_teleport_fx_zoom_out_started = false
+	_teleport_fx_timer = 0.0
+	
+	# Free overlays
+	for overlay in [_death_overlay, _ending_screen_bg, _ending_screen_overlay,
+			_ending_red_left, _ending_red_right, _epilepsy_overlay, _vignette_overlay,
+			_ending_vignette]:
+		if is_instance_valid(overlay):
+			overlay.queue_free()
+	_death_overlay = null
+	_ending_screen_bg = null
+	_ending_screen_overlay = null
+	_ending_red_left = null
+	_ending_red_right = null
+	_epilepsy_overlay = null
+	_vignette_overlay = null
+	_ending_vignette = null
+	_ending_screen_created = false
+	_death_active = false
+	
+	# Free bots
+	if is_instance_valid(_killer_bot):
+		_killer_bot.queue_free()
+		_killer_bot = null
+	for bot: Node2D in _survivor_bots:
+		if is_instance_valid(bot):
+			bot.queue_free()
+	_survivor_bots.clear()
+	_alive_survivor_bot_count = 0
+	
+	# Free any open puzzle overlay
+	var puzz := get_node_or_null("PuzzleOverlay")
+	if is_instance_valid(puzz):
+		puzz.queue_free()
+	var puzz_mgr := get_node_or_null("PuzzleManager")
+	if is_instance_valid(puzz_mgr):
+		puzz_mgr.queue_free()
+	_puzzle_open = false
 
 
 # ═══════════════ MULTIPLAYER INTEGRATION ═══════════════
 
 func _initialize_multiplayer() -> void:
-	"""Set up MultiplayerGameSync if connected to the dedicated server."""
+	"""Set up multiplayer sync. Prefers the P2P bridge (P2PGameSync) when a
+	self-hosted P2P session is active; otherwise falls back to the dedicated
+	server's MultiplayerGameSync if connected."""
+	var p2p: Node = get_node_or_null("/root/P2PManager")
+	var p2p_active: bool = is_instance_valid(p2p) and p2p.get("is_active") == true
+	
+	if p2p_active:
+		_multiplayer_sync = P2PGameSync.new()
+		_multiplayer_sync.name = "P2PSync"
+		add_child(_multiplayer_sync)
+		_multiplayer_sync.match_started.connect(_on_multiplayer_match_started)
+		_multiplayer_sync.player_disconnected.connect(_on_multiplayer_player_left)
+		# In P2P, the host can override the killer role; for now the local player
+		# keeps the role the scene assigned (survivor default).
+		print("GameMap: P2P multiplayer mode active")
+		return
+	
 	var nm: Node = get_node_or_null("/root/NetworkManager")
 	if not nm or not nm.connected:
 		return  # Offline mode — bots handle gameplay
@@ -2498,12 +3786,12 @@ func _on_multiplayer_match_started(role: String, player_list: Array) -> void:
 	print("GameMap: Multiplayer match started — Role: ", role, " | Players: ", player_list.size())
 
 
-func _on_multiplayer_player_left(name: String) -> void:
+func _on_multiplayer_player_left(player_name: String) -> void:
 	"""Handle player disconnection during match."""
 	var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
 	if chat_layer:
-		chat_layer.add_system_message(name + " disconnected.")
-	print("GameMap: Player left during match — ", name)
+		chat_layer.add_system_message(player_name + " disconnected.")
+	print("GameMap: Player left during match — ", player_name)
 
 
 func _sync_multiplayer_position(pos: Vector2) -> void:

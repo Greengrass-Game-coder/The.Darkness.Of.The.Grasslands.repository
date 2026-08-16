@@ -8,6 +8,11 @@ extends CanvasLayer
 signal finished()
 
 @export var fps: float = 10.0  # Frames per second
+# If > 0, fade the cutscene in from black over this many seconds at the start.
+@export var fade_in_duration: float = 0.0
+# If true, when all frames have played the cutscene stays frozen on the LAST
+# frame (no fade-out, no hiding) and emits finished — used by the killer outro.
+@export var hold_on_last_frame: bool = false
 
 var _frames: Array[Texture2D] = []
 var _current_frame: int = 0
@@ -66,6 +71,12 @@ func play_cutscene(folder_path: String, audio_path: String = "") -> void:
 	_is_fading_out = false
 	show()
 	
+	# Fade the cutscene in from black if requested (default: no fade → pops in).
+	if fade_in_duration > 0.0 and is_instance_valid(_fade_overlay):
+		_fade_overlay.color = Color(0, 0, 0, 1)
+		var fade_in: Tween = create_tween()
+		fade_in.tween_property(_fade_overlay, "color", Color(0, 0, 0, 0), fade_in_duration)
+	
 	# Play audio
 	if _audio_player:
 		_audio_player.play()
@@ -119,8 +130,8 @@ func _process(delta: float) -> void:
 	
 	_timer += delta
 	
-	# Auto-fade when 1 second remains
-	if not _is_fading_out and _total_duration > 0 and _timer >= _total_duration - 1.0:
+	# Auto-fade to black when 1 second remains (skipped in hold-on-last-frame mode)
+	if not hold_on_last_frame and not _is_fading_out and _total_duration > 0 and _timer >= _total_duration - 1.0:
 		_is_fading_out = true
 		var fade_tween: Tween = create_tween()
 		fade_tween.tween_property(_fade_overlay, "color", Color(0, 0, 0, 1), 1.0)
@@ -131,8 +142,12 @@ func _process(delta: float) -> void:
 		_current_frame += 1
 		
 		if _current_frame >= _frames.size():
-			# Cutscene complete
 			_playing = false
+			if hold_on_last_frame:
+				# Freeze on the final frame: keep the last texture visible and
+				# report finished so the caller can overlay content on it.
+				_current_frame = _frames.size() - 1
+				_sprite.texture = _frames[_current_frame]
 			_on_cutscene_done()
 			return
 		

@@ -789,8 +789,12 @@ func _update_brown_state() -> void:
 	if _brown_state == 2:
 		return  # Already finished
 	
-	# Check if all hub questions are exhausted
-	var all_exhausted: bool = dialogue_ui.is_all_questions_exhausted_at(8)
+	# Check if all hub questions are exhausted.
+	# IMPORTANT: check the BROWNGRASS dialogue specifically, NOT dialogue_ui._dl
+	# (which points to whatever dialogue was last played). Checking the wrong
+	# resource made Browngrass appear "finished" after any other dialogue (e.g.
+	# Evil Potato) because that dialogue has no line-8 choices.
+	var all_exhausted: bool = dialogue_ui.is_all_questions_exhausted_in(browngrass_dialogue, 8)
 	
 	if all_exhausted:
 		_brown_state = 2

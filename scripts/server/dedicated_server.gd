@@ -1,5 +1,8 @@
 extends Node
-# Dedicated game server — TCPServer + WebSocketPeer (one per connection)
+# Unified dedicated game server — TCPServer + WebSocketPeer (one per connection).
+# Absorbed server_main.gd: this is the single server implementation.
+# The game-state sync handlers (position/hp/elimination/ability/puzzle) were
+# merged in from the former server_main.gd.
 
 ## Run: godot --headless res://scenes/server.tscn
 ## Port: 8080 (overridable via PORT env var)
@@ -36,6 +39,7 @@ var _phase: MatchPhase = MatchPhase.WAITING_FOR_PLAYERS
 var _phase_timer: float = 0.0
 var _queued_players: Array[int] = []  # peer_ids in queue
 var _private_rooms: Dictionary = {}  # code -> {host_peer_id, players: []}
+var _public_servers: Dictionary = {}  # code -> {host_pid, name, mode, max_players, connect_address, host_username}
 var _force_ai_killer: bool = false  # Set by "G force AI" command
 var _admin_password: String = "Moon996633"
 var _current_match_id: int = 0
@@ -87,7 +91,9 @@ func _accept_new_connections() -> void:
 			"alive": true,
 			"in_queue": false,
 			"room_code": "",
-			"avatar_type": "Lobby Person"
+			"avatar_type": "Lobby Person",
+			"x": 0.0,
+			"y": 0.0
 		}
 		_send_to(pid, "connected", {"player_id": pid, "players": _get_player_summaries()})
 		_broadcast_player_list()
@@ -129,6 +135,7 @@ func _on_peer_disconnected(pid: int) -> void:
 	_queued_players.erase(pid)
 	for code: String in _private_rooms.keys():
 		_private_rooms[code]["players"].erase(pid)
+	_unregister_peer_servers(pid)
 	_broadcast_player_list()
 	print("DedicatedServer: Peer disconnected: ", pid)
 
@@ -276,6 +283,55 @@ func _send_to(pid: int, msg_type: String, payload: Dictionary) -> void:
 	ws.send_text(JSON.stringify(msg))
 
 
+# ═══════════════ GAME STATE SYNC (merged from server_main.gd) ═══════════════
+
+func _handle_position_update(pid: int, data: Dictionary) -> void:
+	"""Store a player's latest position for state sync."""
+	if not _peer_info.has(pid):
+		return
+	_peer_info[pid]["x"] = data.get("x", 0.0)
+	_peer_info[pid]["y"] = data.get("y", 0.0)
+
+
+func _handle_hp_update(pid: int, data: Dictionary) -> void:
+	"""Store a player's latest HP / max HP."""
+	if not _peer_info.has(pid):
+		return
+	_peer_info[pid]["hp"] = data.get("hp", 100.0)
+	_peer_info[pid]["max_hp"] = data.get("max_hp", 100.0)
+
+
+func _handle_player_eliminated(pid: int, data: Dictionary) -> void:
+	"""Mark the victim as eliminated and announce it in chat."""
+	var victim: String = data.get("victim", "")
+	if victim.is_empty():
+		return
+	for pid2: int in _peer_info:
+		if _peer_info[pid2]["username"] == victim:
+			_peer_info[pid2]["alive"] = false
+			break
+	_send_to_all("chat", {"sender": "SERVER", "text": victim + " was eliminated!"})
+	print("DedicatedServer: Eliminated: ", victim)
+
+
+func _handle_ability_used(pid: int, data: Dictionary) -> void:
+	"""Track killer/survivor ability usage (stored for future broadcast)."""
+	if not _peer_info.has(pid):
+		return
+	_peer_info[pid]["last_ability"] = data.get("ability", "")
+	_peer_info[pid]["ability_x"] = data.get("x", 0.0)
+	_peer_info[pid]["ability_y"] = data.get("y", 0.0)
+
+
+func _handle_puzzle_solved(pid: int, data: Dictionary) -> void:
+	"""Track puzzle completions during a match."""
+	if not _peer_info.has(pid):
+		return
+	_peer_info[pid]["puzzle_area"] = data.get("area", "")
+	_peer_info[pid]["puzzle_level"] = data.get("level", 1)
+	print("DedicatedServer: Puzzle solved by peer ", pid, ": ", data.get("area", ""), " (level ", data.get("level", 1), ")")
+
+
 # ═══════════════ MESSAGE HANDLING ═══════════════
 
 func _handle_client_message(pid: int, data: Dictionary) -> void:
@@ -297,10 +353,26 @@ func _handle_client_message(pid: int, data: Dictionary) -> void:
 			_handle_create_private(pid, data.get("code", ""))
 		"join_private_server":
 			_handle_join_private(pid, data.get("code", ""))
+		"register_server":
+			_handle_register_server(pid, data)
+		"unregister_server":
+			_handle_unregister_server(pid, data.get("code", ""))
+		"browse_servers":
+			_handle_browse_servers(pid)
 		"save_data":
 			_handle_save_data(pid, data.get("data", {}))
 		"load_data":
 			_handle_load_data(pid)
+		"position_update":
+			_handle_position_update(pid, data)
+		"hp_update":
+			_handle_hp_update(pid, data)
+		"player_eliminated":
+			_handle_player_eliminated(pid, data)
+		"ability_used":
+			_handle_ability_used(pid, data)
+		"puzzle_solved":
+			_handle_puzzle_solved(pid, data)
 		_:
 			_send_to(pid, "error", {"message": "Unknown type: " + msg_type})
 
@@ -319,6 +391,8 @@ func _handle_register(pid: int, username: String, password: String) -> void:
 	var hash_val: String = _hash_password(password, salt)
 	_accounts[key] = {"hash": hash_val, "salt": salt, "username": username}
 	_save_accounts()
+	if _peer_info.has(pid):
+		_peer_info[pid]["username"] = username
 	_send_to(pid, "auth_result", {"success": true, "username": username})
 	print("DedicatedServer: Registered: ", username)
 
@@ -538,6 +612,90 @@ func _handle_join_private(pid: int, code: String) -> void:
 	if _peer_info.has(pid):
 		_peer_info[pid]["room_code"] = code
 	_send_to(pid, "private_room_joined", {"code": code, "players": room["players"].size()})
+
+
+# ═══════════════ PUBLIC P2P SERVER REGISTRY / BROWSER ═══════════════
+
+func _handle_register_server(pid: int, data: Dictionary) -> void:
+	"""A host advertises its P2P room in the public browser."""
+	var code: String = data.get("code", "")
+	if code.is_empty():
+		_send_to(pid, "error", {"message": "Server code required."})
+		return
+	# Auto-create the private room if the host hasn't created it yet, so a single
+	# register_server message is enough to become publicly listed.
+	if not _private_rooms.has(code):
+		_private_rooms[code] = {"host_peer_id": pid, "players": [pid]}
+		if _peer_info.has(pid):
+			_peer_info[pid]["room_code"] = code
+	elif _private_rooms[code].get("host_peer_id", -1) != pid:
+		_send_to(pid, "error", {"message": "You are not the host of room " + code})
+		return
+	var username: String = _peer_info.get(pid, {}).get("username", "Unknown")
+	# Encrypt the advertised address so raw IP:port is never stored/shown in the
+	# public list. Clients decrypt it (AddressCrypto) only at connect time.
+	var raw_addr: String = data.get("connect_address", "")
+	var enc_addr: String = raw_addr
+	if not raw_addr.is_empty():
+		enc_addr = AddressCrypto.encrypt(raw_addr)
+	_public_servers[code] = {
+		"host_pid": pid,
+		"name": data.get("name", "P2P Server"),
+		"mode": data.get("mode", "round"),
+		"max_players": int(data.get("max_players", 12)),
+		"connect_address": enc_addr,
+		"host_username": username,
+	}
+	print("DedicatedServer: Public server registered: ", code, " (", username, ")")
+	_broadcast_server_list()
+
+
+func _handle_unregister_server(pid: int, _code: String) -> void:
+	for c: String in _public_servers.keys():
+		if _public_servers[c].get("host_pid", -1) == pid:
+			_public_servers.erase(c)
+	print("DedicatedServer: Public server unregistered by peer ", pid)
+	_broadcast_server_list()
+
+
+func _handle_browse_servers(pid: int) -> void:
+	_send_to(pid, "server_list", {"servers": _build_server_list()})
+
+
+func _unregister_peer_servers(pid: int) -> void:
+	var changed: bool = false
+	for c: String in _public_servers.keys():
+		if _public_servers[c].get("host_pid", -1) == pid:
+			_public_servers.erase(c)
+			changed = true
+	if changed:
+		_broadcast_server_list()
+
+
+func _build_server_list() -> Array:
+	var list: Array = []
+	for code: String in _public_servers:
+		var s: Dictionary = _public_servers[code]
+		var names: Array = []
+		var room: Dictionary = _private_rooms.get(code, {})
+		for p: int in room.get("players", [s.get("host_pid")]):
+			var n: String = _peer_info.get(p, {}).get("username", "Player_%d" % p)
+			names.append(n)
+		list.append({
+			"code": code,
+			"name": s.get("name", "P2P Server"),
+			"mode": s.get("mode", "round"),
+			"player_count": names.size(),
+			"max_players": s.get("max_players", 12),
+			"host_username": s.get("host_username", ""),
+			"connect_address": s.get("connect_address", ""),
+			"players": names,
+		})
+	return list
+
+
+func _broadcast_server_list() -> void:
+	_send_to_all("server_list", {"servers": _build_server_list()})
 
 
 func _rotate_killer_role() -> void:

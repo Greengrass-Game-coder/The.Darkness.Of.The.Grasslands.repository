@@ -21,6 +21,15 @@ signal admin_command_result(success: bool, message: String)
 signal auth_result(success: bool, username: String, error_msg: String)
 signal save_data_loaded(data: Dictionary)
 
+# Server → client signals (nothing the server sends is dropped)
+signal queue_status_updated(position: int, total: int)
+signal save_data_confirmed()
+signal avatar_updated(avatar_type: String)
+signal private_room_created(code: String)
+signal private_room_joined(code: String, player_count: int)
+signal server_error(message: String)
+signal server_list_received(servers: Array)
+
 const DEFAULT_WS_URL: String = "ws://localhost:8080"
 const CONNECT_TIMEOUT: float = 10.0  # seconds before giving up
 
@@ -191,6 +200,27 @@ func _handle_message(text: String) -> void:
 				json.get("success", false),
 				json.get("message", "")
 			)
+		
+		"queue_status":
+			queue_status_updated.emit(json.get("position", 0), json.get("total", 0))
+		
+		"save_data_ack":
+			save_data_confirmed.emit()
+		
+		"avatar_updated":
+			avatar_updated.emit(json.get("avatar_type", ""))
+		
+		"private_room_created":
+			private_room_created.emit(json.get("code", ""))
+		
+		"private_room_joined":
+			private_room_joined.emit(json.get("code", ""), json.get("players", 0))
+		
+		"error":
+			server_error.emit(json.get("message", ""))
+
+		"server_list":
+			server_list_received.emit(json.get("servers", []))
 
 
 func _emit_player_list() -> void:

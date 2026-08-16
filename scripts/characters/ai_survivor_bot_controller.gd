@@ -26,6 +26,17 @@ signal bot_solved_puzzle(_area_name: String, area_ref: Area2D)
 
 var _target_killer: Node2D = null
 var _target_puzzle: Area2D = null
+# Performance: cache the killer reference and re-scan infrequently rather than
+# calling get_nodes_in_group("killers") every physics frame.
+var _killer_scan_timer: float = 0.0
+const KILLER_REScan_INTERVAL: float = 0.5
+# Cache the nearest unsolved puzzle so we don't rescan get_children() every frame.
+var _cached_puzzles: Array[Area2D] = []
+# Cache the chosen break-LOS flee target so the 9-raycast fan isn't computed
+# every physics frame; recompute only every ~0.25s.
+var _flee_target: Vector2 = Vector2.ZERO
+var _flee_target_timer: float = 0.0
+const FLEE_TARGET_RECOMPUTE_INTERVAL: float = 0.25
 var _solved_names: Array[String] = []
 var _patrol_dir: Vector2 = Vector2.RIGHT
 var _patrol_target: Vector2 = Vector2.ZERO
@@ -38,8 +49,6 @@ var _strafe_dir: float = 1.0
 var _strafe_change_timer: float = 0.0
 var _just_hit_timer: float = 0.0
 var _has_los_to_killer: bool = false
-var _double_backed: bool = false
-var _stamina_saver: bool = false                  # Don't sprint when killer is far
 
 # NavigationAgent2D for pathfinding around walls
 var _navigation_agent: NavigationAgent2D = null
@@ -179,6 +188,9 @@ func _is_killer_near_puzzle(puzzle: Area2D, killer_dist: float) -> bool:
 	"""Check if the killer is too close to the target puzzle for safe approach."""
 	if not is_instance_valid(_target_killer) or not is_instance_valid(puzzle):
 		return false
+	# Abort if killer is right on top of the bot too (it's chasing us)
+	if killer_dist < block_threshold:
+		return true
 	var killer_to_puzzle: float = _target_killer.global_position.distance_to(puzzle.global_position)
 	return killer_to_puzzle < flee_range * 0.6
 
@@ -201,6 +213,13 @@ func _check_los_to_killer() -> void:
 
 
 func _find_nearest_killer() -> void:
+	# Cache the killer reference; only re-scan the group when the cached ref is
+	# freed or after the scan interval elapses (there is at most one killer).
+	if is_instance_valid(_target_killer):
+		_killer_scan_timer -= get_physics_process_delta_time()
+		if _killer_scan_timer > 0.0:
+			return
+	_killer_scan_timer = KILLER_REScan_INTERVAL
 	var killers: Array[Node] = get_tree().get_nodes_in_group("killers")
 	var nearest: Node2D = null
 	var nearest_dist: float = flee_range * 2.0
@@ -214,19 +233,26 @@ func _find_nearest_killer() -> void:
 
 
 func _find_nearest_unsolved_puzzle() -> Area2D:
-	var parent: Node = get_parent()
-	if not parent:
-		return null
+	# Cache the list of puzzle Area2D children once, then reuse it. The puzzle
+	# nodes are created at match start and only removed when solved/freed, so a
+	# full get_children() scan every frame is wasteful.
+	if _cached_puzzles.is_empty():
+		var parent: Node = get_parent()
+		if parent:
+			for child in parent.get_children():
+				if child is Area2D and child.name.begins_with("Puzzle_"):
+					_cached_puzzles.append(child as Area2D)
 	var nearest: Area2D = null
 	var nearest_dist: float = INF
-	for child in parent.get_children():
-		if child is Area2D and child.name.begins_with("Puzzle_"):
-			if child.name in _solved_names:
-				continue
-			var d: float = global_position.distance_to(child.global_position)
-			if d < nearest_dist:
-				nearest_dist = d
-				nearest = child as Area2D
+	for puzzle in _cached_puzzles:
+		if not is_instance_valid(puzzle):
+			continue
+		if puzzle.name in _solved_names:
+			continue
+		var d: float = global_position.distance_to(puzzle.global_position)
+		if d < nearest_dist:
+			nearest_dist = d
+			nearest = puzzle
 	return nearest
 
 
@@ -285,59 +311,64 @@ func _ai_flee(delta: float) -> void:
 		_ai_patrol(delta)
 		return
 	
-	var away_dir: Vector2 = global_position - _target_killer.global_position
-	var dist_from_killer: float = away_dir.length()
+	var to_killer: Vector2 = _target_killer.global_position - global_position
+	var dist_from_killer: float = to_killer.length()
+	var away_dir: Vector2 = (-to_killer).normalized()
+	var perpendicular: Vector2 = Vector2(-to_killer.y, to_killer.x).normalized()
 	
-	# ── Calculate flee target position ──
-	# Flee to a point away from the killer, navigating around walls
-	var flee_target: Vector2 = global_position + away_dir.normalized() * 250.0
+	# ── 1. Choose a flee target that BREAKS line-of-sight (runs around walls) ──
+	# The bot samples a fan of candidate directions and picks the one that both
+	# moves away from the killer AND puts a wall between them — so it disappears
+	# around corners instead of sprinting in a straight, predictable line.
+	# Recompute the break-LOS flee target only periodically (it runs a 9-way
+	# raycast fan); reuse the cached target between recomputes.
+	_flee_target_timer -= delta
+	if _flee_target_timer <= 0.0:
+		_flee_target = _pick_break_los_target(away_dir)
+		_flee_target_timer = FLEE_TARGET_RECOMPUTE_INTERVAL
+	var flee_target: Vector2 = _flee_target
 	
-	# ── Double-back mechanic ──
-	# Randomly reverse direction to throw off killer prediction
-	if not _double_backed and randf() < double_back_chance * delta * 10.0:
-		_strafe_dir *= -1.0
-		_double_backed = true
-		_strafe_change_timer = 0.1
-	if _double_backed:
-		_double_backed = false
+	# ── 2. Perpendicular cut when the killer is very close ──
+	# When the killer is nearly on top of the bot, dodge laterally (perpendicular
+	# to the killer's approach) to cut vision and avoid a direct lunge, rather
+	# than running straight away.
+	var move_dir: Vector2 = (flee_target - global_position).normalized()
+	if move_dir.length_squared() < 0.01:
+		move_dir = away_dir
+	if dist_from_killer < 220.0:
+		move_dir = (away_dir + perpendicular * 0.9).normalized()
 	
-	# ── Circle toward nearest puzzle while fleeing ──
-	var puzzle_bias: Vector2 = Vector2.ZERO
-	_target_puzzle = _find_nearest_unsolved_puzzle()
-	if is_instance_valid(_target_puzzle):
-		var to_puzzle: Vector2 = _target_puzzle.global_position - global_position
-		var puzzle_dist: float = to_puzzle.length()
-		var to_killer: Vector2 = _target_killer.global_position - global_position
-		if to_puzzle.dot(to_killer) < 0.0 and puzzle_dist < puzzle_circle_range:
-			puzzle_bias = to_puzzle.normalized() * 0.15
-	
-	# Update strafe direction periodically
-	_strafe_change_timer -= delta
-	if _strafe_change_timer <= 0.0:
-		_strafe_dir = 1.0 if randf() > 0.5 else -1.0
-		_strafe_change_timer = randf_range(0.5, 1.5)
-	
-	var strafe: Vector2 = Vector2(-away_dir.y, away_dir.x).normalized() * _strafe_dir
-	var strafe_amount: float = randf_range(0.15, 0.35)
-	
-	# ── Navigation-based flee direction ──
-	# Use NavigationAgent2D to find a path around walls, then add strafe/puzzle bias
+	# ── 3. Navigation around walls ──
 	var nav_dir: Vector2 = _navigate_to(flee_target)
-	if nav_dir.length_squared() < 0.01:
-		nav_dir = away_dir.normalized()  # Fallback
+	if nav_dir.length_squared() > 0.01:
+		move_dir = nav_dir.normalized()
 	
-	var move_dir: Vector2 = (nav_dir + strafe * strafe_amount + puzzle_bias).normalized()
+	# ── 4. Deliberate juke only when the killer is about to hit ──
+	# Instead of randomly strafing every 0.5-1.5s (which reads as chaotic), only
+	# reverse direction when the killer is genuinely close — that reads as a real
+	# dodge, not a dumb zig-zag.
+	var juke: Vector2 = Vector2.ZERO
+	if dist_from_killer < 200.0:
+		_strafe_change_timer -= delta
+		if _strafe_change_timer <= 0.0:
+			_strafe_dir *= -1.0
+			_strafe_change_timer = randf_range(0.3, 0.6)
+		juke = perpendicular * _strafe_dir * 0.5
+	move_dir = (move_dir + juke).normalized()
 	
-	# ── Smart stamina management: burst sprinting ──
+	# ── 5. Smarter stamina ──
+	# Sprint only when the killer has line-of-sight AND is close (or is right on
+	# top of us). When LOS is broken by a wall, the bot slows down and conserves
+	# stamina instead of sprinting endlessly.
 	var use_sprint: bool = false
 	if not _stamina_exhausted:
-		if dist_from_killer < flee_range * 0.5:
-			use_sprint = true
-		elif dist_from_killer < flee_range:
-			_stamina_saver = not _stamina_saver if randf() < 0.01 else _stamina_saver
-			use_sprint = _stamina_saver
+		if dist_from_killer < 200.0:
+			use_sprint = true  # Emergency speed when killer is on top of us
+		elif _has_los_to_killer and dist_from_killer < flee_range * 0.6:
+			use_sprint = true  # Killer sees us and is chasing — burn stamina
 	
-	var speed: float = sprint_speed if use_sprint else move_speed
+	# When LOS is broken, move cautiously (hide) rather than sprint on.
+	var speed: float = sprint_speed if use_sprint else (move_speed * 0.7)
 	
 	if use_sprint:
 		current_stamina -= sprint_stamina_drain * delta
@@ -358,6 +389,54 @@ func _ai_flee(delta: float) -> void:
 	_update_direction(velocity)
 	_play_animation("walk")
 	_change_state(State.WALKING)
+
+
+func _pick_break_los_target(away_dir: Vector2) -> Vector2:
+	"""
+	Choose a flee position that moves away from the killer AND breaks line-of-sight
+	(so the bot runs around/behind walls instead of straight away). Samples a fan
+	of candidate directions and scores each: LOS-breaking corners are strongly
+	preferred, with a secondary preference for moving away.
+	"""
+	if not is_instance_valid(_target_killer):
+		return global_position + away_dir * 250.0
+	
+	var candidates: Array[Vector2] = []
+	var base: float = away_dir.angle()
+	var step: float = 0.45  # ~26 degrees — 5 candidates still cover the fan
+	for j: int in range(-2, 3):
+		var ang: float = base + step * float(j)
+		candidates.append(Vector2.RIGHT.rotated(ang))
+	
+	var best: Vector2 = global_position + away_dir * 250.0
+	var best_score: float = -INF
+	
+	for cand_dir: Vector2 in candidates:
+		var target: Vector2 = global_position + cand_dir * 250.0
+		var breaks_los: bool = _point_breaks_los(target)
+		var score: float = (1000.0 if breaks_los else 0.0) \
+			+ cand_dir.dot(away_dir) * 200.0 \
+			+ (1.0 / (1.0 + global_position.distance_to(target) / 100.0))
+		if score > best_score:
+			best_score = score
+			best = target
+	
+	return best
+
+
+func _point_breaks_los(target_pos: Vector2) -> bool:
+	"""True if a wall blocks the killer's line of sight to target_pos."""
+	if not is_instance_valid(_target_killer):
+		return false
+	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(
+		_target_killer.global_position,
+		target_pos
+	)
+	query.collision_mask = 4  # Wall layer
+	query.exclude = [self, _target_killer]
+	var result: Dictionary = space_state.intersect_ray(query)
+	return not result.is_empty()
 
 
 func _ai_patrol(delta: float) -> void:

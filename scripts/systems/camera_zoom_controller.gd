@@ -31,6 +31,11 @@ var _indicator_timer: float = 0.0
 # Backing store for the current zoom value to avoid Tween conflicts
 var _current_zoom: float = 1.25
 
+# External tween that drives the camera zoom over a duration (used by the
+# teleport FX: quick zoom-in while teleporting, slow zoom-out on arrival).
+# While active, _process() skips its own lerp so the tween owns the camera.
+var _external_zoom_tween: Tween = null
+
 
 func _ready() -> void:
 	# Find camera on parent or create one
@@ -39,6 +44,8 @@ func _ready() -> void:
 		# Create camera on parent if needed
 		_camera = Camera2D.new()
 		_camera.name = "Camera2D"
+		# Use physics process to match physics interpolation (avoids engine override note)
+		_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 		get_parent().add_child(_camera)
 	
 	# Set default zoom
@@ -70,11 +77,25 @@ func _change_zoom(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# While an external tween is driving the camera (e.g. teleport FX), skip the
+	# normal smoothing lerp so the two don't fight each other.
+	if _external_zoom_tween != null and _external_zoom_tween.is_valid():
+		# Ensure we hold the tween's final value once done
+		if not _external_zoom_tween.is_running():
+			_finish_external_zoom_tween()
+		# Still let the indicator fade out
+		_update_indicator(delta)
+		return
+	
 	# Smooth zoom interpolation
 	if _camera and abs(_camera.zoom.x - _target_zoom) > 0.001:
 		_current_zoom = lerpf(_current_zoom, _target_zoom, smoothing_speed * delta)
 		_camera.zoom = Vector2(_current_zoom, _current_zoom)
 	
+	_update_indicator(delta)
+
+
+func _update_indicator(delta: float) -> void:
 	# Handle indicator fade
 	if _indicator_label and _indicator_timer > 0:
 		_indicator_timer -= delta
@@ -82,6 +103,33 @@ func _process(delta: float) -> void:
 			if is_instance_valid(_indicator_label):
 				_indicator_label.queue_free()
 			_indicator_label = null
+
+
+func _finish_external_zoom_tween() -> void:
+	"""Clean up after the external tween finishes — snap to final target value."""
+	if _external_zoom_tween != null:
+		_external_zoom_tween = null
+	_current_zoom = _target_zoom
+	if _camera:
+		_camera.zoom = Vector2(_target_zoom, _target_zoom)
+
+
+## External tween — animate camera zoom to `level` over `duration` seconds.
+## Polled by _process: when the tween stops running, we hold its final value.
+func tween_zoom_to(level: float, duration: float) -> void:
+	if _external_zoom_tween != null and _external_zoom_tween.is_valid():
+		_external_zoom_tween.kill()
+	_external_zoom_tween = create_tween()
+	var target_level: float = clampf(level, min_zoom, max_zoom)
+	_external_zoom_tween.tween_method(_apply_external_zoom, _current_zoom, target_level, duration)
+	_target_zoom = target_level
+
+
+func _apply_external_zoom(v: float) -> void:
+	"""Tween callback — apply an intermediate zoom value to the camera."""
+	_current_zoom = v
+	if _camera:
+		_camera.zoom = Vector2(v, v)
 
 
 func _show_zoom_indicator(_zoom_level: float) -> void:
@@ -136,6 +184,17 @@ func set_zoom(level: float, animated: bool = true) -> void:
 	_show_zoom_indicator(_target_zoom)
 
 
+## Silent zoom — same as set_zoom but does NOT show the "ZOOM: xx%" indicator.
+## Used by continuous camera effects (LMS heartbeat/pinch) so they don't spam
+## the indicator every beat.
+func set_zoom_silent(level: float, animated: bool = true) -> void:
+	_target_zoom = clampf(level, min_zoom, max_zoom)
+	if not animated:
+		_current_zoom = _target_zoom
+		if _camera:
+			_camera.zoom = Vector2(_target_zoom, _target_zoom)
+
+
 ## Map zoom — zoom out to show the entire map, centered on a position
 @export var map_zoom: float = 0.45  # Zoom level to show the full map (lower = more zoomed out)
 
@@ -158,3 +217,18 @@ func restore_normal_zoom() -> void:
 	_camera.position_smoothing_enabled = true
 	_camera.position_smoothing_speed = 6.0
 	_show_zoom_indicator(_target_zoom)
+
+
+## Silent variant — restores default zoom + smoothing without the zoom indicator
+## popup. Used at the end of the teleport FX so revealing the destination is smooth.
+func restore_normal_zoom_silent() -> void:
+	if not is_instance_valid(_camera):
+		return
+	if _external_zoom_tween != null and _external_zoom_tween.is_valid():
+		_external_zoom_tween.kill()
+	_external_zoom_tween = null
+	_target_zoom = default_zoom
+	_current_zoom = default_zoom
+	_camera.zoom = Vector2(default_zoom, default_zoom)
+	_camera.position_smoothing_enabled = true
+	_camera.position_smoothing_speed = 6.0

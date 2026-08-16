@@ -15,6 +15,13 @@ var solved_callback: Callable = Callable()
 var cancelled_callback: Callable = Callable()
 var beat_flash: ColorRect = null  # Visual beat flash indicator
 
+# Looped rhythm music per BPM. Level BPMs are 110/120/130/140/150.
+# (100bpm was archived from Sound/Matches, so it's no longer available.)
+const RHYTHM_AUDIO_DIR: String = "res://The Darkness Of The Grasslands assets/Sound/Matches/"
+const RHYTHM_BPMS: Array[int] = [110, 120, 130, 140, 150]
+
+var _audio_player: AudioStreamPlayer = null
+
 var _notes: Array[ColorRect] = []
 var _note_spacing: float = 0.0
 var _scroll_speed: float = 0.0
@@ -62,6 +69,70 @@ func start() -> void:
 		feedback_label.visible = false
 	
 	print("RhythmPuzzle: Started at %d BPM, beat interval = %.2fs" % [bpm, 60.0 / bpm])
+	
+	_setup_audio()
+
+
+func _setup_audio() -> void:
+	"""Load and play the looped rhythm music matching the current BPM."""
+	_stop_audio()
+	
+	# Find the closest BPM in our audio list (audio was generated in 10-BPM steps)
+	var closest_bpm: int = RHYTHM_BPMS[0]
+	for candidate: int in RHYTHM_BPMS:
+		if abs(candidate - bpm) < abs(closest_bpm - bpm):
+			closest_bpm = candidate
+	
+	var audio_path: String = RHYTHM_AUDIO_DIR + ("Rhythm-puzzle-%dbpm [LOOPED].wav" % closest_bpm)
+	if not ResourceLoader.exists(audio_path):
+		push_warning("RhythmPuzzle: audio not found for %d BPM at %s" % [closest_bpm, audio_path])
+		return
+	
+	var stream: AudioStreamWAV = load(audio_path) as AudioStreamWAV
+	if stream == null:
+		push_warning("RhythmPuzzle: failed to load audio %s" % audio_path)
+		return
+	
+	# Duplicate the stream so we never mutate the SHARED, IMA-ADPCM-compressed
+	# resource loaded by Godot (mutating it at runtime can break playback).
+	var loop_stream: AudioStreamWAV = stream.duplicate() as AudioStreamWAV
+	# Ensure the track loops (files are named [LOOPED] and import as loop_mode=1,
+	# but force it on the copy to be safe).
+	loop_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	loop_stream.loop_begin = 0
+	loop_stream.loop_end = -1
+	
+	_audio_player = AudioStreamPlayer.new()
+	_audio_player.name = "RhythmMusic"
+	_audio_player.stream = loop_stream
+	_audio_player.volume_db = 3.0  # Slightly boosted so the BPM stands out over map music
+	_audio_player.bus = &"Master"
+	add_child(_audio_player)
+	# Safety net: if the stream ever fails to loop, restart it on finish so the
+	# BPM keeps playing continuously.
+	_audio_player.finished.connect(_restart_audio)
+	_audio_player.play()
+	print("RhythmPuzzle: playing looped audio at %d BPM -> %s" % [closest_bpm, audio_path])
+
+
+func _restart_audio() -> void:
+	"""Replay the rhythm music if it somehow stops (loop safety net)."""
+	if is_instance_valid(_audio_player):
+		_audio_player.play()
+
+
+func _stop_audio() -> void:
+	"""Stop and free the rhythm music player."""
+	if _audio_player != null and is_instance_valid(_audio_player):
+		_audio_player.stop()
+		_audio_player.queue_free()
+	_audio_player = null
+
+
+func _exit_tree() -> void:
+	# Safety net: stop audio whenever this controller is removed from the tree
+	# (e.g. when advancing to the next level or closing the puzzle).
+	_stop_audio()
 
 
 func _process(delta: float) -> void:
@@ -72,7 +143,11 @@ func _process(delta: float) -> void:
 	
 	# Calculate next spawn time based on beat interval
 	var beat_interval: float = 60.0 / float(bpm)
-	var travel_time: float = (HIT_LINE_X - TRACK_LEFT - NOTE_SIZE * 0.5) / _scroll_speed  # time to travel from left to hit line
+	# Notes spawn at the RIGHT edge of the track and scroll left to the hit line.
+	# travel_time must use the actual spawn center (right edge minus half a note),
+	# not the track's left edge, or notes arrive too early.
+	var note_spawn_center_x: float = track_bg.position.x + track_bg.size.x - NOTE_SIZE * 0.5
+	var travel_time: float = (note_spawn_center_x - HIT_LINE_X) / _scroll_speed  # seconds to scroll from spawn to hit line
 	
 	# Spawn notes at the right time so they arrive at hit line on beat
 	if _spawned_count < _total_notes:
@@ -138,6 +213,7 @@ func _check_end_condition() -> void:
 	if _hit_count >= _total_notes * 0.8:
 		# WIN!
 		_active = false
+		_stop_audio()
 		if feedback_label:
 			feedback_label.text = "♪ Puzzle Complete! ♪"
 			feedback_label.visible = true
@@ -147,6 +223,7 @@ func _check_end_condition() -> void:
 	else:
 		# Not enough hits
 		_active = false
+		_stop_audio()
 		if feedback_label:
 			feedback_label.text = "Not enough hits..."
 			feedback_label.visible = true

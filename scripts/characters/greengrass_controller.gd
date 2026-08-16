@@ -29,6 +29,7 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var parry_punch_cooldown: float = 30.0
 @export var spare_flower_cooldown: float = 45.0
 
+@export var punch_damage: float = 25.0
 @export var block_defense: int = 5
 @export var block_absorption: float = 0.85
 @export var parry_window: float = 1.5
@@ -568,6 +569,8 @@ func _fire_charged_punch() -> void:
 		var stun_duration: float = (parry_stun if is_parry_punch else normal_stun) * dmg_mult
 		if target.has_method("take_stun"):
 			target.take_stun(stun_duration)
+		if target.has_method("take_damage"):
+			target.take_damage(punch_damage * dmg_mult)
 		break
 
 	state_timer.start(1.0)

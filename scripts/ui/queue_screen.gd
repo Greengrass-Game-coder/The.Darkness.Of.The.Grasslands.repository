@@ -111,6 +111,10 @@ func _build_ui() -> void:
 	if is_instance_valid(nm) and nm.has_signal("player_list_updated"):
 		if not nm.player_list_updated.is_connected(_on_player_list_updated):
 			nm.player_list_updated.connect(_on_player_list_updated)
+	# Listen for live queue position updates from the server
+	if is_instance_valid(nm) and nm.has_signal("queue_status_updated"):
+		if not nm.queue_status_updated.is_connected(_on_queue_status_updated):
+			nm.queue_status_updated.connect(_on_queue_status_updated)
 
 
 func _on_connected() -> void:
@@ -134,3 +138,13 @@ func _on_player_list_updated(players: Array) -> void:
 	if not is_instance_valid(_player_count_label):
 		return
 	_player_count_label.text = "Players: %d" % players.size()
+
+
+func _on_queue_status_updated(position: int, total: int) -> void:
+	"""Show live queue position from the server."""
+	if not is_instance_valid(_status_label):
+		return
+	if position > 0:
+		_status_label.text = "In queue: %d / %d" % [position, total]
+	else:
+		_status_label.text = "Ready to play"

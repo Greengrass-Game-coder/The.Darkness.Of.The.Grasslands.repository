@@ -123,14 +123,16 @@ func _connect_wire(wire_idx: int, plug_idx: int) -> void:
 	var left_label: Label = left_wires[wire_idx].get_child(0) if left_wires[wire_idx].get_child_count() > 0 else null
 	if left_label:
 		left_label.text = "-...- Wire %d" % (wire_idx + 1)
-	left_wires[wire_idx].modulate = Color(0.3, 0.9, 0.3, 1)
+	# Keep the wire's own color but darken it, so "connected" reads as a darker
+	# version of itself (not a forced green that clashes with the natural green wire).
+	left_wires[wire_idx].modulate = left_colors[wire_idx].darkened(0.5)
 	
-	# Update right plug appearance
+	# Update right plug appearance (same: darken its own color)
 	right_buttons[plug_idx].disabled = true
-	right_buttons[plug_idx].modulate = Color(0.3, 0.9, 0.3, 1)
+	right_buttons[plug_idx].modulate = right_colors[plug_idx].darkened(0.5)
 	var dot: ColorRect = right_buttons[plug_idx].get_node_or_null("Dot")
 	if dot:
-		dot.color = Color(0.3, 0.9, 0.3, 1)
+		dot.color = right_colors[plug_idx].darkened(0.5)
 	
 	_draw_connection(wire_idx, plug_idx)
 	_drag_wire_idx = -1

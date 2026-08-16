@@ -36,14 +36,6 @@ animations = [{
 "texture": ExtResource("2_d0")
 }],
 "loop": 0,
-"name": &"idle",
-"speed": 5.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("2_d0")
-}],
-"loop": 0,
 "name": &"idle_down",
 "speed": 5.0
 }, {
@@ -187,15 +179,16 @@ animations = [{
 script = ExtResource("1_7nksj")
 sprint_speed = 500.0
 size_mult = 1.5
-chase_in_chase = 600.0
-chase_fade_in_duration = 2.275
-chase_fade_out_duration = 0.0
+chase_in_chase = 1000.0
+chase_out_chase = 1500.0
+chase_fade_in_duration = 1000.0
+chase_fade_out_duration = 1000.0
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=475775191]
 scale = Vector2(0.25, 0.25)
 sprite_frames = SubResource("SpriteFrames_vg")
-animation = &"idle_up"
-autoplay = "idle"
+animation = &"walk_down"
+autoplay = "walk_down"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=624060751]
 position = Vector2(-13.499999, 6.999999)

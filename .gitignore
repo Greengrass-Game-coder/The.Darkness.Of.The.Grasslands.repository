@@ -30,3 +30,11 @@ addons/ziva_agent/
 .DS_Store
 Thumbs.db
 nul
+
+# Ziva runtime / build junk
+server_output.log
+server_test.log
+server_waker.log
+
+# Server binaries (compiled) - she does not need these to edit the game
+server_launcher/

@@ -1,0 +1,47 @@
+[gd_scene format=3 uid="uid://drwin424wysaf"]
+
+[ext_resource type="Script" path="res://tests/role_test.gd" id="1"]
+
+[node name="RoleTest" type="Node2D" unique_id=1124928731]
+script = ExtResource("1")
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=1458231414]
+
+[node name="Panel" type="PanelContainer" parent="UI" unique_id=538614007]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 420.0
+offset_bottom = 260.0
+
+[node name="VBox" type="VBoxContainer" parent="UI/Panel" unique_id=1148475077]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="UI/Panel/VBox" unique_id=517009364]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "ROLE TEST — Chase Music"
+
+[node name="RoleLabel" type="Label" parent="UI/Panel/VBox" unique_id=1226963176]
+layout_mode = 2
+text = "CONTROLLING: KILLER (Violentgrass)"
+
+[node name="KillerButton" type="Button" parent="UI/Panel/VBox" unique_id=1533482339]
+layout_mode = 2
+text = "Control KILLER (Violentgrass)"
+
+[node name="SurvivorButton" type="Button" parent="UI/Panel/VBox" unique_id=749904517]
+layout_mode = 2
+text = "Control SURVIVOR (Greengrass)"
+
+[node name="ChaseLabel" type="Label" parent="UI/Panel/VBox" unique_id=687244191]
+layout_mode = 2
+text = "CHASE: not in chase"
+
+[node name="DistLabel" type="Label" parent="UI/Panel/VBox" unique_id=1636752993]
+layout_mode = 2
+text = "Distance:"
+
+[node name="Hint" type="Label" parent="UI/Panel/VBox" unique_id=1820845602]
+layout_mode = 2
+text = "WASD move, Shift sprint.
+Control KILLER and walk toward the stationary survivor (or use the survivor's built-in camera) to trigger chase music within 120px."

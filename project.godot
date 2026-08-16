@@ -8,6 +8,13 @@
 
 config_version=5
 
+[GD-Sync]
+
+version="1.0"
+csharp=true
+publicKey="2c23599e45858f9b"
+privateKey="e548805c4c6a8ce6"
+
 [application]
 
 config/name="The Darkness Of The Grasslands"
@@ -25,6 +32,10 @@ EnvironmentConfig="*res://scripts/systems/environment_config.gd"
 FriendsManager="*res://scripts/systems/friends_manager.gd"
 SaveManager="*res://scripts/systems/save_manager.gd"
 SFXManager="*res://scripts/systems/sfx_manager.gd"
+SoundManager="*res://scripts/systems/sound_manager.gd"
+GDSync="*uid://c5ovrpd2yn71q"
+GDSyncSharp="*res://addons/GD-Sync/GDSync.cs"
+P2PManager="*res://scripts/p2p/p2p_manager.gd"
 
 [display]
 
@@ -35,7 +46,7 @@ window/stretch/aspect="expand"
 
 [editor_plugins]
 
-enabled=PackedStringArray()
+enabled=PackedStringArray("res://addons/godot_with_u/plugin.cfg")
 
 [input]
 

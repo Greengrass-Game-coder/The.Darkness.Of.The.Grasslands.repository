@@ -187,6 +187,7 @@ func _ai_move(_delta: float) -> void:
 
 	_update_direction(velocity)
 	_play_animation("walk")
+	_spawn_walk_circles(_delta)
 	_change_state(State.WALKING)
 
 
@@ -198,6 +199,7 @@ func _ai_strafe(_delta: float) -> void:
 	velocity = strafe_vec * move_speed * 0.7
 	_update_direction(velocity)
 	_play_animation("walk")
+	_spawn_walk_circles(_delta)
 	if randf() < 0.02:
 		_strafing_dir *= -1
 
@@ -256,6 +258,7 @@ func _ai_patrol(delta: float) -> void:
 	velocity = _patrol_dir * move_speed * 0.6
 	_update_direction(velocity)
 	_play_animation("walk")
+	_spawn_walk_circles(delta)
 	move_and_slide()
 
 

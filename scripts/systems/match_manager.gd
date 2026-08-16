@@ -93,9 +93,9 @@ func deduct_time(seconds: float) -> void:
 
 # ── Elimination ──
 
-func on_killer_eliminated(name: String) -> void:
+func on_killer_eliminated(victim_name: String) -> void:
 	add_time_bonus(ELIMINATION_BONUS)
-	survivor_eliminated.emit(name)
+	survivor_eliminated.emit(victim_name)
 
 
 # ── Puzzle System ──

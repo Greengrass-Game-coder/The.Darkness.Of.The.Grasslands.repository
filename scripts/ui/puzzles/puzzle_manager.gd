@@ -345,7 +345,7 @@ func _open_rhythm_puzzle() -> void:
 	"""Open a Rhythm (press key on beat) puzzle."""
 	var panel: Panel = _build_panel("Rhythm Puzzle")
 	
-	var bpms: Array[int] = [100, 110, 120, 130, 140]
+	var bpms: Array[int] = [110, 120, 130, 140, 150]
 	var bpm: int = bpms[_puzzle_level - 1]
 	
 	# Hit zone area

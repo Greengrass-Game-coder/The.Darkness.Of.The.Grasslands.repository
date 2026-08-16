@@ -108,7 +108,27 @@ func _add_character_card(name_text: String, icon_path: String, status_text: Stri
 	status_lbl.size = Vector2(260, 24)
 	card.add_child(status_lbl)
 	
+	# SKINS button — opens the LMS character/skin browser for this character
+	var skins_btn := Button.new()
+	skins_btn.name = "SkinsBtn"
+	skins_btn.text = "SKINS"
+	skins_btn.position = card_status_pos + Vector2(0, 34)
+	skins_btn.size = Vector2(120, 30)
+	skins_btn.pressed.connect(_open_lms_linking.bind(name_text))
+	card.add_child(skins_btn)
+	
 	character_container.add_child(card)
+
+
+func _open_lms_linking(character_name: String) -> void:
+	"""Open the LMS Linking character/skin browser for the given character controller."""
+	var existing := get_node_or_null("LmsLinkingPanel")
+	if existing:
+		existing.free()
+	var lms := LmsLinking.new()
+	lms.name = "LmsLinkingPanel"
+	add_child(lms)
+	lms.open(character_name)
 
 
 func _play_zoom_animation() -> void:

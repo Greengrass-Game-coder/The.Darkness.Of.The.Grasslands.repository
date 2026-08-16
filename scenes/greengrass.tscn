@@ -346,6 +346,7 @@ one_shot = true
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=5643798]
 position = Vector2(-12, 1)
+process_callback = 0
 position_smoothing_enabled = true
 position_smoothing_speed = 6.0
 

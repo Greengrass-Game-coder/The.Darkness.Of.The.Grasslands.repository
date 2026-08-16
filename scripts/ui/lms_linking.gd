@@ -2,9 +2,9 @@ class_name LmsLinking
 extends CanvasLayer
 
 ## LMS (Last Man Standing) Linking UI.
-## Shows all available killers/survivors and their skin variants.
-## Read-only display ----- just tracks what exists.
-## Disabled by default (GameState.lms_enabled = false).
+## Character/skin browser for the character controllers (Greengrass, Violentgrass).
+## Shows each character and their skin variants (read-only display).
+## Linked from the character cards in the Shop and Inventory screens.
 
 @export var panel_position: Vector2 = Vector2(300, 80)
 @export var panel_size: Vector2 = Vector2(600, 400)
@@ -41,18 +41,33 @@ func _scan_characters() -> void:
 
 
 func _scan_skins(type: String, base_name: String) -> void:
-	"""Scan for skins of a character type."""
+	"""Scan for skin variants of a character (real DirectoryAccess scan).
+
+	A skin = any subfolder inside a "Skins" directory for the character.
+	No Skins folder yet = the character only has its base sprite (no LMS content).
+	"""
 	var skins: Array[String] = [base_name]
 	
-	# Look for alternate textures in the assets folder
-	var _texture_patterns: Array[String] = [
-		"The Darkness Of The Grasslands assets/Characters/%s/" % base_name,
-		"The Darkness Of The Grasslands assets/Skins/%s/" % base_name,
-		"The Darkness Of The Grasslands assets/Skins/%s_*" % base_name
+	# Where skin folders would live for this character
+	var _skin_roots: Array[String] = [
+		"res://The Darkness Of The Grasslands assets/Skins/%s/" % base_name,
+		"res://The Darkness Of The Grasslands assets/Sprites/%s/Skins/" % base_name,
+		"res://The Darkness Of The Grasslands assets/Sprites/%s/skins/" % base_name,
 	]
 	
-	# Note: Full skin scanning would require DirectoryAccess
-	# For now, we just register the base character
+	for root in _skin_roots:
+		if not DirAccess.dir_exists_absolute(root):
+			continue
+		var dir := DirAccess.open(root)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var entry := dir.get_next()
+		while entry != "":
+			if dir.current_is_dir() and not entry.begins_with("."):
+				skins.append(entry)
+			entry = dir.get_next()
+		dir.list_dir_end()
 	
 	_character_data[type].append({
 		"name": base_name,
@@ -151,24 +166,44 @@ func _get_content_text() -> String:
 	var lines: Array[String] = []
 	for entry: Dictionary in data:
 		lines.append("=== %s ===" % entry["name"])
-		for skin: String in entry["skins"]:
-			var status_str: String = "NEW!" if skin == entry["name"] else ""
-			lines.append("  - %s %s" % [skin, status_str])
+		var skins: Array = entry["skins"]
+		if skins.size() <= 1:
+			lines.append("  - %s (base)" % entry["name"])
+			lines.append("  No skins yet.")
+		else:
+			for i in skins.size():
+				var skin: String = skins[i]
+				var tag: String = "(base)" if i == 0 else ""
+				lines.append("  - %s %s" % [skin, tag])
 	
 	return "
 ".join(lines)
 
 
-func open() -> void:
-	"""Open the LMS Linking panel."""
-	var gs_l = get_node_or_null("/root/GameState")
-	var lms_on: bool = gs_l != null and "lms_enabled" in gs_l and gs_l.lms_enabled
-	self.visible = lms_on
-	if lms_on:
-		var content = get_node_or_null("ContentLabel")
-		if content:
-			content.label_text = _get_content_text()
-		print("LMSLinking: Opened")
+func open(character_name: String = "") -> void:
+	"""Open the LMS Linking panel, optionally focused on one character."""
+	if character_name != "":
+		var cd := CharacterData.get_by_name(character_name)
+		if cd != null:
+			_current_tab = "killers" if cd.character_type == "killer" else "survivors"
+	
+	# Status label reflects what the scan found (LMS exists only when skins exist)
+	var total_skins: int = 0
+	for entries in _character_data.values():
+		for e in entries:
+			total_skins += (e["skins"] as Array).size() - 1
+	var status = get_node_or_null("StatusLabel")
+	if status:
+		if total_skins > 0:
+			status.label_text = "Status: %d skin(s) found" % total_skins
+		else:
+			status.label_text = "Status: No skins yet — base sprites only"
+	
+	var content = get_node_or_null("ContentLabel")
+	if content:
+		content.label_text = _get_content_text()
+	self.visible = true
+	print("LMSLinking: Opened (", _current_tab, ")")
 
 
 func close() -> void:

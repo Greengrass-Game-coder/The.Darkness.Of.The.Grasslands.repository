@@ -7,8 +7,11 @@ signal hp_changed(current_hp: float, max_hp: float)
 signal teleport_scan_started()  # Emitted when killer starts teleport charge
 signal teleport_cancelled()  # Emitted when killer cancels teleport charge
 signal teleported(new_position: Vector2)  # Emitted when teleport completes (at destination)
+signal teleport_fx_started()  # Emitted the instant a teleport EXECUTES (before moving) — game_map plays red-glitch + zoom-in FX
 signal teleport_zoom_started()  # Emitted to request camera zoom-out + map view
 signal teleport_zoom_ended()   # Emitted to restore normal camera view
+signal entered_chase()  # Emitted when killer enters chase range of a survivor (fade-in starts)
+signal exited_chase()   # Emitted when killer leaves chase range (fade-out starts)
 ## (teleport_target_selected removed — unused)
 
 enum State { IDLE, WALKING, HITTING, TELEPORT_CHARGING, TELEPORT_CASTING, TELEPORTING, STUNNED }
@@ -55,6 +58,7 @@ const teleport_cooldown: float = TELEPORT_COOLDOWN_USED  # Backward compat (AI b
 @onready var ability_vfx: AnimatedSprite2D = $AbilityVFX
 @onready var hit_sound: AudioStreamPlayer2D = $HitSound
 @onready var teleport_sound: AudioStreamPlayer2D = $TeleportSound
+var chase_sound: AudioStreamPlayer2D
 
 var current_hp: float
 var current_stamina: float
@@ -74,6 +78,15 @@ var stair_climbing: bool = false
 
 # Teleport scan state (no charging — press E to scan, click to teleport)
 var _teleport_scan_active: bool = false
+
+# Walk circle trail (black circles with red outline that evaporate while walking)
+@export var walk_circle_interval: float = 0.22   # seconds between circles
+@export var walk_circle_radius: float = 18.0
+var _walk_circle_timer: float = 0.0
+
+# Chase state (distance-based, independent of hit_range)
+var in_chase: bool = false
+var _chase_fade_tween: Tween = null
 
 # Teleport charge animation state (retained for backward compat, no longer used)
 const TELEPORT_FRAME_TIME: float = 1.0 / 14.0  # 14 fps
@@ -112,6 +125,8 @@ func _ready() -> void:
 	_setup_ability_vfx_frames()
 	if not ability_vfx.animation_finished.is_connected(_on_ability_vfx_finished):
 		ability_vfx.animation_finished.connect(_on_ability_vfx_finished)
+	# Chase music is handled centrally by game_map's chase system — do NOT create
+	# a redundant per-character ChaseSound here (it would double the Chase track).
 
 
 func _input(event: InputEvent) -> void:
@@ -149,6 +164,14 @@ func _physics_process(delta: float) -> void:
 		State.STUNNED:
 			_handle_stunned(delta)
 	
+	# While the teleport scan is open, loop the teleport VFX in the last 4
+	# frames (4-7) so the ability reads as "winding up" until the player picks a
+	# destination and actually teleports. Runs for any state so the full
+	# forward-then-last-4-loop plays from the moment the ability is activated,
+	# independent of whether the character is moving or standing still.
+	if _teleport_scan_active and not _teleport_reverse_playing:
+		_handle_teleport_scan(delta)
+	
 	# Stamina exhaustion countdown
 	if _stamina_exhausted:
 		_exhaustion_timer -= delta
@@ -156,6 +179,7 @@ func _physics_process(delta: float) -> void:
 			_stamina_exhausted = false
 
 	_update_cooldowns(delta)
+	_update_chase()
 
 
 # ---------- SIZE ----------
@@ -213,6 +237,7 @@ func _handle_movement(delta: float) -> void:
 		velocity = input_dir * speed
 		_update_direction(input_dir)
 		_play_animation("walk")
+		_spawn_walk_circles(delta)
 		_change_state(State.WALKING)
 	else:
 		velocity = Vector2.ZERO
@@ -220,6 +245,27 @@ func _handle_movement(delta: float) -> void:
 		_change_state(State.IDLE)
 	
 	move_and_slide()
+
+
+func _spawn_walk_circles(delta: float) -> void:
+	"""Spawn a black/red-outline circle at the killer's feet while walking.
+	Circles evaporate (shrink + fade out) over 2 seconds.
+	"""
+	if not is_inside_tree():
+		return
+	_walk_circle_timer -= delta
+	if _walk_circle_timer > 0.0:
+		return
+	_walk_circle_timer = walk_circle_interval
+
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	var circle: WalkCircle = WalkCircle.new()
+	circle.radius = walk_circle_radius
+	# Plant the circle at the killer's feet, roughly below the sprite's lower center.
+	circle.global_position = global_position + Vector2(0.0, 42.0 * size_mult)
+	parent.add_child(circle)
 
 
 func _handle_hitting(_delta: float) -> void:
@@ -286,26 +332,33 @@ func _update_direction(input_dir: Vector2) -> void:
 
 
 func _play_animation(anim: String) -> void:
-	"""Play an animation - idle/walk on character, abilities on VFX overlay."""
+	"""Play an animation - idle/walk on character, abilities on VFX overlay.
+
+	The scene's SpriteFrames holds directional walk + idle for each direction:
+	  walk_down/left/right/up (2 frames each) and idle_down/left/right/up.
+	There is NO plain "idle"/"walk" animation — always play a directional one.
+	"""
 	if not is_instance_valid(animated_sprite):
 		return
+	var frames: SpriteFrames = animated_sprite.sprite_frames
+	var dir_name: String = ["down", "left", "right", "up"][int(current_direction)]
+	var idle_anim: String = "idle_" + dir_name
+	if not frames or not frames.has_animation(idle_anim):
+		idle_anim = "idle_up"
+	var walk_anim: String = "walk_" + dir_name
+	if frames and not frames.has_animation(walk_anim):
+		walk_anim = "walk_down"
 	match anim:
 		"idle":
-			var dir_name: String = ["down", "left", "right", "up"][int(current_direction)]
-			var full_anim: String = "idle_" + dir_name
-			if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(full_anim):
-				animated_sprite.play(full_anim)
-			else:
-				animated_sprite.play("idle")  # Fallback to default
+			animated_sprite.play(idle_anim)
 		"walk":
-			var dir_name: String = ["down", "left", "right", "up"][int(current_direction)]
-			var full_anim: String = "walk_" + dir_name
-			if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(full_anim):
-				animated_sprite.play(full_anim)
+			# Use the directional walk animation so the legs visibly move.
+			if frames and frames.has_animation(walk_anim):
+				animated_sprite.play(walk_anim)
 			else:
-				animated_sprite.play("idle")  # Fallback if walk anim missing
+				animated_sprite.play(idle_anim)  # Fallback
 		"hit", "teleport":
-			animated_sprite.play("idle")  # Character stays on idle
+			animated_sprite.play(idle_anim)  # Character stays on idle
 			_play_ability_vfx(anim)  # Show full-screen VFX overlay
 
 
@@ -368,6 +421,7 @@ func _hide_vfx() -> void:
 
 func _on_ability_vfx_finished() -> void:
 	"""Handle VFX animation finished — hide VFX and transition state."""
+	_teleport_reverse_playing = false
 	_hide_vfx()
 	if current_state == State.HITTING or current_state == State.TELEPORTING:
 		current_state = State.IDLE
@@ -377,6 +431,30 @@ func _on_ability_vfx_finished() -> void:
 
 # ---------- TELEPORT CHARGE & CAST ----------
 
+func _handle_teleport_scan(delta: float) -> void:
+	"""Advance the teleport VFX while the scan is open.
+	Plays the full 7-frame animation forward once, then loops the last 4 frames
+	(4-7) so it reads as 'winding up' while the player picks a destination.
+	On teleport, _play_teleport_vfx_reverse() plays it backward (7->1)."""
+	if not ability_vfx.sprite_frames or not ability_vfx.sprite_frames.has_animation("teleport"):
+		return
+	if not ability_vfx.visible:
+		ability_vfx.visible = true
+		ability_vfx.animation = "teleport"
+		ability_vfx.stop()
+		_teleport_anim_frame = 0
+		_teleport_anim_timer = 0.0
+
+	_teleport_anim_timer += delta
+	while _teleport_anim_timer >= TELEPORT_FRAME_TIME:
+		_teleport_anim_timer -= TELEPORT_FRAME_TIME
+		# Frames are 0-indexed (0-6 == 1-7). Full forward to 6, then loop 3-6.
+		_teleport_anim_frame += 1
+		if _teleport_anim_frame > 6:
+			_teleport_anim_frame = 3  # Loop back to frame 4 (last-4 loop)
+		ability_vfx.frame = _teleport_anim_frame
+
+
 func _start_teleport_charge() -> void:
 	"""Start teleport scan — zoom out to map view shows circles. Press E again to cancel."""
 	if current_state != State.IDLE and current_state != State.WALKING:
@@ -385,7 +463,15 @@ func _start_teleport_charge() -> void:
 		return
 	
 	_teleport_scan_active = true
-	_hide_vfx()
+	# Show the teleport VFX winding up (full forward + last-4 loop) while scanning.
+	_teleport_reverse_playing = false
+	_teleport_anim_frame = 0
+	_teleport_anim_timer = 0.0
+	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation("teleport"):
+		ability_vfx.visible = true
+		ability_vfx.animation = "teleport"
+		ability_vfx.stop()
+		ability_vfx.frame = 0
 	
 	# Emit zoom request so game_map zoomes out + shows circles
 	teleport_zoom_started.emit()
@@ -409,6 +495,8 @@ func _cancel_teleport_charge() -> void:
 	if not _teleport_scan_active:
 		return
 	_teleport_scan_active = false
+	_teleport_reverse_playing = false
+	_hide_vfx()
 	teleport_on_cooldown = true
 	_teleport_cd_timer = TELEPORT_COOLDOWN_CANCEL
 	teleport_cancelled.emit()
@@ -419,6 +507,10 @@ func teleport_to_position(target_pos: Vector2) -> void:
 	"""Public method: teleport directly to a target position (called by game_map mini-map)."""
 	if not is_instance_valid(self):
 		return
+	
+	# FX hook: game_map listens to this to start the red-glitch + zoom-in right
+	# as the teleport begins, BEFORE the position actually changes.
+	teleport_fx_started.emit()
 	
 	var delta_dir: Vector2 = target_pos - global_position
 	var distance: float = delta_dir.length()
@@ -510,10 +602,6 @@ func _end_teleport_visual() -> void:
 # ---------- HIT (MB1) ----------
 
 func use_hit() -> void:
-	# Play hit sound
-	if is_instance_valid(hit_sound) and not hit_sound.playing:
-		hit_sound.play()
-	
 	if current_state != State.IDLE and current_state != State.WALKING:
 		return
 	if hit_on_cooldown:
@@ -522,7 +610,7 @@ func use_hit() -> void:
 	# Check if we hit a survivor in range WITH line-of-sight
 	var target := _find_survivor_in_range()
 	if target == null or not _has_line_of_sight(target):
-		# Hit NO ONE → no cooldown penalty, no state change, just visual + sound
+		# Hit NO ONE → no cooldown penalty, no state change, just visual.
 		_play_animation("hit")
 		return
 	
@@ -530,6 +618,13 @@ func use_hit() -> void:
 	hit_on_cooldown = true
 	_hit_cd_timer = hit_cooldown
 	_play_animation("hit")
+	
+	# Play the hit sound ONLY when the hit actually connects. Gated by the
+	# hit cooldown (2.5s), so rapid M1 mashing can no longer restart/spam it —
+	# the sound fires once per real landed hit.
+	if is_instance_valid(hit_sound):
+		hit_sound.stop()
+		hit_sound.play()
 	
 	_ping_hit(target)
 	hit_landed.emit(target, hit_damage)
@@ -566,6 +661,79 @@ func _find_survivor_in_range() -> Node2D:
 func _apply_damage(target: Node2D, damage: float) -> void:
 	if target.has_method("take_damage"):
 		target.take_damage(damage)
+
+
+# ---------- CHASE ----------
+
+func _setup_chase_sound() -> void:
+	"""Get the ChaseSound node if it exists in the scene, otherwise create it
+	in code. Assigns the looping Violentgrass chase WAV stream."""
+	chase_sound = get_node_or_null("ChaseSound") as AudioStreamPlayer2D
+	if chase_sound == null:
+		chase_sound = AudioStreamPlayer2D.new()
+		chase_sound.name = "ChaseSound"
+		chase_sound.volume_db = -80.0  # Muted until chase triggers
+		add_child(chase_sound)
+	# Assign the chase theme stream (Violentgrass folder)
+	var chase_stream: AudioStream = load("res://The Darkness Of The Grasslands assets/Music/Killer Chase Themes/Violentgrass/Chase.wav")
+	if chase_stream:
+		chase_sound.stream = chase_stream
+	# Enable seamless looping on the WAV layer
+	if chase_sound.stream is AudioStreamWAV:
+		chase_sound.stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+
+
+func _update_chase() -> void:
+	"""Chase music is handled centrally by game_map's 4-layer chase system
+	(_update_chase_music), which already plays the killer's Chase track.
+	This controller-level chase would play the SAME Chase.wav a second time,
+	causing a doubled, glitchy chase. It is therefore disabled here."""
+	return
+
+
+func _find_nearest_survivor() -> Node2D:
+	"""Find the nearest survivor by Euclidean distance only — scans the whole
+	'survivors' group, independent of hit_range and with no LOS check."""
+	var nearest: Node2D = null
+	var nearest_dist: float = INF
+	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
+	for s in survivors:
+		if is_instance_valid(s):
+			var d: float = global_position.distance_to(s.global_position)
+			if d < nearest_dist:
+				nearest_dist = d
+				nearest = s
+	return nearest
+
+
+func _enter_chase() -> void:
+	"""Fade chase music in and loop it."""
+	in_chase = true
+	entered_chase.emit()
+	if not is_instance_valid(chase_sound):
+		return
+	if _chase_fade_tween and _chase_fade_tween.is_valid():
+		_chase_fade_tween.kill()
+	chase_sound.play()
+	chase_sound.volume_db = -80.0
+	_chase_fade_tween = create_tween()
+	_chase_fade_tween.tween_property(chase_sound, "volume_db", 0.0, chase_fade_in_duration)
+
+
+func _exit_chase() -> void:
+	"""Fade chase music out, then stop it."""
+	in_chase = false
+	exited_chase.emit()
+	if not is_instance_valid(chase_sound):
+		return
+	if _chase_fade_tween and _chase_fade_tween.is_valid():
+		_chase_fade_tween.kill()
+	_chase_fade_tween = create_tween()
+	_chase_fade_tween.tween_property(chase_sound, "volume_db", -80.0, chase_fade_out_duration)
+	_chase_fade_tween.tween_callback(func() -> void:
+		if is_instance_valid(chase_sound):
+			chase_sound.stop()
+	)
 
 
 # ---------- PING HANDLER ----------
@@ -633,15 +801,16 @@ func _end_stun() -> void:
 # ---------- TELEPORT REVERSE VFX ----------
 
 func _play_teleport_vfx_reverse() -> void:
-	"""Play the teleport VFX in reverse (frames 7→1) as an arrival effect."""
+	"""Play the teleport VFX in reverse (frames 7→1) as an arrival effect.
+	Uses built-in play_backwards() so it animates regardless of current state
+	(the teleport ends in STUNNED, so a manual state-driven stepper would never
+	run). animation_finished → _on_ability_vfx_finished hides it."""
 	if not ability_vfx.sprite_frames or not ability_vfx.sprite_frames.has_animation("teleport"):
 		return
 	_teleport_reverse_playing = true
-	_teleport_reverse_frame = 6  # 0-indexed, last frame (frame 7 in 1-indexed)
-	_teleport_reverse_timer = 0.0
 	ability_vfx.visible = true
-	ability_vfx.frame = _teleport_reverse_frame
-	ability_vfx.stop()  # Don't play forward
+	ability_vfx.animation = "teleport"
+	ability_vfx.play_backwards()
 
 
 # ---------- DAMAGE ----------

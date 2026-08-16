@@ -18,7 +18,6 @@ var _is_killer: bool = false
 
 # Position sync rate (reserved for throttled updates)
 const SYNC_INTERVAL: float = 0.1
-var _sync_accum: float = SYNC_INTERVAL  # Accumulator for throttled position sync
 
 
 func _ready() -> void:
@@ -41,13 +40,13 @@ func _on_game_started(role: String, player_list: Array) -> void:
 
 
 func _on_player_left(_pid: String) -> void:
-	var name: String = ""
+	var player_name: String = ""
 	for p in _player_list:
 		if str(p.get("player_id", "")) == _pid:
-			name = p.get("username", "Unknown")
+			player_name = p.get("username", "Unknown")
 			break
-	if not name.is_empty():
-		player_disconnected.emit(name)
+	if not player_name.is_empty():
+		player_disconnected.emit(player_name)
 
 
 func _on_disconnected() -> void:
