@@ -38,3 +38,7 @@ server_waker.log
 
 # Server binaries (compiled) - she does not need these to edit the game
 server_launcher/
+
+# Prebuilt compiled server binaries (edit from source, don't track)
+Server/*.pck
+Server/*.x86_64
