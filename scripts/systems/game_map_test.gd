@@ -120,6 +120,12 @@ var _killer_speed_scaling_active: bool = false
 var _death_active: bool = false
 var _death_overlay: ColorRect = null
 var _death_fade_progress: float = 0.0
+# Spectate state — after the human survivor dies the match keeps running and
+# the camera follows the AI action until everyone is dead (killer outro) or the
+# timer runs out (lobby).
+var _spectating: bool = false
+var _spectate_cam: Camera2D = null
+var _spectate_target_index: int = 0
 
 # Teleport mini-map
 var _teleport_circles: Array[Node] = []       # Teleport overlay children
@@ -957,6 +963,10 @@ func _process(delta: float) -> void:
 	# Death sequence fade
 	if _death_active:
 		_update_death_fade(delta)
+	
+	# Spectate mode — camera follows the AI action while the human is dead.
+	if _spectating:
+		_update_spectate(delta)
 
 
 func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
@@ -1175,14 +1185,12 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 			# Survivor eliminated — +30s timer bonus if bot killer exists
 			if is_instance_valid(_killer_bot):
 				_on_survivor_eliminated("Player")
-			# When the human survivor dies, end the round and redirect to the
-			# lobby (no killer outro for the local player's own death). The
-			# killer outro plays only when the KILLER is the one eliminating
-			# everyone; the human dying always returns them to the lobby.
-			_killer_won = false
-			if not _round_ended:
-				match_ended.emit()
-				_end_match()
+			# The human survivor died, but the match isn't over: enter spectate
+			# mode so the player can watch the AIs (killer bot + survivor bots)
+			# keep playing. The round ends when everyone is dead (killer outro)
+			# or the timer runs out (redirect to lobby).
+			_enter_spectate_mode()
+			_check_all_survivors_eliminated()
 
 
 func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:
@@ -3652,6 +3660,100 @@ func _on_player_attacked(_stunned: bool) -> void:
 
 # ---------- DEATH SEQUENCE ----------
 
+func _enter_spectate_mode() -> void:
+	"""After the human survivor dies, keep the match running and point the camera
+	at the AI action so the player can watch. The killer bot is followed by
+	default; the player can cycle through the remaining survivor bots. The match
+	ends normally when everyone is dead (killer outro) or the timer runs out."""
+	if _spectating:
+		return
+	_spectating = true
+	_spectate_target_index = 0
+	
+	# Disable the human player's own input/movement (they're dead).
+	if is_instance_valid(_player):
+		_player.set_physics_process(false)
+		_player.modulate = Color(0.5, 0.5, 0.5, 1.0)
+		var pcam: Camera2D = _player.get_node_or_null("Camera2D") as Camera2D
+		if is_instance_valid(pcam):
+			pcam.enabled = false
+	
+	# Build a dedicated spectate camera that follows the AI target.
+	_spectate_cam = Camera2D.new()
+	_spectate_cam.name = "SpectateCamera"
+	_spectate_cam.position_smoothing_enabled = true
+	_spectate_cam.position_smoothing_speed = 6.0
+	_spectate_cam.zoom = Vector2(1.25, 1.25)
+	add_child(_spectate_cam)
+	_spectate_cam.make_current()
+	
+	_spectate_follow_current_target(true)
+	# Show a small hint.
+	var hud: CanvasLayer = $HUD
+	if hud and hud.get_node_or_null("SpectateHintLabel") == null:
+		var lbl := Label.new()
+		lbl.name = "SpectateHintLabel"
+		lbl.text = "SPECTATING — press E to switch view"
+		lbl.position = Vector2(20, 70)
+		lbl.size = Vector2(400, 26)
+		lbl.add_theme_font_size_override("font_size", 16)
+		lbl.add_theme_color_override("font_color", Color(0.9, 0.9, 1.0, 1))
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		lbl.add_theme_constant_override("outline_size", 4)
+		hud.add_child(lbl)
+	print("GameMap: Human died — entering spectate mode")
+
+
+func _spectate_follow_current_target(snap: bool = false) -> void:
+	"""Move the spectate camera to the current target (killer bot or a survivor bot)."""
+	if not is_instance_valid(_spectate_cam):
+		return
+	var target: Node2D = _spectate_get_target()
+	if not is_instance_valid(target):
+		return
+	_spectate_cam.global_position = target.global_position
+	if snap:
+		_spectate_cam.reset_smoothing()
+
+
+func _spectate_get_target() -> Node2D:
+	"""Pick the AI to follow: the killer bot first, else the chosen survivor bot."""
+	if is_instance_valid(_killer_bot):
+		return _killer_bot
+	if _survivor_bots.size() > 0:
+		var idx: int = _spectate_target_index % _survivor_bots.size()
+		var bot: Node2D = _survivor_bots[idx]
+		if is_instance_valid(bot):
+			return bot
+	return _player
+
+
+func _spectate_cycle() -> void:
+	"""Cycle the spectate view to the next live survivor bot (if any)."""
+	if _survivor_bots.size() > 0:
+		_spectate_target_index = (_spectate_target_index + 1) % _survivor_bots.size()
+	_spectate_follow_current_target(true)
+
+
+func _update_spectate(_delta: float) -> void:
+	"""Each frame, keep the spectate camera glued to the followed AI."""
+	if not _spectating or not is_instance_valid(_spectate_cam):
+		return
+	# If the killer is gone (survivor won) fall back to the survivor bots.
+	if not is_instance_valid(_killer_bot) and _survivor_bots.size() > 0:
+		var target: Node2D = _spectate_get_target()
+		if is_instance_valid(target):
+			_spectate_cam.global_position = target.global_position
+			return
+	_spectate_cam.global_position = _spectate_get_target().global_position
+	# Allow cycling views with E.
+	if Input.is_key_pressed(KEY_E) and not _e_was_pressed:
+		_e_was_pressed = true
+		_spectate_cycle()
+	elif not Input.is_key_pressed(KEY_E):
+		_e_was_pressed = false
+
+
 func _start_death_sequence() -> void:
 	"""Start the 5-second death fade-out sequence."""
 	if _death_active:
@@ -4060,6 +4162,11 @@ func _cleanup_for_lobby() -> void:
 	_ending_vignette = null
 	_ending_screen_created = false
 	_death_active = false
+	# Free the spectate camera if we were spectating.
+	if is_instance_valid(_spectate_cam):
+		_spectate_cam.queue_free()
+	_spectate_cam = null
+	_spectating = false
 	
 	# Free bots
 	if is_instance_valid(_killer_bot):

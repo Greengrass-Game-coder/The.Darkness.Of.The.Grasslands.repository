@@ -67,6 +67,13 @@ const STUCK_PROGRESS_THRESHOLD: float = 4.0   # px moved in the window to count 
 const STUCK_WINDOW: float = 0.5                # seconds before we consider the bot stuck
 var _stuck_nudge_dir: float = 1.0             # which way to scrape off the wall
 
+# Wall-avoidance steering: raycasts ahead of the bot and steers around obstacles
+# so it doesn't run head-on into walls while pathing or patrolling.
+var _avoid_cooldown: float = 0.0
+const AVOID_RAY_LENGTH: float = 34.0          # how far ahead we probe for walls
+const AVOID_RAY_COUNT: int = 5                # fan of rays around the heading
+const AVOID_FOV_DEG: float = 70.0             # half-angle of the probe fan
+
 
 func _ready() -> void:
 	super()
@@ -330,6 +337,8 @@ func _ai_go_to_puzzle(delta: float) -> void:
 		global_position.distance_to(_target_killer.global_position) < flee_range * 0.8
 	var use_sprint: bool = dist_to_puzzle > 200.0 and not _stamina_exhausted and not killer_threat
 	var speed: float = sprint_speed if use_sprint else move_speed
+	# Steer around walls before committing to this heading.
+	dir = _avoid_walls(dir.normalized())
 	
 	if use_sprint:
 		current_stamina -= sprint_stamina_drain * delta
@@ -350,7 +359,6 @@ func _ai_go_to_puzzle(delta: float) -> void:
 	_update_direction(velocity)
 	_play_animation("walk")
 	_change_state(State.WALKING)
-
 
 func _ai_flee(delta: float) -> void:
 	if not is_instance_valid(_target_killer):
@@ -421,6 +429,8 @@ func _ai_flee(delta: float) -> void:
 
 	# ── 5b. Anti-stuck: scrape off walls the bot is pushing into ──
 	move_dir = _anti_stuck(delta, move_dir)
+	# ── 5c. Wall-avoidance steering: don't run head-on into walls ──
+	move_dir = _avoid_walls(move_dir.normalized())
 
 	# ── 5. Smarter stamina ──
 	# Sprint only when the killer has line-of-sight AND is close (or is right on
@@ -527,6 +537,8 @@ func _ai_patrol(delta: float) -> void:
 	
 	# Anti-stuck: scrape off walls while patrolling too
 	_patrol_dir = _anti_stuck(delta, _patrol_dir)
+	# Wall-avoidance steering while patrolling.
+	_patrol_dir = _avoid_walls(_patrol_dir.normalized())
 	
 	velocity = _patrol_dir * move_speed * 0.6
 	_update_direction(velocity)
@@ -623,6 +635,50 @@ func _anti_stuck(delta: float, move_dir: Vector2) -> Vector2:
 	_flee_target_timer = 0.0
 	_nav_target_set = false
 	return nudged
+
+
+func _avoid_walls(move_dir: Vector2) -> Vector2:
+	"""Steer around obstacles instead of running head-on into them.
+	Fires a fan of raycasts in the movement direction; if the front is blocked
+	but a side is open, rotate toward the open side. Lightweight (only re-probes
+	after a short cooldown) so it layers cleanly on top of navigation."""
+	if _avoid_cooldown > 0.0:
+		_avoid_cooldown -= get_physics_process_delta_time()
+		return move_dir
+	if move_dir.length_squared() < 0.01:
+		return move_dir
+
+	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
+	var base_angle: float = move_dir.angle()
+	var front_blocked: bool = false
+	var best_open_angle: float = 0.0
+	var best_open: float = -1.0
+	var center_idx: int = int(AVOID_RAY_COUNT * 0.5)
+
+	for i in range(AVOID_RAY_COUNT):
+		var rel: float = (float(i) / float(AVOID_RAY_COUNT - 1) - 0.5) * 2.0
+		var ang: float = base_angle + deg_to_rad(rel * AVOID_FOV_DEG)
+		var dir: Vector2 = Vector2.from_angle(ang)
+		var from: Vector2 = global_position + dir * 10.0
+		var to: Vector2 = global_position + dir * AVOID_RAY_LENGTH
+		var query := PhysicsRayQueryParameters2D.create(from, to)
+		query.collision_mask = 4  # Wall layer
+		query.exclude = [get_rid()]
+		var hit: Dictionary = space.intersect_ray(query)
+		if not hit.is_empty():
+			if i == center_idx:
+				front_blocked = true
+		else:
+			# This ray is clear — remember how far from center it is.
+			var openness: float = 1.0 - absf(rel)
+			if openness > best_open:
+				best_open = openness
+				best_open_angle = ang
+
+	if front_blocked and best_open > 0.0:
+		_avoid_cooldown = 0.15
+		return Vector2.from_angle(best_open_angle)
+	return move_dir
 
 
 func _set_nav_target(target_pos: Vector2) -> void:
