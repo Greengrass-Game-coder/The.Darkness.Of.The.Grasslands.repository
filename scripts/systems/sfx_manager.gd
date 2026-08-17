@@ -14,7 +14,7 @@ func _ready() -> void:
 	for i in range(4):
 		var ap := AudioStreamPlayer.new()
 		ap.name = "SFXPlayer_%d" % i
-		ap.bus = &"Master"
+		ap.bus = &"SFX"
 		add_child(ap)
 		_players.append(ap)
 

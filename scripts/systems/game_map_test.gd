@@ -1,4 +1,4 @@
-class_name GameMap
+class_name GameMapTest
 extends Node2D
 
 signal match_ended()
@@ -21,8 +21,8 @@ const MATCH_DURATION: float = 240.0  # 4 minutes
 @onready var timer_label: Label = $HUD/TimerLabel
 const GREENGRASS_SCENE: PackedScene = preload("res://scenes/greengrass.tscn")
 const VIOLENTGRASS_SCENE: PackedScene = preload("res://scenes/violentgrass.tscn")
-const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller.gd")
-const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_survivor_bot_controller.gd")
+const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller_test.gd")
+const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_survivor_bot_controller_test.gd")
 const LMS_AURA_SHADER: Shader = preload("res://shaders/player_aura.gdshader")
 
 # Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
@@ -62,7 +62,6 @@ const LMS_KILL_ZOOM_IN: float = 0.5  # Tight zoom during kill punch-in (smaller 
 const LMS_KILL_ZOOM_HOLD: float = 0.6  # Seconds spent tight before pulling back out
 const LMS_REVEAL_DURATION: float = 4.0  # Seconds the survivor-reveal arrow stays on screen
 const LMS_MUSIC_DURATION: float = 100.0  # Fallback countdown length (actual WAV is ~99.7s)
-const ROUND_END_GIFT_RING: int = 1    # +1 gift ring added to persistent player_rings each round
 # ── LMS end-of-song camera heartbeat (keyed to MUSIC playback, not match clock) ──
 # While the LMS song still has LMS_HEARTBEAT_FROM seconds left to play, the camera
 # does a gentle screen zoom in/out pulse at a constant 200 BPM. Amplitude is
@@ -170,6 +169,15 @@ var _lms_active: bool = false          # True once 1 killer + 1 survivor remain
 # In that case the map music never plays — the intro cutscene is the "loading"
 # beat and the LMS finale takes over as the sole score.
 var _is_1v1: bool = false
+# ── TEST MODE ring-to-killer promotion state ──
+const RING_KILLER_THRESHOLD: int = 3  # Rings earned (by the human) to become the killer
+const ROUND_END_GIFT_RING: int = 1    # +1 gift ring added to persistent player_rings each round
+const PUZZLE_REARM_SECONDS: float = 25.0  # Single test puzzle re-enables after this
+const AI_DIFFICULTY_START: float = 0.28  # "Normal" floor for the 8-vs-1 test killer
+var _match_rings_earned: int = 0      # Human's rings earned THIS round (drives promotion)
+var _promotion_happened: bool = false  # One-shot: human already promoted to killer
+var _tutorial_layer: CanvasLayer = null  # Survivor tutorial overlay (dismissable)
+var _tutorial_dismiss_timer: float = 0.0  # Auto-hide countdown for the tutorial
 # True when the round ended with the KILLER winning (all survivors eliminated).
 # When true, the match-end shows Violentgrass's killer outro frozen on its last
 # frame with the analysis overlaid before returning to the lobby.
@@ -219,8 +227,6 @@ var _multiplayer_sync: Node = null
 
 # AI difficulty controller
 var _ai_difficulty: AIDifficultyController = null
-# The AI killer starts at "Normal" difficulty (0.28 floor), not Easy.
-const AI_DIFFICULTY_START: float = 0.28
 
 
 func _ready() -> void:
@@ -265,23 +271,29 @@ func _ready() -> void:
 	_killer_won = false
 	_update_timer_label()
 	
-	# Determine if this player should be the killer based on rings
+	# TEST MODE: the human ALWAYS starts as a survivor. The killer role is EARNED
+	# mid-match by solving puzzles (RING_KILLER_THRESHOLD rings → _promote_player_to_killer).
+	# Force the survivor role so the player experiences the full 8-vs-1 test match.
 	var gs = get_node("/root/GameState")
 	var should_be_killer: bool = false
 	if gs != null:
-		should_be_killer = _determine_killer_by_rings()
-		gs.is_killer = should_be_killer
+		gs.is_killer = false
+		GameState.is_killer = false
 	
-	# Spawn the player character (also spawns killer bot if survivor)
+	# Spawn the player character (spawns killer bot AND survivor bots in test mode)
 	spawn_player(should_be_killer)
 	
-	# Figure out how many combatants are in this match. A 1v1 (exactly a killer
-	# + one survivor = 2 people) NEVER plays the map music — the killer intro
-	# cutscene acts as the "loading" beat, then the LMS finale starts straight
-	# away so the LMS track is the sole score. Bigger matches keep the map music.
-	_is_1v1 = _character_name == "Greengrass" or _alive_survivor_bot_count <= 1
+	# Figure out how many combatants are in this match. A true 1v1 (a killer + a
+	# single live survivor) NEVER plays map music — the killer intro cutscene acts
+	# as the "loading" beat, then the LMS finale starts straight away. Bigger
+	# matches (e.g. 8 survivors vs 1 killer) DO keep the map music until the killer
+	# whittles the survivors down to one (see _on_bot_hp_changed).
+	var live_survivors: int = _alive_survivor_bot_count
+	if _character_name == "Greengrass" and is_instance_valid(_player):
+		live_survivors += 1
+	_is_1v1 = live_survivors <= 1
 	if _is_1v1:
-		print("GameMap: 1v1 (2 combatants) — skipping map music, LMS starts after intro")
+		print("GameMapTest: 1v1 (2 combatants) — skipping map music, LMS starts after intro")
 	else:
 		_setup_music()
 	
@@ -363,7 +375,7 @@ func _setup_music() -> void:
 			player.name = "MapMusicPlayer"
 			player.stream = stream
 			player.autoplay = true
-			player.bus = &"Music"
+			player.bus = &"Master"
 			player.volume_db = -12.0  # Lowered so rhythm-puzzle BPM audio stays audible
 			player.finished.connect(_on_map_music_finished)
 			add_child(player)
@@ -395,7 +407,7 @@ func _switch_to_ending_music() -> void:
 	player.name = "MusicPlayer"
 	player.stream = ending_stream
 	player.autoplay = true
-	player.bus = &"Music"
+	player.bus = &"Master"
 	player.volume_db = -12.0  # Lowered so rhythm-puzzle BPM audio stays audible
 	player.finished.connect(_on_map_music_finished)
 	add_child(player)
@@ -558,20 +570,17 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	# Create match-ending vignette
 	_create_ending_vignette()
 	
-	# Spawn bot killer if survivor, or survivor bots if killer
-	# Set up chase music for both roles
-	if not is_killer_player:
+	# Spawn bot killer AND survivor bots (TEST MODE: 8 survivors incl. the human
+	# vs 1 AI killer bot, so the player can earn rings and become the killer).
+	# On the ring-promotion respawn (spawn_player(true) from _promote_player_to_killer)
+	# the killer bot + survivor bots already exist, so only build the board once.
+	if not is_instance_valid(_killer_bot) and _survivor_bots.is_empty():
 		_spawn_bot_killer()
-		# Attach dynamic difficulty controller to AI bot
+		_spawn_survivor_bots()
 		_attach_ai_difficulty()
 		_refresh_survivor_cache()
-		# Survivor player: load all 4 chase layers from survivor's theme folder
+		# Survivor player: load all 4 chase layers from survivor's theme folder.
 		_setup_chase_music(survivor_chase_folder)
-	else:
-		_spawn_survivor_bots()
-		_refresh_survivor_cache()
-		# Killer player: load only Chase layer from killer's theme folder
-		_setup_chase_music(killer_chase_folder)
 	
 	# Track damage dealt via punch signal
 	if _player.has_signal("punch_landed") and not _player.punch_landed.is_connected(_on_player_attacked):
@@ -896,6 +905,7 @@ func _process(delta: float) -> void:
 	
 	_update_ability_cooldowns()
 	_check_interact_input(delta)
+	_update_tutorial_dismiss(delta)
 	_check_settings_updates()
 	_check_damage_vignette()
 	_update_chase_music(delta)
@@ -1174,19 +1184,28 @@ func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorR
 	fill.color.a = 0.5 if ratio < 0.2 else 0.9  # Dim when low
 
 
+const MAX_SURVIVOR_BOTS: int = 7  # TEST MODE: 7 bots + the human survivor = 8 total
+
 func _spawn_survivor_bots() -> void:
-	"""Spawn AI-controlled survivor bots that do puzzles."""
+	"""Spawn AI-controlled survivor bots that do puzzles. TEST MODE spawns up to
+	7 bots. The test blueprint has a single survivor-spawn pixel, so distribute
+	the combatants on a ring around that center so they never overlap."""
 	var survivor_spawns: Array[Vector2] = _map_manager.survivor_spawns if _map_manager else []
-	if survivor_spawns.is_empty():
-		var mid: Vector2 = Vector2(512, 384)
-		var offsets: Array[Vector2] = [Vector2(-200, -200), Vector2(200, -200), Vector2(-200, 200), Vector2(200, 200)]
-		for i in range(min(4, offsets.size())):
-			_bots_create_survivor(mid + offsets[i], "SurvivorBot_%d" % i)
+	var center: Vector2 = survivor_spawns[0] if not survivor_spawns.is_empty() else Vector2(512, 384)
+	
+	if survivor_spawns.is_empty() or survivor_spawns.size() < MAX_SURVIVOR_BOTS:
+		var ring_radius: float = 110.0
+		var count: int = min(MAX_SURVIVOR_BOTS, 8)
+		for i in range(count):
+			var angle: float = TAU * float(i) / float(count)
+			var pos: Vector2 = center + Vector2(cos(angle), sin(angle)) * ring_radius
+			pos += Vector2(randf_range(-12.0, 12.0), randf_range(-12.0, 12.0))
+			_bots_create_survivor(pos, "SurvivorBot_%d" % i)
 	else:
-		var count: int = min(4, survivor_spawns.size())
+		var count: int = min(MAX_SURVIVOR_BOTS, survivor_spawns.size())
 		for i in range(count):
 			_bots_create_survivor(survivor_spawns[i], "SurvivorBot_%d" % i)
-	print("GameMap: Spawned %d survivor bots" % _survivor_bots.size())
+	print("GameMapTest: Spawned %d survivor bots" % _survivor_bots.size())
 
 
 func _bots_create_survivor(spawn_pos: Vector2, name_str: String) -> void:
@@ -1313,7 +1332,7 @@ func _setup_chase_music(folder_name: String) -> void:
 		var sdata := p.stream
 		if sdata is AudioStreamWAV:
 			sdata.loop_mode = 0
-		p.bus = &"Music"
+		p.bus = &"Master"
 		p.volume_db = -80.0  # Muted until triggered
 		p.autoplay = true
 		add_child(p)
@@ -1466,15 +1485,126 @@ func _play_killer_cutscene() -> void:
 		_player.set_physics_process(true)
 	if match_timer:
 		match_timer.paused = false
-	print("GameMap: Killer intro finished, match started")
+	print("GameMapTest: Killer intro finished, match started")
 	_match_live = true
-	# LMS from match start when the entire match is a 1v1 (only a killer + one
-	# survivor). Survivor mode is always 1v1 vs the AI killer bot; killer mode
-	# counts as 1v1 when only a single survivor bot was spawned. Bigger matches
-	# (e.g. 6 survivors vs 1 killer) do NOT start LMS until the killer whittles
-	# them down — see _on_bot_hp_changed.
-	if _character_name == "Greengrass" or _alive_survivor_bot_count <= 1:
+	# LMS from match start when the entire match is a true 1v1 (only a killer +
+	# one live survivor). In TEST MODE the human starts as 1 of 8 survivors, so
+	# the match is not 1v1 and the LMS only starts when the killer whittles the
+	# survivors down to one — see _on_bot_hp_changed.
+	var live_survivors_after_intro: int = _alive_survivor_bot_count
+	if _character_name == "Greengrass" and is_instance_valid(_player):
+		live_survivors_after_intro += 1
+	if live_survivors_after_intro <= 1:
 		_start_lms()
+	
+	# TEST MODE: show the new-player tutorial when the human starts as a survivor.
+	if not _round_ended and _character_name == "Greengrass":
+		_show_survivor_tutorial()
+
+
+func _show_survivor_tutorial() -> void:
+	"""Dismissable on-screen tutorial shown once at match start for a survivor
+	player. Auto-hides after ~8s."""
+	var layer := CanvasLayer.new()
+	layer.name = "SurvivorTutorial"
+	layer.layer = 20  # Above LMS/VFX/HUD overlays, below promotion telegraph (62)
+	add_child(layer)
+	
+	var panel := Control.new()
+	panel.name = "Panel"
+	# A CanvasLayer child maps 1:1 to viewport pixels (1280x720), so use plain
+	# absolute coordinates (no anchors — assigning position later would reset an
+	# anchor preset and silently push the panel off-screen).
+	panel.position = Vector2(170, 400)
+	panel.size = Vector2(940, 250)
+	layer.add_child(panel)
+	
+	var bg := ColorRect.new()
+	bg.name = "Bg"
+	bg.position = Vector2(0, 0)
+	bg.size = Vector2(940, 250)
+	bg.color = Color(0.04, 0.04, 0.08, 0.82)
+	panel.add_child(bg)
+	
+	var title := Label.new()
+	title.name = "Title"
+	title.text = "SURVIVE — THIS IS THE DARKNESS"
+	title.position = Vector2(20, 14)
+	title.size = Vector2(860, 40)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color(1, 0.5, 0.3, 1))
+	title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	title.add_theme_constant_override("outline_size", 4)
+	title.add_theme_font_size_override("font_size", 26)
+	panel.add_child(title)
+	
+	var lines: Array[String] = [
+		"🏃  RUN AWAY from the killer — don't get cornered!",
+		"💨  Shift = Sprint    |    Q = Block    |    E = Charged Punch    |    R = Spare Flower (heal)",
+		"🔗  Solve puzzles to earn RINGS  —  3 Rings makes YOU the Killer!",
+		"      (after promotion, hunt every survivor to win the round)",
+	]
+	var y: float = 70.0
+	for line: String in lines:
+		var lbl := Label.new()
+		lbl.text = line
+		lbl.position = Vector2(28, y)
+		lbl.size = Vector2(820, 32)
+		lbl.add_theme_color_override("font_color", Color(0.95, 0.95, 1.0, 1))
+		lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		lbl.add_theme_constant_override("shadow_offset_x", 1)
+		lbl.add_theme_constant_override("shadow_offset_y", 1)
+		lbl.add_theme_font_size_override("font_size", 18)
+		panel.add_child(lbl)
+		y += 34.0
+	
+	var hint := Label.new()
+	hint.name = "Hint"
+	hint.text = "(dismisses automatically)"
+	hint.position = Vector2(20, y + 6)
+	hint.size = Vector2(860, 24)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6, 1))
+	hint.add_theme_font_size_override("font_size", 14)
+	panel.add_child(hint)
+	
+	panel.modulate = Color(1, 1, 1, 0)
+	var tween := create_tween()
+	tween.tween_property(panel, "modulate:a", 1.0, 0.5)
+	
+	# Auto-hide after 8s. The game_map _process polls _tutorial_layer and dismisses
+	# it early on any movement/ability key/click (see _update_tutorial_dismiss).
+	var done := layer.create_tween()
+	done.tween_interval(8.0)
+	done.tween_callback(func() -> void:
+		if is_instance_valid(layer):
+			layer.queue_free()
+		if _tutorial_layer == layer:
+			_tutorial_layer = null
+	)
+	_tutorial_layer = layer
+	_tutorial_dismiss_timer = 8.0
+
+
+func _update_tutorial_dismiss(delta: float) -> void:
+	"""Auto-hide the survivor tutorial after its timeout, or close it early when
+	the player starts doing something (moving / using an ability / clicking)."""
+	if not is_instance_valid(_tutorial_layer):
+		_tutorial_layer = null
+		return
+	_tutorial_dismiss_timer -= delta
+	# Close early when the player starts actually playing (moving / using an
+	# ability). No mouse-dismiss: a survivor click to focus the game window would
+	# otherwise instantly close the tutorial.
+	var close_it: bool = false
+	for action_name in ["move_left", "move_right", "move_up", "move_down",
+			"sprint", "ability_1", "ability_2", "ability_3", "ability_4"]:
+		if Input.is_action_just_pressed(action_name):
+			close_it = true
+			break
+	if close_it or _tutorial_dismiss_timer <= 0.0:
+		_tutorial_layer.queue_free()
+		_tutorial_layer = null
 
 
 func _on_chase_loop(player: AudioStreamPlayer) -> void:
@@ -2189,7 +2319,7 @@ func _restore_map_music() -> void:
 	player.name = "MapMusicPlayer"
 	player.stream = stream
 	player.autoplay = true
-	player.bus = &"Music"
+	player.bus = &"Master"
 	player.volume_db = -12.0  # Lowered so rhythm-puzzle BPM audio stays audible
 	player.finished.connect(_on_map_music_finished)
 	add_child(player)
@@ -2254,7 +2384,7 @@ func _start_lms() -> void:
 		_lms_music_player = AudioStreamPlayer.new()
 		_lms_music_player.name = "LmsMusicPlayer"
 		_lms_music_player.stream = lms_stream
-		_lms_music_player.bus = &"Music"
+		_lms_music_player.bus = &"Master"
 		_lms_music_player.volume_db = -8.0
 		_lms_music_player.autoplay = true
 		_lms_music_player.finished.connect(_on_lms_music_loop)
@@ -2843,7 +2973,19 @@ func _open_puzzle_for_area(area: Area2D) -> void:
 
 
 func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
-	"""Handle puzzle solved — rewards + timer deduction (3.25s per puzzle level)."""
+	"""Handle the HUMAN solving a puzzle — rewards + timer deduction + ring tally.
+	Bot solves (which also grant the reward ring) call _reward_puzzle_solve() and
+	skip the match-ring tally so only the human's own solves push toward promotion."""
+	_reward_puzzle_solve(area, puzzle_level)
+	if not _round_ended and not _killer_won:
+		_match_rings_earned += puzzle_level
+		print("GameMapTest: Human puzzle — rings this round: ", _match_rings_earned, "/", RING_KILLER_THRESHOLD)
+		_check_ring_promotion()
+
+
+func _reward_puzzle_solve(area: Area2D, puzzle_level: int) -> void:
+	"""Shared solve reward (human + bots): mark solved, +$5/+1 ring, -3.25s timer,
+	visual feedback, then schedule a ~25s re-arm so rings keep flowing in test mode."""
 	var area_name: String = area.name
 	if not area_name in _solved_puzzles:
 		_solved_puzzles.append(area_name)
@@ -2858,7 +3000,7 @@ func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
 		if username != "":
 			var current_rings: int = gs.get_player_rings(username)
 			gs.set_player_rings(username, current_rings + rings_per_level)
-		print("GameMap: Puzzle reward — +$", money_per_level, ", +", rings_per_level, " ring (level ", puzzle_level, ")")
+		print("GameMapTest: Puzzle reward — +$", money_per_level, ", +", rings_per_level, " ring (level ", puzzle_level, ")")
 	
 	# Decrease match timer by 3.25 seconds per puzzle level (flash red).
 	# Pause the countdown while the deduction is applied, then resume.
@@ -2882,15 +3024,37 @@ func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
 	if _multiplayer_sync:
 		_multiplayer_sync.send_puzzle_solved(area_name, puzzle_level)
 	
-	print("GameMap: Puzzle solved at ", area.position)
+	print("GameMapTest: Puzzle solved at ", area.position)
+	
+	# TEST MODE re-arm: the test blueprint has a single puzzle, so after a solve
+	# re-enable it after a short cooldown so the human can earn more rings and the
+	# killer bot has a reason to defend it.
+	var rearm_timer := get_tree().create_timer(PUZZLE_REARM_SECONDS)
+	rearm_timer.timeout.connect(_rearm_puzzle.bind(area, area_name))
+
+
+func _rearm_puzzle(area: Area2D, area_name: String) -> void:
+	"""Re-enable a solved puzzle so it can be solved again (test-mode ring flow)."""
+	if not is_instance_valid(area):
+		return
+	_solved_puzzles.erase(area_name)
+	var prompt: Label = area.get_node_or_null("InteractPrompt")
+	if prompt:
+		prompt.text = "Press E to solve"
+		prompt.visible = false
+	if area.has_node("ColorRect"):
+		var rect: ColorRect = area.get_node("ColorRect")
+		rect.color = Color(0.8, 0.8, 0.2, 0.5)
+	print("GameMapTest: Puzzle re-armed — ", area_name)
 
 
 func _on_bot_solved_puzzle(_area_name: String, area_ref: Area2D) -> void:
 	"""Handle a survivor bot solving a puzzle (default level 1 deduction)."""
 	if not is_instance_valid(area_ref):
 		return
-	# Bot solves at level 1 by default; level tracking could be enhanced later
-	_on_puzzle_solved(area_ref, 1)
+	# Bot solves at level 1 by default; level tracking could be enhanced later.
+	# Bots grant the reward ring but do NOT count toward the human's promotion.
+	_reward_puzzle_solve(area_ref, 1)
 
 
 func _on_puzzle_closed(puz_scene: PuzzleManager) -> void:
@@ -3511,6 +3675,152 @@ func _update_death_fade(delta: float) -> void:
 		_end_match()
 
 
+# ═══════════════ TEST MODE: RINGS → BECOME THE KILLER ═══════════════
+
+func _check_ring_promotion() -> void:
+	"""Called after the human earns a ring. Promotes the survivor to the killer
+	role once they reach the ring threshold (one-shot per match)."""
+	if _promotion_happened or _round_ended or _killer_won:
+		return
+	# Only a living survivor can be promoted (a dead human can't take the killer role).
+	if _character_name != "Greengrass":
+		return
+	if not is_instance_valid(_player):
+		return
+	var player_hp_check: float = float(_player.get("current_hp")) if "current_hp" in _player else 1.0
+	if player_hp_check <= 0.0:
+		return
+	if _match_rings_earned < RING_KILLER_THRESHOLD:
+		return
+	_promotion_happened = true
+	_promote_player_to_killer()
+
+
+func _find_free_ring_spawn() -> Vector2:
+	"""Pick a survivor spawn away from the killer bot for the replacement survivor."""
+	var spawns: Array[Vector2] = _map_manager.survivor_spawns if _map_manager else []
+	if not spawns.is_empty():
+		return spawns[randi() % spawns.size()]
+	return Vector2(512, 384)
+
+
+func _promote_player_to_killer() -> void:
+	"""Convert the human survivor into the Violentgrass killer mid-match WITHOUT
+	clearing the board. Saves the player's position, frees the human survivor node
+	and the AI killer bot, spawns a replacement survivor bot (keeps 8 combatants),
+	then re-spawns the human with the full killer wiring. The promoted killer gets
+	the standard killer-win ending (outro + LMS tail) when they win."""
+	if _round_ended or _killer_won:
+		return
+	print("GameMapTest: RINGS CAPTURED — promoting survivor to KILLER")
+	
+	# Remember the human's position before we free them, then free their node so
+	# the same spot is used for the killer respawn.
+	var human_pos: Vector2 = _player.global_position if is_instance_valid(_player) else Vector2(512, 384)
+	
+	# Free the human survivor's HUD bars + ability icons (they rebuild on respawn).
+	var hud_node: CanvasLayer = $HUD
+	if hud_node:
+		for child_name in ["HealthBar", "StaminaBar", "AbilityIcons"]:
+			var c: Node = hud_node.get_node_or_null(child_name)
+			if is_instance_valid(c):
+				c.queue_free()
+	
+	# Free the human survivor + its ability-icon extras.
+	if is_instance_valid(_player):
+		_player.remove_from_group("survivors")
+		_player.queue_free()
+		_player = null
+	
+	# Free the AI killer bot (it loses to the promoted human killer).
+	if is_instance_valid(_killer_bot):
+		_killer_bot.remove_from_group("killers")
+		_killer_bot.queue_free()
+		_killer_bot = null
+	if is_instance_valid(_ai_difficulty):
+		_ai_difficulty.queue_free()
+		_ai_difficulty = null
+	
+	# Replace the vacated survivor slot: spawn one new survivor bot so the match
+	# stays 8 survivors + 1 killer (now the human).
+	var replace_pos: Vector2 = _find_free_ring_spawn()
+	_bots_create_survivor(replace_pos, "SurvivorBot_RingPromo")
+	
+	# Update role bookkeeping BEFORE spawning so the killer wiring is correct.
+	GameState.is_killer = true
+	_character_name = "Violentgrass"
+	
+	# Spawn the human as the killer at their old position.
+	spawn_player(true)
+	if is_instance_valid(_player):
+		_player.global_position = human_pos
+	
+	# Switch chase-music source to the killer theme (killer = single Chase layer).
+	_setup_chase_music(killer_chase_folder)
+	_refresh_survivor_cache()
+	_attach_ai_difficulty()  # no-op: killer bot is null now
+	
+	# Reset LMS/music flags so the match continues normally under the new role.
+	_ending_music_switched = false
+	
+	# Big telegraph so the moment lands.
+	_show_promotion_telegraph()
+	print("GameMapTest: Promotion complete — human is now Violentgrass killer")
+
+
+func _show_promotion_telegraph() -> void:
+	"""Full-screen 'YOU ARE THE KILLER' moment when the ring threshold is hit."""
+	var layer := CanvasLayer.new()
+	layer.name = "PromotionTelegraph"
+	layer.layer = 62
+	add_child(layer)
+	
+	# Wrapper Control carries the fade — CanvasLayer has no `modulate`, so tween
+	# a full-screen Control instead (a CanvasLayer child maps 1:1 to viewport px).
+	var root := Control.new()
+	root.name = "Root"
+	root.position = Vector2(0, 0)
+	root.size = Vector2(1280, 720)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(root)
+	
+	var dim := ColorRect.new()
+	dim.name = "Dim"
+	dim.position = Vector2(0, 0)
+	dim.size = Vector2(1280, 720)
+	dim.color = Color(0.5, 0.0, 0.0, 0.35)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(dim)
+	
+	var title := Label.new()
+	title.name = "Title"
+	title.text = "☠ RINGS CAPTURED — YOU ARE THE KILLER ☠"
+	title.position = Vector2(140, 300)
+	title.size = Vector2(1000, 70)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color(1, 0.2, 0.15, 1))
+	title.add_theme_color_override("font_outline_color", Color(0.2, 0.0, 0.0, 1))
+	title.add_theme_constant_override("outline_size", 6)
+	title.add_theme_font_size_override("font_size", 40)
+	root.add_child(title)
+	
+	var sub := Label.new()
+	sub.name = "Sub"
+	sub.text = "Hunt them all. Every survivor."
+	sub.position = Vector2(240, 390)
+	sub.size = Vector2(800, 40)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.add_theme_color_override("font_color", Color(1, 0.85, 0.6, 1))
+	sub.add_theme_font_size_override("font_size", 20)
+	root.add_child(sub)
+	
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(root, "modulate:a", 0.0, 3.5).set_delay(1.0)
+	tween.tween_callback(layer.queue_free).set_delay(4.6)
+
+
 func _end_match() -> void:
 	"""Store match stats in GameState and transition to lobby for analysis."""
 	# Guard: only end the round once.
@@ -3518,7 +3828,7 @@ func _end_match() -> void:
 		return
 	_round_ended = true
 	
-	# Round-end reward: +1 gift ring (persistent) for every round played, plus
+	# TEST MODE round-end gift: +1 ring (persistent) for every round played, plus
 	# increment the player's "rounds played" counter. Applied BEFORE the killer-won
 	# branch so it fires on every match end (killer-win and generic).
 	var gs_gift = get_node_or_null("/root/GameState")
@@ -3527,7 +3837,7 @@ func _end_match() -> void:
 		if not uname.is_empty():
 			gs_gift.set_player_rings(uname, gs_gift.get_player_rings(uname) + ROUND_END_GIFT_RING)
 			gs_gift.add_player_round(uname)
-			print("GameMap: Round end — +%d gift ring, rounds played now %d" % [
+			print("GameMapTest: Round end — +%d gift ring, rounds played now %d" % [
 				ROUND_END_GIFT_RING, gs_gift.get_player_rounds(uname)])
 	
 	# Store stats in GameState for the lobby to display
@@ -3552,8 +3862,8 @@ func _end_match() -> void:
 	
 	# Generic match-end → lobby (no loading bar).
 	get_tree().paused = false
-	SceneFader.go("res://scenes/lobby.tscn", "")
-	print("GameMap: Match ended — transitioning to lobby for analysis")
+	SceneFader.go("res://scenes/lobby_test.tscn", "")
+	print("GameMapTest: Match ended — transitioning to test lobby for analysis")
 
 
 func _freeze_match_for_analysis() -> void:
@@ -3622,27 +3932,29 @@ func _play_killer_win_outro() -> void:
 		if is_instance_valid(mp):
 			mp.stop()
 
-	# The chase layers used to keep playing over the outro because
-	# _freeze_match_for_analysis clears their flags but not the players
-	# themselves. Stop every chase player explicitly.
+	# TEST FIX (user-reported): the chase layers used to keep playing over the
+	# outro because _freeze_match_for_analysis clears their flags but not the
+	# players themselves. Stop every chase player explicitly.
 	for cp: AudioStreamPlayer in _chase_players:
 		if is_instance_valid(cp):
 			cp.stop()
 	# Also mark ending music as switched so the last-31s generic MATCH_ENDING
 	# track can never start during the frozen outro (it would layer on top of the
-	# LMS tail — only the LMS tail should play here).
+	# LMS tail — the user explicitly wants ONLY the LMS tail here).
 	_ending_music_switched = true
 
-	# Keep the LMS song playing through the outro. If more than the final ~1:33
-	# (LMS_HEARTBEAT_FROM) still remains, jump to the start of that dramatic tail
-	# so the outro always lands on the best part of the track.
+	# Keep the LMS song playing through the outro. The dramatic tail is the final
+	# ~1:33 (LMS_HEARTBEAT_FROM) of the track — land the outro right there:
+	# jump forward to the start of the tail if playback is earlier, otherwise keep
+	# the current position (already inside the tail). Never jump backward.
 	if is_instance_valid(_lms_music_player):
 		var song_len: float = LMS_MUSIC_DURATION
 		if is_instance_valid(_lms_music_player.stream) and _lms_music_player.stream.get_length() > 0.0:
 			song_len = _lms_music_player.stream.get_length()
-		var remaining: float = song_len - _lms_music_player.get_playback_position()
-		if remaining > LMS_HEARTBEAT_FROM + 0.5:
-			_lms_music_player.seek(maxf(song_len - LMS_HEARTBEAT_FROM, 0.0))
+		var pos: float = _lms_music_player.get_playback_position()
+		var tail_start: float = maxf(song_len - LMS_HEARTBEAT_FROM, 0.0)
+		if pos < tail_start - 0.5:
+			_lms_music_player.seek(tail_start)
 		if not _lms_music_player.playing:
 			_lms_music_player.play()
 
@@ -3796,8 +4108,8 @@ func _continue_after_killer_win() -> void:
 	# Analysis already shown here — don't re-show it inside the lobby.
 	GameState.show_analysis = false
 	get_tree().paused = false
-	SceneFader.go("res://scenes/lobby.tscn", "")
-	print("GameMap: Killer-win analysis done — transitioning to lobby")
+	SceneFader.go("res://scenes/lobby_test.tscn", "")
+	print("GameMapTest: Killer-win analysis done — transitioning to test lobby")
 
 
 func _cleanup_for_lobby() -> void:
@@ -3975,7 +4287,7 @@ func _attach_ai_difficulty() -> void:
 	_ai_difficulty.name = "AIDifficulty"
 	_killer_bot.add_child(_ai_difficulty)
 	_ai_difficulty.initialize(_killer_bot)
-	# Start the AI killer at "Normal" difficulty, not Easy.
+	# TEST MODE: start the 8-vs-1 killer at "Normal" difficulty, not Easy.
 	_ai_difficulty.start_difficulty = AI_DIFFICULTY_START
 	print("GameMap: AI difficulty controller attached (start=%.2f)" % [_ai_difficulty.start_difficulty])
 

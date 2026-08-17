@@ -164,6 +164,7 @@ static func autosave(username: String) -> bool:
 		var bus_idx: int = AudioServer.get_bus_index(bus_name)
 		if bus_idx >= 0:
 			data["bus_vol_" + bus_name] = AudioServer.get_bus_volume_db(bus_idx)
+			data["bus_mute_" + bus_name] = AudioServer.is_bus_mute(bus_idx)
 	return save_player_data(username, data)
 
 
@@ -201,6 +202,13 @@ static func autoload(username: String) -> bool:
 			var bus_idx: int = AudioServer.get_bus_index(bus_name)
 			if bus_idx >= 0:
 				AudioServer.set_bus_volume_db(bus_idx, data[key])
+	# Restore audio bus mute states
+	for bus_name in ["Master", "Music", "SFX"]:
+		var mute_key: String = "bus_mute_" + bus_name
+		if data.has(mute_key):
+			var bus_idx: int = AudioServer.get_bus_index(bus_name)
+			if bus_idx >= 0:
+				AudioServer.set_bus_mute(bus_idx, data[mute_key])
 
 	print("SaveManager: Loaded data for '%s'" % username)
 	return true

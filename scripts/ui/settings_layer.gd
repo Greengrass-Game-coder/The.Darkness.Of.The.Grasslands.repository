@@ -18,9 +18,9 @@ const KEYBINDABLE_ACTIONS: Array[Dictionary] = [
 	{"action": "move_up",    "label": "Move Up",    "default": KEY_W},
 	{"action": "move_down",  "label": "Move Down",  "default": KEY_S},
 	{"action": "sprint",     "label": "Sprint",     "default": KEY_SHIFT},
-	{"action": "ability_1",  "label": "Ability 1 (Block)",   "default": KEY_Q},
-	{"action": "ability_2",  "label": "Ability 2 (Punch)",   "default": KEY_E},
-	{"action": "ability_3",  "label": "Ability 3 (Flower)",  "default": KEY_R},
+	{"action": "ability_1",  "label": "Ability 1",   "default": KEY_Q},
+	{"action": "ability_2",  "label": "Ability 2",   "default": KEY_E},
+	{"action": "ability_3",  "label": "Ability 3",  "default": KEY_R},
 	{"action": "ability_4",  "label": "Ability 4",           "default": KEY_T},
 ]
 
@@ -44,9 +44,9 @@ const SECTIONS: Array[Dictionary] = [
 			{"type": "keybind", "label": "Move Up", "action": "move_up"},
 			{"type": "keybind", "label": "Move Down", "action": "move_down"},
 			{"type": "keybind", "label": "Sprint", "action": "sprint"},
-			{"type": "keybind", "label": "Ability 1 (Block)", "action": "ability_1"},
-			{"type": "keybind", "label": "Ability 2 (Punch)", "action": "ability_2"},
-			{"type": "keybind", "label": "Ability 3 (Flower)", "action": "ability_3"},
+			{"type": "keybind", "label": "Ability 1", "action": "ability_1"},
+			{"type": "keybind", "label": "Ability 2", "action": "ability_2"},
+			{"type": "keybind", "label": "Ability 3", "action": "ability_3"},
 			{"type": "keybind", "label": "Ability 4", "action": "ability_4"},
 		]
 	},
@@ -61,7 +61,9 @@ const SECTIONS: Array[Dictionary] = [
 		"items": [
 			{"label": "Master Volume", "type": "slider", "bus": "Master"},
 			{"label": "Music Volume", "type": "slider", "bus": "Music"},
+			{"label": "Music Muted", "type": "bus_mute", "bus": "Music", "default": false},
 			{"label": "SFX Volume", "type": "slider", "bus": "SFX"},
+			{"label": "Sound Effects Muted", "type": "bus_mute", "bus": "SFX", "default": false},
 		]
 	},
 	{
@@ -145,6 +147,8 @@ func _build_sections() -> void:
 						_add_toggle_item(item_data, section)
 					"slider":
 						_add_slider_item(item_data, section)
+					"bus_mute":
+						_add_bus_mute_item(item_data, section)
 					"action":
 						_add_action_item(item_data, section)
 					"keybind":
@@ -257,6 +261,40 @@ func _add_slider_item(item_data: Dictionary, section: VBoxContainer) -> void:
 	section.add_child(vbox)
 
 
+func _add_bus_mute_item(item_data: Dictionary, section: VBoxContainer) -> void:
+	"""Add a CheckBox that mutes/unmutes an audio bus."""
+	var label_text: String = item_data.get("label", "Mute")
+	var bus_name: String = item_data.get("bus", "Master")
+	
+	var hbox := HBoxContainer.new()
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	
+	var check := CheckBox.new()
+	check.text = "  " + label_text
+	check.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1))
+	check.add_theme_font_size_override("font_size", 16)
+	
+	# Read current mute state from AudioServer
+	var bus_idx: int = AudioServer.get_bus_index(bus_name)
+	if bus_idx >= 0:
+		check.button_pressed = AudioServer.is_bus_mute(bus_idx)
+	else:
+		check.button_pressed = item_data.get("default", false)
+	
+	check.toggled.connect(_on_bus_mute_toggled.bind(bus_name))
+	hbox.add_child(check)
+	section.add_child(hbox)
+
+
+func _on_bus_mute_toggled(value: bool, bus_name: String) -> void:
+	"""Mute/unmute an audio bus and persist the state."""
+	var bus_idx: int = AudioServer.get_bus_index(bus_name)
+	if bus_idx >= 0:
+		AudioServer.set_bus_mute(bus_idx, value)
+	_save_settings()
+
+
 func _add_action_item(item_data: Dictionary, section: VBoxContainer) -> void:
 	"""Add a CheckBox that triggers a DisplayServer action (Fullscreen/VSync)."""
 	var label_text: String = item_data.get("label", "")
@@ -362,7 +400,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	
 	# Add new event
 	var new_event := InputEventKey.new()
-	new_event.keycode = keycode
+	new_event.keycode = keycode as Key
 	InputMap.action_add_event(action_name, new_event)
 	
 	# Update display
@@ -415,7 +453,7 @@ func _load_keybinds() -> void:
 		if InputMap.has_action(aname):
 			InputMap.action_erase_events(aname)
 			var ev := InputEventKey.new()
-			ev.keycode = keycode
+			ev.keycode = keycode as Key
 			InputMap.action_add_event(aname, ev)
 
 

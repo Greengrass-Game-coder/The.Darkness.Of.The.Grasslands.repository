@@ -210,3 +210,8 @@ func _apply_saved_volumes() -> void:
 			var idx: int = AudioServer.get_bus_index(bus_name)
 			if idx >= 0:
 				AudioServer.set_bus_volume_db(idx, data[key])
+		var mute_key: String = "bus_mute_" + bus_name
+		if data.has(mute_key):
+			var idx: int = AudioServer.get_bus_index(bus_name)
+			if idx >= 0:
+				AudioServer.set_bus_mute(idx, data[mute_key])
