@@ -39,6 +39,9 @@ var player_money: int = 0
 ## Rings (Killer chance) tracking per player
 var player_rings: Dictionary = {}
 
+## Rounds played tracking per player (persisted for profile popup display)
+var player_rounds: Dictionary = {}
+
 func add_money(amount: int) -> void:
 	"""Add to the player's money."""
 	player_money += amount
@@ -55,6 +58,15 @@ func set_player_rings(player_name: String, rings: int) -> void:
 
 func get_player_rings(player_name: String) -> int:
 	return player_rings.get(player_name, 0)
+
+func set_player_rounds(player_name: String, rounds: int) -> void:
+	player_rounds[player_name] = rounds
+
+func get_player_rounds(player_name: String) -> int:
+	return player_rounds.get(player_name, 0)
+
+func add_player_round(player_name: String) -> void:
+	player_rounds[player_name] = player_rounds.get(player_name, 0) + 1
 
 func get_players_sorted_by_rings() -> Array[String]:
 	"""Return player names sorted by rings (descending)."""

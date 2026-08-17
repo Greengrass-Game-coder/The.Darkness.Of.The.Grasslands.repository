@@ -1304,6 +1304,7 @@ func _show_player_info_popup(player_name: String) -> void:
 	# Stats
 	var stats: Array[String] = [
 		"Rings: %d" % GameState.get_player_rings(player_name),
+		"Rounds Played: %d" % GameState.get_player_rounds(player_name),
 		"Killer: Violentgrass",
 		"Survivor: Greengrass",
 		"Playtime: --",

@@ -150,6 +150,7 @@ static func autosave(username: String) -> bool:
 	var data: Dictionary = {
 		"player_money": GameState.player_money,
 		"player_rings": GameState.player_rings.duplicate(true),
+		"player_rounds": GameState.player_rounds.duplicate(true),
 		"avatar_type": GameState.avatar_type,
 		"display_name": GameState.display_name,
 		"selected_survivor": GameState.selected_survivor,
@@ -176,6 +177,8 @@ static func autoload(username: String) -> bool:
 		GameState.player_money = data.player_money
 	if data.has("player_rings") and data.player_rings is Dictionary:
 		GameState.player_rings = data.player_rings.duplicate(true)
+	if data.has("player_rounds") and data.player_rounds is Dictionary:
+		GameState.player_rounds = data.player_rounds.duplicate(true)
 	if data.has("avatar_type"):
 		GameState.avatar_type = data.avatar_type
 	if data.has("display_name"):

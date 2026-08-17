@@ -38,6 +38,16 @@ var _last_known_target_pos: Vector2 = Vector2.ZERO
 var _investigate_timer: float = 0.0
 var _bored_timer: float = 0.0
 
+# ── SMARTER TARGETING ──
+# The killer prefers a lone / low-HP / puzzle-solving survivor over the merely
+# nearest one, so it plays like a real hunter instead of blindly chasing whoever
+# is closest. Also uses navigation to cut corners around walls.
+var _nav_agent: NavigationAgent2D = null
+var _nav_path_timer: float = 0.0
+const NAV_PATH_RECOMPUTE: float = 0.25
+var _target_retarget_timer: float = 0.0
+const TARGET_RETARGET_INTERVAL: float = 1.2
+
 
 func _ready() -> void:
 	super()
@@ -45,6 +55,13 @@ func _ready() -> void:
 	current_stamina = INF
 	_patrol_dir = _random_dir()
 	_strafing_dir = 1.0 if randf() > 0.5 else -1.0
+	
+	# Smart wall-aware pathing around corners.
+	_nav_agent = NavigationAgent2D.new()
+	_nav_agent.name = "NavAgent"
+	_nav_agent.path_desired_distance = 12.0
+	_nav_agent.target_desired_distance = 24.0
+	add_child(_nav_agent)
 	
 	# Give bot a distinct purple tint to distinguish from player killers
 	modulate = Color(1.0, 0.8, 1.0, 1.0)
@@ -180,7 +197,19 @@ func _ai_move(_delta: float) -> void:
 	var use_sprint: bool = dist > sprint_threshold and has_los
 	var speed: float = sprint_speed if use_sprint else move_speed
 
-	if has_los:
+	# SMARTER MOVEMENT: when the target is behind a wall (no LOS), use the nav
+	# region to cut around the corner instead of grinding into the wall face.
+	if not has_los and is_instance_valid(_nav_agent):
+		_nav_path_timer -= _delta
+		if _nav_path_timer <= 0.0 or _nav_agent.is_target_reached():
+			_nav_path_timer = NAV_PATH_RECOMPUTE
+			_nav_agent.target_position = _target.global_position
+		if _nav_agent.is_navigation_finished():
+			velocity = Vector2.ZERO
+		else:
+			velocity = _nav_agent.get_next_path_position() - global_position
+			velocity = velocity.normalized() * speed
+	elif has_los:
 		velocity = dir.normalized() * speed
 	else:
 		velocity = dir.normalized() * move_speed
@@ -207,17 +236,52 @@ func _ai_strafe(_delta: float) -> void:
 # ---------- TARGETING ----------
 
 func _ai_find_target() -> void:
+	# Retarget infrequently so a "locked" hunt feels committed, not jittery.
+	_target_retarget_timer -= get_physics_process_delta_time()
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
-	var nearest: Node2D = null
-	var nearest_dsq: float = INF
+	if is_instance_valid(_target) and is_instance_valid(_target.get_parent()) and _target_retarget_timer > 0.0:
+		# Keep the current target if it's still alive and close enough.
+		if global_position.distance_to(_target.global_position) <= aggro_range * 1.3:
+			_last_known_target_pos = _target.global_position
+			return
+	_target_retarget_timer = TARGET_RETARGET_INTERVAL
+	
+	var best: Node2D = null
+	var best_score: float = INF
 	for s in survivors:
-		if is_instance_valid(s):
-			var dsq: float = global_position.distance_squared_to(s.global_position)
-			if dsq < nearest_dsq:
-				nearest_dsq = dsq
-				nearest = s as Node2D
-	if nearest != null and sqrt(nearest_dsq) <= aggro_range:
-		_target = nearest
+		if not is_instance_valid(s):
+			continue
+		var d: float = global_position.distance_to(s.global_position)
+		if d > aggro_range:
+			continue
+		# Score: punish distance, but reward a lone survivor (few allies nearby),
+		# a low-HP survivor, and one who is isolated from the pack. This makes the
+		# AI pick off split survivors instead of always hounding the same person.
+		var allies_near: int = 0
+		for t in survivors:
+			if not is_instance_valid(t) or t == s:
+				continue
+			if s.global_position.distance_to(t.global_position) < 260.0:
+				allies_near += 1
+		var hp_ratio: float = 1.0
+		if "current_hp" in s and "max_hp" in s:
+			var chp: float = s.get("current_hp")
+			hp_ratio = chp / maxf(s.get("max_hp"), 1.0)
+		var move_speed_ratio: float = 160.0
+		if "move_speed" in s:
+			move_speed_ratio = float(s.get("move_speed"))
+		var speed_ratio: float = 160.0 / maxf(move_speed_ratio, 1.0)
+		# Weighted score: distance matters, but lone-wolf + injured targets score
+		# far better than clustered healthy ones within the same area.
+		var score: float = d
+		score += allies_near * 140.0
+		score += hp_ratio * 90.0
+		score -= speed_ratio * 40.0
+		if score < best_score:
+			best_score = score
+			best = s as Node2D
+	if best != null:
+		_target = best
 		_last_known_target_pos = _target.global_position
 		_bored_timer = 0.0
 	elif _investigate_timer < 5.0 and _last_known_target_pos != Vector2.ZERO:
@@ -316,17 +380,22 @@ func _ai_teleport_to_random() -> void:
 	_change_state(State.TELEPORTING)
 	_play_animation("teleport")
 
-	# Random destination
-	var offset: Vector2 = Vector2(
-		randf_range(-teleport_range, teleport_range),
-		randf_range(-teleport_range, teleport_range)
-	)
-	var destination: Vector2 = global_position + offset
+	# SMARTER DESTINATION: teleport to just off-line-of-sight of the target,
+	# landing relatively close so the killer reappears near them (practically the
+	# killer "cuts them off") rather than somewhere random on the map.
+	var destination: Vector2 = global_position + _random_dir() * teleport_range * 0.6
 
 	if is_instance_valid(_target):
-		var to_target: Vector2 = _target.global_position - destination
-		if to_target.length() > aggro_range * 0.8:
-			destination = _target.global_position + _random_dir() * teleport_range * 0.5
+		var target_dir: Vector2 = (_target.global_position - global_position).normalized()
+		var lateral: Vector2 = Vector2(-target_dir.y, target_dir.x)
+		var dist_to_target: float = global_position.distance_to(_target.global_position)
+		# Land just behind / beside the target at moderate range, on the far side
+		# of where they're facing (running away), so we come out chasing.
+		var approach: Vector2 = target_dir * 150.0 + lateral * (150.0 if _strafing_dir > 0.0 else -150.0)
+		destination = _target.global_position + approach
+		# Keep it within aggro range so it's never useless.
+		if dist_to_target > aggro_range * 0.9:
+			destination = _target.global_position + target_dir * teleport_range * 0.8
 
 	# Raycast to avoid walls
 	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state

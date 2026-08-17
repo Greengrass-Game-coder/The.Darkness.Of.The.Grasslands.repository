@@ -42,6 +42,10 @@ extends Node
 @export var block_prediction_easy: float = 0.3
 @export var block_prediction_hard: float = 0.85
 
+## TEST MODE starting-difficulty floor (0.0=Easy → 1.0=Nightmare). Set ~0.28 so
+## the big 8-vs-1 test match starts at "Normal" and ramps from there.
+@export var start_difficulty: float = 0.0
+
 # ── State ──
 var _difficulty: float = 0.0  # 0.0 (easiest) → 1.0 (hardest)
 var _bot: Node2D = null
@@ -64,17 +68,20 @@ func update_difficulty(time_remaining: float, survivor_count: int, target_hp: fl
 	# 1. Time pressure: 0.0 at 240s+, 1.0 at 0s (clamped so extra time doesn't reduce difficulty)
 	var time_factor: float = clampf(1.0 - (time_remaining / 240.0), 0.0, 1.0)
 
-	# 2. Survivor count: more aggressive when fewer survivors remain
-	var survivor_factor: float = 1.0 - (float(survivor_count) / 4.0)
+	# 2. Survivor count: more aggressive when fewer survivors remain. The divisor
+	# is adaptive to the match size (4 default, but 8 in TEST MODE) so a big
+	# survivor group doesn't instantly read as full board difficulty.
+	var divisor: float = maxf(4.0, float(survivor_count))
+	var survivor_factor: float = 1.0 - (float(survivor_count) / divisor)
 
 	# 3. Target HP: smell blood when target is injured
 	var hp_factor: float = 1.0 - clampf(target_hp / 100.0, 0.0, 1.0)
 
-	# Weighted blend (time is primary, survivors secondary, HP tertiary)
-	_difficulty = clampf(
-		(time_factor * 0.6 + survivor_factor * 0.25 + hp_factor * 0.15) * scaling_rate,
-		0.0, 1.0
-	)
+	# Weighted blend (time is primary, survivors secondary, HP tertiary). The
+	# TEST MODE start-difficulty floor lifts the floor to "Normal" (~0.28) so the
+	# 8-vs-1 match begins challenging rather than trivial, then still ramps up.
+	var raw: float = (time_factor * 0.6 + survivor_factor * 0.25 + hp_factor * 0.15) * scaling_rate
+	_difficulty = clampf(maxf(raw, start_difficulty), 0.0, 1.0)
 
 	_apply_to_bot()
 

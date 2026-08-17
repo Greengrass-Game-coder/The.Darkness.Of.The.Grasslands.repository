@@ -50,6 +50,10 @@ var _strafe_change_timer: float = 0.0
 var _just_hit_timer: float = 0.0
 var _has_los_to_killer: bool = false
 
+# "human" behaviors:
+var _hide_timer: float = 0.0      # Holds still (hidden) after LOS breaks mid-flee
+var _puzzle_index: int = 0        # Bot's chosen puzzle slot for distribution
+
 # NavigationAgent2D for pathfinding around walls
 var _navigation_agent: NavigationAgent2D = null
 var _nav_target: Vector2 = Vector2.ZERO
@@ -59,6 +63,12 @@ var _nav_target_set: bool = false
 func _ready() -> void:
 	super()
 	modulate = Color(0.7, 0.7, 1.0, 1.0)
+	# Give each bot a distinct puzzle slot so several bots don't all swarm the
+	# same puzzle. Parsed from the bot's name ("SurvivorBot_N").
+	for ch: String in str(name).split(""):
+		if ch.is_valid_int():
+			_puzzle_index = int(ch)
+			break
 	
 	# Create NavigationAgent2D for pathfinding
 	_navigation_agent = NavigationAgent2D.new()
@@ -170,9 +180,17 @@ func _physics_process(delta: float) -> void:
 	# PRIORITY 3: Go to nearest unsolved puzzle (with killer awareness)
 	_target_puzzle = _find_nearest_unsolved_puzzle()
 	if _target_puzzle != null:
-		# Abort puzzle approach if killer is too close to the puzzle
+		# Abort puzzle approach if the killer is too close to the puzzle OR is
+		# actively chasing THIS bot (killer right on top of us).
 		if is_instance_valid(_target_killer) and _is_killer_near_puzzle(_target_puzzle, dist_to_killer):
 			_ai_patrol(delta)
+			move_and_slide()
+			return
+		# SMART PACE: if the killer is clearly busy chasing another survivor far
+		# away, this bot keeps solving instead of scattering — a "teamwork"
+		# behavior real players rely on.
+		if is_instance_valid(_target_killer) and _is_killer_busy_with_other(dist_to_killer):
+			_ai_go_to_puzzle(delta)
 			move_and_slide()
 			return
 		_ai_go_to_puzzle(delta)
@@ -193,6 +211,16 @@ func _is_killer_near_puzzle(puzzle: Area2D, killer_dist: float) -> bool:
 		return true
 	var killer_to_puzzle: float = _target_killer.global_position.distance_to(puzzle.global_position)
 	return killer_to_puzzle < flee_range * 0.6
+
+
+func _is_killer_busy_with_other(self_dist_to_killer: float) -> bool:
+	"""true when the killer is far from THIS bot, meaning they're likely chasing
+	(or hunting) another survivor. Real survivors keep doing puzzles then."""
+	if not is_instance_valid(_target_killer):
+		return false
+	# If the killer is way outside our flee range, they're not after us → keep
+	# working. (self_dist is the distance to the killer this frame.)
+	return self_dist_to_killer > flee_range
 
 
 func _check_los_to_killer() -> void:
@@ -242,6 +270,16 @@ func _find_nearest_unsolved_puzzle() -> Area2D:
 			for child in parent.get_children():
 				if child is Area2D and child.name.begins_with("Puzzle_"):
 					_cached_puzzles.append(child as Area2D)
+	# Distribution: each bot claims a DIFFERENT unsolved puzzle slot so several
+	# bots spread across the map instead of all piling onto one puzzle.
+	if not _cached_puzzles.is_empty() and _cached_puzzles.size() > 1:
+		var unsolved: Array[Area2D] = []
+		for puzzle in _cached_puzzles:
+			if is_instance_valid(puzzle) and not puzzle.name in _solved_names:
+				unsolved.append(puzzle as Area2D)
+		if not unsolved.is_empty():
+			return unsolved[_puzzle_index % unsolved.size()]
+	
 	var nearest: Area2D = null
 	var nearest_dist: float = INF
 	for puzzle in _cached_puzzles:
@@ -315,6 +353,23 @@ func _ai_flee(delta: float) -> void:
 	var dist_from_killer: float = to_killer.length()
 	var away_dir: Vector2 = (-to_killer).normalized()
 	var perpendicular: Vector2 = Vector2(-to_killer.y, to_killer.x).normalized()
+	
+	# ── 0. HIDE IN COVER ──
+	# Once the bot has broken LOS from the killer (wall between them) and the
+	# killer is farther out, it stops and "hides" briefly instead of sprinting for
+	# ever — like a real player holding still behind a corner. Peek/re-approach
+	# after a short hold so it doesn't camp forever.
+	if not _has_los_to_killer and dist_from_killer > block_threshold * 0.7:
+		_hide_timer += delta
+		if _hide_timer < 0.9:
+			velocity = Vector2.ZERO
+			_change_state(State.IDLE)
+			_play_animation("idle")
+			move_and_slide()
+			return
+	# Reset the hide timer whenever the killer actually sees/approaches us again.
+	if _has_los_to_killer and dist_from_killer < safe_los_distance:
+		_hide_timer = 0.0
 	
 	# ── 1. Choose a flee target that BREAKS line-of-sight (runs around walls) ──
 	# The bot samples a fan of candidate directions and picks the one that both

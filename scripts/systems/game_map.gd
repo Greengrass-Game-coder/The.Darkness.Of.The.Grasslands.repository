@@ -62,6 +62,7 @@ const LMS_KILL_ZOOM_IN: float = 0.5  # Tight zoom during kill punch-in (smaller 
 const LMS_KILL_ZOOM_HOLD: float = 0.6  # Seconds spent tight before pulling back out
 const LMS_REVEAL_DURATION: float = 4.0  # Seconds the survivor-reveal arrow stays on screen
 const LMS_MUSIC_DURATION: float = 100.0  # Fallback countdown length (actual WAV is ~99.7s)
+const ROUND_END_GIFT_RING: int = 1    # +1 gift ring added to persistent player_rings each round
 # ── LMS end-of-song camera heartbeat (keyed to MUSIC playback, not match clock) ──
 # While the LMS song still has LMS_HEARTBEAT_FROM seconds left to play, the camera
 # does a gentle screen zoom in/out pulse at a constant 200 BPM. Amplitude is
@@ -70,6 +71,11 @@ const LMS_HEARTBEAT_FROM: float = 93.0  # Song has 1m33s left → heartbeat begi
 const LMS_HEARTBEAT_BPM_START: float = 200.0
 const LMS_HEARTBEAT_BPM_END: float = 200.0  # Constant 200 BPM (user requested 200, not 150-175)
 const LMS_HEARTBEAT_AMOUNT: float = 0.06  # Zoom difference per heartbeat beat (subtle)
+# ── LMS heartbeat circular red pulse overlay ──
+# A red vignette that throbs in sync with the camera heartbeat (same beat phase).
+const LMS_HEARTBEAT_PULSE_SHADER: String = "res://shaders/lms_heartbeat_pulse.gdshader"
+const LMS_HEARTBEAT_PULSE_MAX: float = 0.55   # Peak red fade opacity during a beat
+const LMS_HEARTBEAT_PULSE_FADE: float = 8.0   # How fast the red lerps toward the current beat level
 # ── LMS music pinch (zoomin at 26.5s, zoomout at 27s of the MUSIC) ──
 const LMS_PINCH_IN_AT: float = 26.5   # Music play position (s) → zoom in a little
 const LMS_PINCH_OUT_AT: float = 27.0  # Music play position (s) → zoom back out
@@ -181,6 +187,11 @@ var _lms_alpha_target: float = 0.0     # Desired VFX opacity this frame
 var _lms_heartbeat_phase: float = 0.0  # Accumulator for BPM-synced zoom pulse
 var _lms_heartbeat_active: bool = false  # True once 93s-remaining heartbeat enters
 var _lms_pinch_done: bool = false      # One-shot 27s→26.5s zoom pinch already fired
+# ── LMS heartbeat circular red pulse overlay ──
+var _lms_pulse_layer: CanvasLayer = null  # Full-screen overlay for the red throb
+var _lms_pulse_rect: ColorRect = null     # The rect whose shader draws the red fade
+var _lms_pulse_mat: ShaderMaterial = null # Shared material (so intensity is updated live)
+var _lms_pulse_current: float = 0.0       # Current red intensity (lerped toward target)
 
 # Match stats
 var _total_damage_taken: float = 0.0
@@ -208,6 +219,8 @@ var _multiplayer_sync: Node = null
 
 # AI difficulty controller
 var _ai_difficulty: AIDifficultyController = null
+# The AI killer starts at "Normal" difficulty (0.28 floor), not Easy.
+const AI_DIFFICULTY_START: float = 0.28
 
 
 func _ready() -> void:
@@ -360,9 +373,10 @@ func _setup_music() -> void:
 func _switch_to_ending_music() -> void:
 	"""Switch map music to match-ending track at 30s remaining.
 	Plays as background music — chase can still play on top."""
-	if _lms_active:
+	if _lms_active or _round_ended:
 		# During the LMS finale the LMS track is the sole score; don't layer the
-		# generic MATCH_ENDING song on top of it.
+		# generic MATCH_ENDING song on top of it. Also never start it once the
+		# round has ended (the killer-win outro must play ONLY the LMS tail).
 		return
 	if _ending_music_switched:
 		return
@@ -887,6 +901,7 @@ func _process(delta: float) -> void:
 	_update_chase_music(delta)
 	_update_lms_vfx(delta)
 	_update_lms_heartbeat(delta)
+	_update_lms_pulse(delta)
 	_update_killer_speed(delta)
 	_check_everyone_dead()
 	
@@ -895,7 +910,7 @@ func _process(delta: float) -> void:
 	# LMS finale starts (1 survivor left) the LMS track/VFX own the ending, so
 	# the generic ending music, vignette and Violentgrass ending screen are all
 	# disabled here.
-	if not _lms_active and _time_remaining <= 31.0 and _bonus_target <= 0.0:
+	if not _lms_active and not _round_ended and _time_remaining <= 31.0 and _bonus_target <= 0.0:
 		_ending_start_time += delta
 		_update_ending_vignette()
 		_switch_to_ending_music()
@@ -1472,11 +1487,14 @@ func _update_chase_music(_delta: float) -> void:
 	"""Update chase music based on player role.
 	
 	- If player IS the killer → play ONLY the single Chase.wav track (no build-up
-	  layers) when close to survivors; stop only when genuinely far away.
+	  layers) when the human killer is close to survivors; stop only when
+	  genuinely far away.
 	- If player IS a survivor → play survivor's chase theme that starts its build
-	  (Layer1 → Layer2 → Layer3 is the best, one at a time, each for
-	  CHASE_BUILD_STEP_DURATION) while the killer is near, and only goes away when
-	  the killer is truly far.
+	  (Layer1 → Layer2 → Layer3, one at a time, each for
+	  CHASE_BUILD_STEP_DURATION) while the killer bot is close to the HUMAN
+	  player. The chase only reflects YOUR threat: it never plays just because
+	  the killer is near another survivor bot, and it fades out once the killer
+	  is far from Layer 1's range.
 	
 	Only ONE layer plays at a time (no stacking)."""
 
@@ -1492,31 +1510,30 @@ func _update_chase_music(_delta: float) -> void:
 	
 	var is_killer: bool = _character_name == "Violentgrass"
 	var chase_source: Node2D = null
+	var dist: float = INF
 	
 	if is_killer:
-		# Player is the killer — measure distance from player to nearest survivor
+		# Player IS the killer — the chase is driven by the human killer's
+		# proximity to the nearest surviving bot ("hunt them").
 		chase_source = _player if is_instance_valid(_player) else null
+		if is_instance_valid(chase_source):
+			for s in _cached_survivors:
+				if is_instance_valid(s):
+					var d: float = chase_source.global_position.distance_to(s.global_position)
+					if d < dist:
+						dist = d
 	else:
-		# Player is a survivor — measure distance from killer bot to nearest survivor
+		# Player IS a survivor — the chase reflects the threat to the HUMAN
+		# player ONLY. It plays when the killer bot is close to YOU and never
+		# because the killer happens to be near some other survivor bot.
 		chase_source = _killer_bot if is_instance_valid(_killer_bot) else null
+		if is_instance_valid(chase_source) and is_instance_valid(_player):
+			dist = chase_source.global_position.distance_to(_player.global_position)
 	
-	if not is_instance_valid(chase_source):
+	if not is_instance_valid(chase_source) or dist == INF:
 		_silence_all_chase()
 		return
 	
-	# Measure distance from chase source to nearest survivor (uses cached group list)
-	var closest_dist: float = INF
-	for s in _cached_survivors:
-		if is_instance_valid(s):
-			var d: float = chase_source.global_position.distance_to(s.global_position)
-			if d < closest_dist:
-				closest_dist = d
-	
-	if closest_dist == INF:
-		_silence_all_chase()
-		return
-	
-	var dist: float = closest_dist
 	var target_layer: int = -1
 	
 	if is_killer:
@@ -2246,6 +2263,10 @@ func _start_lms() -> void:
 	# Glue the ViolentBells VFX to the camera (full-screen overlay, resized to cover).
 	_show_lms_vfx()
 
+	# Create the circular red heart-pulse overlay (starts transparent; it throbs
+	# in sync with the camera heartbeat via _update_lms_heartbeat).
+	_show_lms_heartbeat_pulse()
+
 	# Give each remaining duelist their signature LMS aura: red/black for the
 	# Violentgrass killer, green/black for the Greengrass survivor.
 	_apply_lms_auras()
@@ -2296,6 +2317,11 @@ func _clear_lms_auras() -> void:
 	"""Remove every LMS aura shader so no character keeps a colored glow outside
 	the finale (and so characters freed on scene-change aren't left hanging)."""
 	for character: Node in _aura_nodes.keys():
+		# The character node may already be freed when the round ends mid-
+		# elimination (e.g. the timer runs out right as a survivor dies). Using a
+		# freed node as a dict key crashes, so skip it before the lookup.
+		if not is_instance_valid(character):
+			continue
 		var spr: AnimatedSprite2D = _aura_nodes[character]
 		if is_instance_valid(spr):
 			spr.material = null
@@ -2371,6 +2397,40 @@ func _update_lms_vfx(delta: float) -> void:
 	_lms_vfx_timer -= 1.0 / LMS_VFX_FPS
 	_lms_vfx_show_frame2 = not _lms_vfx_show_frame2
 	_lms_vfx_rect.texture = load(LMS_VFX_FRAME_2 if _lms_vfx_show_frame2 else LMS_VFX_FRAME_1)
+
+
+func _show_lms_heartbeat_pulse() -> void:
+	"""Create the full-screen circular red fade that throbs with the LMS camera
+	heartbeat. Transparent by default; _update_lms_heartbeat drives its shader
+	intensity every frame so it pulses in sync with the zoom pulse."""
+	if _lms_pulse_layer and is_instance_valid(_lms_pulse_layer):
+		return
+	if not ResourceLoader.exists(LMS_HEARTBEAT_PULSE_SHADER):
+		push_error("GameMap: heartbeat pulse shader not found.")
+		return
+
+	_lms_pulse_layer = CanvasLayer.new()
+	_lms_pulse_layer.name = "LmsHeartbeatPulseLayer"
+	_lms_pulse_layer.layer = 61  # Just above the VFX layer (60), below HUD (120+)
+	add_child(_lms_pulse_layer)
+
+	_lms_pulse_mat = ShaderMaterial.new()
+	_lms_pulse_mat.shader = load(LMS_HEARTBEAT_PULSE_SHADER)
+	_lms_pulse_mat.set_shader_parameter("intensity", 0.0)
+	# Match the viewport aspect so the circular fade stays a true circle.
+	var vp_size: Vector2 = get_viewport_rect().size
+	if vp_size.y > 0.0:
+		_lms_pulse_mat.set_shader_parameter("aspect", vp_size.x / vp_size.y)
+
+	_lms_pulse_rect = ColorRect.new()
+	_lms_pulse_rect.name = "LmsHeartbeatPulse"
+	_lms_pulse_rect.material = _lms_pulse_mat
+	_lms_pulse_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_lms_pulse_rect.color = Color(1, 1, 1, 1)
+	_lms_pulse_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_lms_pulse_layer.add_child(_lms_pulse_rect)
+
+	_lms_pulse_current = 0.0
 
 
 func _get_lms_killer_position() -> Vector2:
@@ -2467,6 +2527,30 @@ func _update_lms_heartbeat(delta: float) -> void:
 	else:
 		var t1: float = (cycle - half) / half
 		zoom_ctrl.set_zoom_silent(zoom_ctrl.default_zoom / (1.0 - LMS_HEARTBEAT_AMOUNT * t1), true)
+
+
+func _update_lms_pulse(delta: float) -> void:
+	"""Drive the circular red heart-pulse overlay to throb in sync with the LMS
+	camera heartbeat. Uses the same beat phase (same BPM) as _update_lms_heartbeat,
+	so the red fades in and out with the zoom pulse. When the heartbeat is off
+	(round over, not yet entered, song ending) it smoothly fades the red out."""
+	if not is_instance_valid(_lms_pulse_layer) or not is_instance_valid(_lms_pulse_rect):
+		return
+
+	var target: float = 0.0
+	if _lms_active and _lms_heartbeat_active and not _round_ended:
+		# Same constant 200 BPM used by the camera heartbeat.
+		var beat_seconds: float = 60.0 / LMS_HEARTBEAT_BPM_START
+		var cycle: float = fmod(_lms_heartbeat_phase, beat_seconds)
+		# Thump hardest at the beat boundary (aligned with the zoom-in peak),
+		# then decay through the rest of the beat — a heartbeat.
+		var decay: float = 1.0 - (cycle / beat_seconds)
+		target = LMS_HEARTBEAT_PULSE_MAX * pow(maxf(decay, 0.0), 1.5)
+
+	_lms_pulse_current = lerpf(_lms_pulse_current, target,
+			minf(delta * LMS_HEARTBEAT_PULSE_FADE, 1.0))
+	if is_instance_valid(_lms_pulse_mat):
+		_lms_pulse_mat.set_shader_parameter("intensity", _lms_pulse_current)
 
 
 func _trigger_lms_kill_zoom() -> void:
@@ -3434,22 +3518,37 @@ func _end_match() -> void:
 		return
 	_round_ended = true
 	
+	# Round-end reward: +1 gift ring (persistent) for every round played, plus
+	# increment the player's "rounds played" counter. Applied BEFORE the killer-won
+	# branch so it fires on every match end (killer-win and generic).
+	var gs_gift = get_node_or_null("/root/GameState")
+	if gs_gift != null:
+		var uname: String = gs_gift.logged_in_username
+		if not uname.is_empty():
+			gs_gift.set_player_rings(uname, gs_gift.get_player_rings(uname) + ROUND_END_GIFT_RING)
+			gs_gift.add_player_round(uname)
+			print("GameMap: Round end — +%d gift ring, rounds played now %d" % [
+				ROUND_END_GIFT_RING, gs_gift.get_player_rounds(uname)])
+	
 	# Store stats in GameState for the lobby to display
 	GameState.show_analysis = true
 	GameState.match_character_name = _character_name
 	GameState.match_damage_taken = _total_damage_taken
 	GameState.match_damage_dealt = _total_damage_dealt
 	
-	# Clean up everything so the round truly ends (no lingering audio/overlays).
-	_cleanup_for_lobby()
-	
 	# If the KILLER won (the last survivor died), we don't just cut to the lobby:
-	# cut to black, play Violentgrass's killer outro, freeze on its last frame and
-	# show the match analysis over that frozen frame before returning to the lobby.
+	# cut to black, let the LMS song's ~1:33 tail keep playing, then play
+	# Violentgrass's killer OUTRO on top of it, freeze on its last frame and show
+	# the match analysis over that frozen frame before returning to the lobby.
+	# The LMS music must survive until the outro finishes, so defer the full
+	# cleanup until the very end of the killer-win flow.
 	if _killer_won:
 		get_tree().paused = false
 		_play_killer_win_outro()
 		return
+
+	# Generic match-end: nothing special — full cleanup, then straight to the lobby.
+	_cleanup_for_lobby()
 	
 	# Generic match-end → lobby (no loading bar).
 	get_tree().paused = false
@@ -3491,34 +3590,81 @@ func _freeze_match_for_analysis() -> void:
 
 func _play_killer_win_outro() -> void:
 	"""Killer won (Violentgrass killed Greengrass in LMS): go BLACK instantly,
-	then fade in the FIRST FRAME of the killer intro, then play the intro, freeze
-	on its last frame, overlay the match analysis, then go to the lobby."""
-	print("GameMap: Killer wins — black, then killer intro fades in + plays")
+	let the final ~1:33 of the LMS song keep playing as the dramatic tail, then
+	fade in the FIRST FRAME of the killer OUTRO, play it over the still-playing
+	tail, freeze on its last frame, overlay the match analysis, then return to
+	the lobby. The LMS music is NOT stopped here on purpose — it plays under the
+	outro and is only stopped once the outro is done."""
+	print("GameMap: Killer wins — black, LMS music tail, then killer OUTRO")
 	# FREEZE THE WHOLE MATCH: the killer has ended the round, so no gameplay
-	# (movement, abilities, camera) may continue while the intro AND the match
+	# (movement, abilities, camera) may continue while the outro AND the match
 	# analysis are shown. It stays frozen until the analysis is dismissed.
 	_freeze_match_for_analysis()
+
+	# The LMS VFX (layer 60) and red-pulse (layer 61) overlays sit ABOVE the
+	# cutscene (layer 1), so hide them so only the outro + analysis show.
+	if is_instance_valid(_lms_vfx_layer):
+		_lms_vfx_layer.visible = false
+	if is_instance_valid(_lms_pulse_layer):
+		_lms_pulse_layer.visible = false
+
 	var hud: CanvasLayer = $HUD
 	if hud:
 		hud.visible = false
 	if map_visual:
 		map_visual.visible = false
 
-	# Phase 1 — GO BLACK INSTANTLY, then FADE IN THE FIRST FRAME OF THE INTRO.
+	# Silence the regular music players but KEEP the LMS song — it's the audio
+	# bed for the whole outro. (Cleanup is deferred on this path, so stop any
+	# map/ending music manually; the LMS player is handled below.)
+	for player_name in ["MapMusicPlayer", "MusicPlayer"]:
+		var mp: AudioStreamPlayer = get_node_or_null(player_name)
+		if is_instance_valid(mp):
+			mp.stop()
+
+	# The chase layers used to keep playing over the outro because
+	# _freeze_match_for_analysis clears their flags but not the players
+	# themselves. Stop every chase player explicitly.
+	for cp: AudioStreamPlayer in _chase_players:
+		if is_instance_valid(cp):
+			cp.stop()
+	# Also mark ending music as switched so the last-31s generic MATCH_ENDING
+	# track can never start during the frozen outro (it would layer on top of the
+	# LMS tail — only the LMS tail should play here).
+	_ending_music_switched = true
+
+	# Keep the LMS song playing through the outro. If more than the final ~1:33
+	# (LMS_HEARTBEAT_FROM) still remains, jump to the start of that dramatic tail
+	# so the outro always lands on the best part of the track.
+	if is_instance_valid(_lms_music_player):
+		var song_len: float = LMS_MUSIC_DURATION
+		if is_instance_valid(_lms_music_player.stream) and _lms_music_player.stream.get_length() > 0.0:
+			song_len = _lms_music_player.stream.get_length()
+		var remaining: float = song_len - _lms_music_player.get_playback_position()
+		if remaining > LMS_HEARTBEAT_FROM + 0.5:
+			_lms_music_player.seek(maxf(song_len - LMS_HEARTBEAT_FROM, 0.0))
+		if not _lms_music_player.playing:
+			_lms_music_player.play()
+
+	# Phase 1 — GO BLACK INSTANTLY, then FADE IN THE FIRST FRAME OF THE OUTRO.
 	# The CutscenePlayer builds a full-screen black background immediately (so the
 	# screen goes black the moment it's added) and its fade overlay starts opaque
-	# black, revealing the FIRST FRAME over fade_in_duration — then the intro plays.
-	# We point it at the KILLER INTRO folder (not the outro), as requested.
-	var intro_folder: String = "res://The Darkness Of The Grasslands assets/Cutscenes/Killer intros/Violentgrass killer intro"
+	# black, revealing the FIRST FRAME over fade_in_duration — then the outro plays.
+	var outro_folder: String = "res://The Darkness Of The Grasslands assets/Cutscenes/Killer outros/Violentgrass+Killer+Outro"
 	var cutscene := CutscenePlayer.new()
-	cutscene.name = "KillerWinIntroCutscene"
-	cutscene.fps = 8.0  # 43 frames at 8fps ≈ 5.4s
+	cutscene.name = "KillerWinOutroCutscene"
+	cutscene.fps = 8.0  # 38 frames at 8fps ≈ 4.75s
 	cutscene.fade_in_duration = 1.0  # first frame fades in from the instant black
 	cutscene.hold_on_last_frame = true  # freeze so analysis can overlay it
 	add_child(cutscene)
-	cutscene.play_cutscene(intro_folder, "")
+	cutscene.play_cutscene(outro_folder, "")
 
 	await cutscene.finished
+
+	# Outro done and frozen on its last frame — the LMS tail has played out, so
+	# stop the music now (the analysis is shown silent, then we leave for lobby).
+	if is_instance_valid(_lms_music_player):
+		_lms_music_player.stop()
 
 	# Cutscene is now frozen on its last frame — lay the analysis over it.
 	_show_killer_win_analysis()
@@ -3695,6 +3841,13 @@ func _cleanup_for_lobby() -> void:
 	_lms_heartbeat_phase = 0.0
 	_lms_heartbeat_active = false
 	_lms_pinch_done = false
+	# Free the LMS heartbeat circular red pulse overlay
+	if is_instance_valid(_lms_pulse_layer):
+		_lms_pulse_layer.queue_free()
+	_lms_pulse_layer = null
+	_lms_pulse_rect = null
+	_lms_pulse_mat = null
+	_lms_pulse_current = 0.0
 
 	# Free the teleport red-glitch FX overlay
 	if is_instance_valid(_teleport_fx_layer):
@@ -3822,7 +3975,9 @@ func _attach_ai_difficulty() -> void:
 	_ai_difficulty.name = "AIDifficulty"
 	_killer_bot.add_child(_ai_difficulty)
 	_ai_difficulty.initialize(_killer_bot)
-	print("GameMap: AI difficulty controller attached")
+	# Start the AI killer at "Normal" difficulty, not Easy.
+	_ai_difficulty.start_difficulty = AI_DIFFICULTY_START
+	print("GameMap: AI difficulty controller attached (start=%.2f)" % [_ai_difficulty.start_difficulty])
 
 
 func _update_ai_difficulty() -> void:
