@@ -106,7 +106,7 @@ func _setup_audio() -> void:
 	_audio_player.name = "RhythmMusic"
 	_audio_player.stream = loop_stream
 	_audio_player.volume_db = 3.0  # Slightly boosted so the BPM stands out over map music
-	_audio_player.bus = &"Master"
+	_audio_player.bus = &"SFX"
 	add_child(_audio_player)
 	# Safety net: if the stream ever fails to loop, restart it on finish so the
 	# BPM keeps playing continuously.

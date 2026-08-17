@@ -60,7 +60,7 @@ func play_cutscene(folder_path: String, audio_path: String = "") -> void:
 		_audio_player = AudioStreamPlayer.new()
 		_audio_player.stream = load(audio_path)
 		_audio_player.autoplay = false
-		_audio_player.bus = &"Master"
+		_audio_player.bus = &"SFX"
 		_audio_player.finished.connect(_on_audio_finished)
 		add_child(_audio_player)
 	

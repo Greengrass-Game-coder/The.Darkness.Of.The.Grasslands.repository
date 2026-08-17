@@ -104,6 +104,23 @@ var _teleport_reverse_timer: float = 0.0
 var _stamina_exhausted: bool = false
 var _exhaustion_timer: float = 0.0
 
+# ---------- VOICELINES ----------
+# Killer voicelines play randomly in-match: one per category (hit / idle /
+# teleporting). Only ONE voiceline plays at a time — if another is requested
+# while one is already playing, it's queued and played after the current one
+# finishes (never overlapping). Selection within a category is random.
+const VOICELINE_DIR: String = "res://The Darkness Of The Grasslands assets/Sound/Sfx/voicelines/Violentgrass/"
+const VOICELINES: Dictionary = {
+	"hit": ["Violentgrass_hit_voiceline1.wav"],
+	"idle": ["Violentgrass_idle_voiceline1.wav"],
+	"teleporting": ["Violentgrass_teleporting_voiceline1.wav", "Violentgrass_teleporting_voiceline2.wav"],
+}
+@export var idle_voiceline_min_interval: float = 14.0   # min seconds between idle voicelines
+@export var idle_voiceline_max_interval: float = 28.0   # max seconds between idle voicelines
+var _voiceline_player: AudioStreamPlayer
+var _voiceline_queue: Array = []   # queued voiceline paths to play after current finishes
+var _idle_voiceline_timer: float = 0.0
+
 
 func _ready() -> void:
 	current_hp = max_hp
@@ -127,6 +144,18 @@ func _ready() -> void:
 		ability_vfx.animation_finished.connect(_on_ability_vfx_finished)
 	# Chase music is handled centrally by game_map's chase system — do NOT create
 	# a redundant per-character ChaseSound here (it would double the Chase track).
+	_setup_voiceline_player()
+
+
+func _setup_voiceline_player() -> void:
+	"""Create the killer's voiceline player (SFX bus) and seed the idle timer."""
+	_voiceline_player = AudioStreamPlayer.new()
+	_voiceline_player.name = "VoicelinePlayer"
+	_voiceline_player.bus = &"SFX"
+	_voiceline_player.volume_db = 0.0
+	_voiceline_player.finished.connect(_on_voiceline_finished)
+	add_child(_voiceline_player)
+	_reset_idle_voiceline_timer()
 
 
 func _input(event: InputEvent) -> void:
@@ -180,6 +209,58 @@ func _physics_process(delta: float) -> void:
 
 	_update_cooldowns(delta)
 	_update_chase()
+	_update_idle_voiceline(delta)
+
+
+# ---------- VOICELINES ----------
+
+func _reset_idle_voiceline_timer() -> void:
+	_idle_voiceline_timer = randf_range(idle_voiceline_min_interval, idle_voiceline_max_interval)
+
+
+func _update_idle_voiceline(delta: float) -> void:
+	"""Randomly trigger the idle voiceline while the killer is alive/walking."""
+	if not is_inside_tree():
+		return
+	_idle_voiceline_timer -= delta
+	if _idle_voiceline_timer <= 0.0:
+		_reset_idle_voiceline_timer()
+		_play_voiceline("idle")
+
+
+func _play_voiceline(category: String) -> void:
+	"""Play a random voiceline from the given category on the SFX bus.
+	If one is already playing, queue it and play it after the current finishes
+	(no overlapping voicelines)."""
+	if _voiceline_player == null:
+		return
+	if not VOICELINES.has(category):
+		return
+	var files: Array = VOICELINES[category]
+	if files.is_empty():
+		return
+	var path: String = VOICELINE_DIR + files[randi() % files.size()]
+	var stream: AudioStream = load(path)
+	if stream == null:
+		return
+	# If a voiceline is already playing, hold this one for later.
+	if _voiceline_player.playing:
+		_voiceline_queue.append(path)
+		return
+	_voiceline_player.stream = stream
+	_voiceline_player.play()
+
+
+func _on_voiceline_finished() -> void:
+	"""Play the next queued voiceline, if any, once the current one ends."""
+	if _voiceline_queue.is_empty():
+		return
+	var next_path: String = _voiceline_queue.pop_front()
+	var stream: AudioStream = load(next_path)
+	if stream == null:
+		return
+	_voiceline_player.stream = stream
+	_voiceline_player.play()
 
 
 # ---------- SIZE ----------
@@ -537,6 +618,7 @@ func teleport_to_position(target_pos: Vector2) -> void:
 	
 	# Teleport executed — clear scan state
 	_teleport_scan_active = false
+	_play_voiceline("teleporting")
 	
 	# Set cooldown AFTER teleport completes (45s penalty)
 	teleport_on_cooldown = true
@@ -625,6 +707,7 @@ func use_hit() -> void:
 	if is_instance_valid(hit_sound):
 		hit_sound.stop()
 		hit_sound.play()
+	_play_voiceline("hit")
 	
 	_ping_hit(target)
 	hit_landed.emit(target, hit_damage)

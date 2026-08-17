@@ -1,4 +1,4 @@
-class_name AIBotController
+class_name AIBotControllerTest
 extends ViolentgrassController
 
 ## AI-controlled killer bot with human-like behavior:
@@ -38,7 +38,7 @@ var _last_known_target_pos: Vector2 = Vector2.ZERO
 var _investigate_timer: float = 0.0
 var _bored_timer: float = 0.0
 
-# ── SMARTER TARGETING ──
+# ── SMARTER TARGETING (TEST MODE) ──
 # The killer prefers a lone / low-HP / puzzle-solving survivor over the merely
 # nearest one, so it plays like a real hunter instead of blindly chasing whoever
 # is closest. Also uses navigation to cut corners around walls.
