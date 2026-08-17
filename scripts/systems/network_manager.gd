@@ -42,6 +42,7 @@ var player_id: String = "0"
 var _ws: WebSocketPeer = null
 var _ws_url: String = DEFAULT_WS_URL
 var _player_names: Dictionary = {}  # pid -> username
+var _player_info: Dictionary = {}  # pid -> {role, alive} (for spectate) 
 var _connect_elapsed: float = 0.0  # For connection timeout
 
 
@@ -119,6 +120,7 @@ func _disconnected() -> void:
 		connected = false
 		GameState.connected_to_server = false
 		_player_names.clear()
+		_player_info.clear()
 		disconnected_from_server.emit()
 		print("NetworkManager: Disconnected")
 
@@ -148,12 +150,14 @@ func _handle_message(text: String) -> void:
 			var pid: String = str(json.get("player_id", "0"))
 			var uname: String = json.get("username", "Unknown")
 			_player_names[pid] = uname
+			_player_info[pid] = {"role": json.get("role", "survivor"), "alive": json.get("alive", true)}
 			player_joined.emit(pid, uname)
 			_emit_player_list()
 		
 		"player_left":
 			var pid: String = str(json.get("player_id", "0"))
 			_player_names.erase(pid)
+			_player_info.erase(pid)
 			player_left.emit(pid)
 			_emit_player_list()
 		
@@ -162,6 +166,7 @@ func _handle_message(text: String) -> void:
 			for p: Dictionary in players:
 				var pid: String = str(p.get("id", "0"))
 				_player_names[pid] = p.get("username", "Unknown")
+				_player_info[pid] = {"role": p.get("role", "survivor"), "alive": p.get("alive", true)}
 			_emit_player_list()
 		
 		"chat":
@@ -226,9 +231,12 @@ func _handle_message(text: String) -> void:
 func _emit_player_list() -> void:
 	var list: Array = []
 	for pid: String in _player_names:
+		var info: Dictionary = _player_info.get(pid, {})
 		list.append({
 			"id": pid,
-			"username": _player_names[pid]
+			"username": _player_names[pid],
+			"role": info.get("role", "survivor"),
+			"alive": info.get("alive", true)
 		})
 	player_list_updated.emit(list)
 

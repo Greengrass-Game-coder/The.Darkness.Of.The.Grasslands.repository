@@ -83,3 +83,7 @@ var show_analysis: bool = false
 var match_character_name: String = "Greengrass"
 var match_damage_taken: float = 0.0
 var match_damage_dealt: float = 0.0
+
+## Carry-over flag: set when a match ends while the LMS finale was playing, so
+## the lobby plays the LMS track (intermission carry-over) instead of its tune.
+var returning_from_lms: bool = false

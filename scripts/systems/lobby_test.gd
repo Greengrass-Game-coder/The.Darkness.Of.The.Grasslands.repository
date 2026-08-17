@@ -845,8 +845,8 @@ func _on_lobby_countdown_finished() -> void:
 		var sm := get_node_or_null("/root/SaveManager")
 		if is_instance_valid(sm) and sm.has_method("autosave"):
 			sm.autosave(GameState.logged_in_username)
-	# Transition directly to game map (uses role toggle state)
-	get_tree().change_scene_to_file("res://scenes/game_map.tscn")
+	# Transition directly to TEST game map (uses role toggle state)
+	get_tree().change_scene_to_file("res://scenes/game_map_test.tscn")
 
 
 func _update_coords() -> void:
@@ -1570,7 +1570,6 @@ func _show_player_info_popup(player_name: String) -> void:
 		"Rounds Played: %d" % GameState.get_player_rounds(player_name),
 		"Killer: Violentgrass",
 		"Survivor: Greengrass",
-		"Playtime: --",
 		"Wins (Killer): --",
 		"Wins (Survivor): --",
 	]
