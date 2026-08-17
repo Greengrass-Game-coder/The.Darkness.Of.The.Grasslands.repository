@@ -1,4 +1,4 @@
-class_name AISurvivorBotController
+class_name AISurvivorBotControllerTest
 extends GreengrassController
 
 ## AI-controlled survivor bot with improved smart behavior:

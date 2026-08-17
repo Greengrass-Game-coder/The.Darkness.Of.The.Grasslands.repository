@@ -42,7 +42,7 @@ const SURVIVOR_CHASE_ENTER: Array[float] = [500.0, 300.0, 150.0, 80.0]
 const SURVIVOR_CHASE_EXIT: Array[float]  = [600.0, 400.0, 250.0, 150.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
-const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
+const CHASE_MAP_DUCK_DB: float = -80.0  # Background music FULLY muted while chase is active (restore only when killer is far)
 # Killer (Violentgrass) build-up: each build-up layer plays for this many seconds
 # before advancing to the next (Layer1 → Layer2 → Layer3 → Chase). Matches the
 # ~9.6s duration of the Layer1/2/3 WAV files.
@@ -169,13 +169,9 @@ var _lms_active: bool = false          # True once 1 killer + 1 survivor remain
 # In that case the map music never plays — the intro cutscene is the "loading"
 # beat and the LMS finale takes over as the sole score.
 var _is_1v1: bool = false
-# ── TEST MODE ring-to-killer promotion state ──
-const RING_KILLER_THRESHOLD: int = 3  # Rings earned (by the human) to become the killer
 const ROUND_END_GIFT_RING: int = 1    # +1 gift ring added to persistent player_rings each round
 const PUZZLE_REARM_SECONDS: float = 25.0  # Single test puzzle re-enables after this
 const AI_DIFFICULTY_START: float = 0.28  # "Normal" floor for the 8-vs-1 test killer
-var _match_rings_earned: int = 0      # Human's rings earned THIS round (drives promotion)
-var _promotion_happened: bool = false  # One-shot: human already promoted to killer
 var _tutorial_layer: CanvasLayer = null  # Survivor tutorial overlay (dismissable)
 var _tutorial_dismiss_timer: float = 0.0  # Auto-hide countdown for the tutorial
 # True when the round ended with the KILLER winning (all survivors eliminated).
@@ -271,16 +267,16 @@ func _ready() -> void:
 	_killer_won = false
 	_update_timer_label()
 	
-	# TEST MODE: the human ALWAYS starts as a survivor. The killer role is EARNED
-	# mid-match by solving puzzles (RING_KILLER_THRESHOLD rings → _promote_player_to_killer).
-	# Force the survivor role so the player experiences the full 8-vs-1 test match.
+	# Determine if this player should be the killer based on rings (LOBBY-BASED
+	# balance, same as the real game). The killer role is chosen at match start by
+	# who has the most rings — NOT earned mid-match by solving puzzles.
 	var gs = get_node("/root/GameState")
 	var should_be_killer: bool = false
 	if gs != null:
-		gs.is_killer = false
-		GameState.is_killer = false
+		should_be_killer = _determine_killer_by_rings()
+		gs.is_killer = should_be_killer
 	
-	# Spawn the player character (spawns killer bot AND survivor bots in test mode)
+	# Spawn the player character (spawns killer bot + survivor bots based on role)
 	spawn_player(should_be_killer)
 	
 	# Figure out how many combatants are in this match. A true 1v1 (a killer + a
@@ -570,17 +566,25 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	# Create match-ending vignette
 	_create_ending_vignette()
 	
-	# Spawn bot killer AND survivor bots (TEST MODE: 8 survivors incl. the human
-	# vs 1 AI killer bot, so the player can earn rings and become the killer).
-	# On the ring-promotion respawn (spawn_player(true) from _promote_player_to_killer)
-	# the killer bot + survivor bots already exist, so only build the board once.
-	if not is_instance_valid(_killer_bot) and _survivor_bots.is_empty():
-		_spawn_bot_killer()
-		_spawn_survivor_bots()
-		_attach_ai_difficulty()
+	# Spawn bots based on role (mirrors the real game):
+	#  - Survivor player → spawn a bot killer + survivor bots, load survivor chase.
+	#  - Killer player   → spawn survivor bots only, load killer chase (no bot killer).
+	# The "8-vs-1" test board keeps the same combatant total either way.
+	if not is_killer_player:
+		if not is_instance_valid(_killer_bot):
+			_spawn_bot_killer()
+			_attach_ai_difficulty()
+		if _survivor_bots.is_empty():
+			_spawn_survivor_bots()
 		_refresh_survivor_cache()
 		# Survivor player: load all 4 chase layers from survivor's theme folder.
 		_setup_chase_music(survivor_chase_folder)
+	else:
+		if _survivor_bots.is_empty():
+			_spawn_survivor_bots()
+		_refresh_survivor_cache()
+		# Killer player: load only Chase layer from killer's theme folder.
+		_setup_chase_music(killer_chase_folder)
 	
 	# Track damage dealt via punch signal
 	if _player.has_signal("punch_landed") and not _player.punch_landed.is_connected(_on_player_attacked):
@@ -1507,7 +1511,7 @@ func _show_survivor_tutorial() -> void:
 	player. Auto-hides after ~8s."""
 	var layer := CanvasLayer.new()
 	layer.name = "SurvivorTutorial"
-	layer.layer = 20  # Above LMS/VFX/HUD overlays, below promotion telegraph (62)
+	layer.layer = 20  # Above LMS/VFX/HUD overlays
 	add_child(layer)
 	
 	var panel := Control.new()
@@ -1541,8 +1545,8 @@ func _show_survivor_tutorial() -> void:
 	var lines: Array[String] = [
 		"🏃  RUN AWAY from the killer — don't get cornered!",
 		"💨  Shift = Sprint    |    Q = Block    |    E = Charged Punch    |    R = Spare Flower (heal)",
-		"🔗  Solve puzzles to earn RINGS  —  3 Rings makes YOU the Killer!",
-		"      (after promotion, hunt every survivor to win the round)",
+		"🔗  Solve puzzles to earn RINGS — the player with most rings is the Killer!",
+		"      (role is decided at match start as a balance measure)",
 	]
 	var y: float = 70.0
 	for line: String in lines:
@@ -1743,15 +1747,10 @@ func _update_chase_music(_delta: float) -> void:
 				_kill_chase_tween(i)
 				_start_chase_tween(i, vol)
 		
-		# Duck background music when chase active
-		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
-		if not bg_player:
-			bg_player = get_node_or_null("MapMusicPlayer")
-		if bg_player:
-			var is_chasing: bool = target_layer >= 0
-			var target_bg_db: float = CHASE_MAP_DUCK_DB if is_chasing else (-2.0 if _ending_music_switched else 0.0)
-			var mtween := create_tween()
-			mtween.tween_property(bg_player, "volume_db", target_bg_db, CHASE_VOL_FADE_MS)
+		# Mute/restore background map music based on whether a chase is active.
+		# A chase layer playing → map music is FULLY muted (CHASE_MAP_DUCK_DB).
+		# No chase → map music is restored (unless the ending music is active).
+		_set_map_music_chase_state(target_layer >= 0)
 
 
 func _silence_all_chase() -> void:
@@ -1767,6 +1766,26 @@ func _silence_all_chase() -> void:
 	# Reset the build-up sequence so the next chase restarts from Layer1.
 	_chase_build_step = 0
 	_chase_build_elapsed = 0.0
+	# Chase stopped → restore the map music (this helper is reached even on the
+	# early-return paths that skip the normal transition restore).
+	_set_map_music_chase_state(false)
+
+
+func _set_map_music_chase_state(chasing: bool) -> void:
+	"""Mute the background map music while a chase is active, restore it when no
+	chase is playing (i.e. the killer is far). The ending/LMS music is never
+	touched here — it has its own flow."""
+	if _lms_active or _ending_music_switched:
+		# During LMS/ending the finale track is the sole score — leave map music
+		# as-is (it is stopped/absent anyway in those states).
+		return
+	var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
+	if not bg_player:
+		bg_player = get_node_or_null("MapMusicPlayer")
+	if bg_player:
+		var target_bg_db: float = CHASE_MAP_DUCK_DB if chasing else 0.0
+		var mtween := create_tween()
+		mtween.tween_property(bg_player, "volume_db", target_bg_db, CHASE_VOL_FADE_MS)
 
 
 func _kill_chase_tween(i: int) -> void:
@@ -2973,14 +2992,8 @@ func _open_puzzle_for_area(area: Area2D) -> void:
 
 
 func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
-	"""Handle the HUMAN solving a puzzle — rewards + timer deduction + ring tally.
-	Bot solves (which also grant the reward ring) call _reward_puzzle_solve() and
-	skip the match-ring tally so only the human's own solves push toward promotion."""
+	"""Handle the HUMAN solving a puzzle — rewards + timer deduction."""
 	_reward_puzzle_solve(area, puzzle_level)
-	if not _round_ended and not _killer_won:
-		_match_rings_earned += puzzle_level
-		print("GameMapTest: Human puzzle — rings this round: ", _match_rings_earned, "/", RING_KILLER_THRESHOLD)
-		_check_ring_promotion()
 
 
 func _reward_puzzle_solve(area: Area2D, puzzle_level: int) -> void:
@@ -3673,152 +3686,6 @@ func _update_death_fade(delta: float) -> void:
 		if is_instance_valid(_death_overlay):
 			_death_overlay.queue_free()
 		_end_match()
-
-
-# ═══════════════ TEST MODE: RINGS → BECOME THE KILLER ═══════════════
-
-func _check_ring_promotion() -> void:
-	"""Called after the human earns a ring. Promotes the survivor to the killer
-	role once they reach the ring threshold (one-shot per match)."""
-	if _promotion_happened or _round_ended or _killer_won:
-		return
-	# Only a living survivor can be promoted (a dead human can't take the killer role).
-	if _character_name != "Greengrass":
-		return
-	if not is_instance_valid(_player):
-		return
-	var player_hp_check: float = float(_player.get("current_hp")) if "current_hp" in _player else 1.0
-	if player_hp_check <= 0.0:
-		return
-	if _match_rings_earned < RING_KILLER_THRESHOLD:
-		return
-	_promotion_happened = true
-	_promote_player_to_killer()
-
-
-func _find_free_ring_spawn() -> Vector2:
-	"""Pick a survivor spawn away from the killer bot for the replacement survivor."""
-	var spawns: Array[Vector2] = _map_manager.survivor_spawns if _map_manager else []
-	if not spawns.is_empty():
-		return spawns[randi() % spawns.size()]
-	return Vector2(512, 384)
-
-
-func _promote_player_to_killer() -> void:
-	"""Convert the human survivor into the Violentgrass killer mid-match WITHOUT
-	clearing the board. Saves the player's position, frees the human survivor node
-	and the AI killer bot, spawns a replacement survivor bot (keeps 8 combatants),
-	then re-spawns the human with the full killer wiring. The promoted killer gets
-	the standard killer-win ending (outro + LMS tail) when they win."""
-	if _round_ended or _killer_won:
-		return
-	print("GameMapTest: RINGS CAPTURED — promoting survivor to KILLER")
-	
-	# Remember the human's position before we free them, then free their node so
-	# the same spot is used for the killer respawn.
-	var human_pos: Vector2 = _player.global_position if is_instance_valid(_player) else Vector2(512, 384)
-	
-	# Free the human survivor's HUD bars + ability icons (they rebuild on respawn).
-	var hud_node: CanvasLayer = $HUD
-	if hud_node:
-		for child_name in ["HealthBar", "StaminaBar", "AbilityIcons"]:
-			var c: Node = hud_node.get_node_or_null(child_name)
-			if is_instance_valid(c):
-				c.queue_free()
-	
-	# Free the human survivor + its ability-icon extras.
-	if is_instance_valid(_player):
-		_player.remove_from_group("survivors")
-		_player.queue_free()
-		_player = null
-	
-	# Free the AI killer bot (it loses to the promoted human killer).
-	if is_instance_valid(_killer_bot):
-		_killer_bot.remove_from_group("killers")
-		_killer_bot.queue_free()
-		_killer_bot = null
-	if is_instance_valid(_ai_difficulty):
-		_ai_difficulty.queue_free()
-		_ai_difficulty = null
-	
-	# Replace the vacated survivor slot: spawn one new survivor bot so the match
-	# stays 8 survivors + 1 killer (now the human).
-	var replace_pos: Vector2 = _find_free_ring_spawn()
-	_bots_create_survivor(replace_pos, "SurvivorBot_RingPromo")
-	
-	# Update role bookkeeping BEFORE spawning so the killer wiring is correct.
-	GameState.is_killer = true
-	_character_name = "Violentgrass"
-	
-	# Spawn the human as the killer at their old position.
-	spawn_player(true)
-	if is_instance_valid(_player):
-		_player.global_position = human_pos
-	
-	# Switch chase-music source to the killer theme (killer = single Chase layer).
-	_setup_chase_music(killer_chase_folder)
-	_refresh_survivor_cache()
-	_attach_ai_difficulty()  # no-op: killer bot is null now
-	
-	# Reset LMS/music flags so the match continues normally under the new role.
-	_ending_music_switched = false
-	
-	# Big telegraph so the moment lands.
-	_show_promotion_telegraph()
-	print("GameMapTest: Promotion complete — human is now Violentgrass killer")
-
-
-func _show_promotion_telegraph() -> void:
-	"""Full-screen 'YOU ARE THE KILLER' moment when the ring threshold is hit."""
-	var layer := CanvasLayer.new()
-	layer.name = "PromotionTelegraph"
-	layer.layer = 62
-	add_child(layer)
-	
-	# Wrapper Control carries the fade — CanvasLayer has no `modulate`, so tween
-	# a full-screen Control instead (a CanvasLayer child maps 1:1 to viewport px).
-	var root := Control.new()
-	root.name = "Root"
-	root.position = Vector2(0, 0)
-	root.size = Vector2(1280, 720)
-	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(root)
-	
-	var dim := ColorRect.new()
-	dim.name = "Dim"
-	dim.position = Vector2(0, 0)
-	dim.size = Vector2(1280, 720)
-	dim.color = Color(0.5, 0.0, 0.0, 0.35)
-	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(dim)
-	
-	var title := Label.new()
-	title.name = "Title"
-	title.text = "☠ RINGS CAPTURED — YOU ARE THE KILLER ☠"
-	title.position = Vector2(140, 300)
-	title.size = Vector2(1000, 70)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_color_override("font_color", Color(1, 0.2, 0.15, 1))
-	title.add_theme_color_override("font_outline_color", Color(0.2, 0.0, 0.0, 1))
-	title.add_theme_constant_override("outline_size", 6)
-	title.add_theme_font_size_override("font_size", 40)
-	root.add_child(title)
-	
-	var sub := Label.new()
-	sub.name = "Sub"
-	sub.text = "Hunt them all. Every survivor."
-	sub.position = Vector2(240, 390)
-	sub.size = Vector2(800, 40)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_color_override("font_color", Color(1, 0.85, 0.6, 1))
-	sub.add_theme_font_size_override("font_size", 20)
-	root.add_child(sub)
-	
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(root, "modulate:a", 0.0, 3.5).set_delay(1.0)
-	tween.tween_callback(layer.queue_free).set_delay(4.6)
 
 
 func _end_match() -> void:

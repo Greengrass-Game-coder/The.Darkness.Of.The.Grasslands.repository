@@ -207,6 +207,8 @@ animation = &"teleport_down"
 [node name="HitSound" type="AudioStreamPlayer2D" parent="." unique_id=1663092845]
 stream = ExtResource("20_hitwav")
 volume_db = -3.23
+max_distance = 650.0
+attenuation = 1.4
 
 [node name="TeleportSound" type="AudioStreamPlayer2D" parent="." unique_id=412662420]
 stream = ExtResource("21_teleportwav")

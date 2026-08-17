@@ -42,7 +42,7 @@ const SURVIVOR_CHASE_ENTER: Array[float] = [500.0, 300.0, 150.0, 80.0]
 const SURVIVOR_CHASE_EXIT: Array[float]  = [600.0, 400.0, 250.0, 150.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
-const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
+const CHASE_MAP_DUCK_DB: float = -80.0  # Background music FULLY muted while chase is active (restore only when killer is far)
 # Killer (Violentgrass) build-up: each build-up layer plays for this many seconds
 # before advancing to the next (Layer1 → Layer2 → Layer3 → Chase). Matches the
 # ~9.6s duration of the Layer1/2/3 WAV files.
@@ -1613,15 +1613,10 @@ func _update_chase_music(_delta: float) -> void:
 				_kill_chase_tween(i)
 				_start_chase_tween(i, vol)
 		
-		# Duck background music when chase active
-		var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
-		if not bg_player:
-			bg_player = get_node_or_null("MapMusicPlayer")
-		if bg_player:
-			var is_chasing: bool = target_layer >= 0
-			var target_bg_db: float = CHASE_MAP_DUCK_DB if is_chasing else (-2.0 if _ending_music_switched else 0.0)
-			var mtween := create_tween()
-			mtween.tween_property(bg_player, "volume_db", target_bg_db, CHASE_VOL_FADE_MS)
+		# Mute/restore background map music based on whether a chase is active.
+		# A chase layer playing → map music is FULLY muted (CHASE_MAP_DUCK_DB).
+		# No chase → map music is restored (unless the ending music is active).
+		_set_map_music_chase_state(target_layer >= 0)
 
 
 func _silence_all_chase() -> void:
@@ -1637,6 +1632,26 @@ func _silence_all_chase() -> void:
 	# Reset the build-up sequence so the next chase restarts from Layer1.
 	_chase_build_step = 0
 	_chase_build_elapsed = 0.0
+	# Chase stopped → restore the map music (reached even on the early-return
+	# paths that skip the normal transition restore).
+	_set_map_music_chase_state(false)
+
+
+func _set_map_music_chase_state(chasing: bool) -> void:
+	"""Mute the background map music while a chase is active, restore it when no
+	chase is playing (i.e. the killer is far). The ending/LMS music is never
+	touched here — it has its own flow."""
+	if _lms_active or _ending_music_switched:
+		# During LMS/ending the finale track is the sole score — leave map music
+		# as-is (it is stopped/absent anyway in those states).
+		return
+	var bg_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
+	if not bg_player:
+		bg_player = get_node_or_null("MapMusicPlayer")
+	if bg_player:
+		var target_bg_db: float = CHASE_MAP_DUCK_DB if chasing else 0.0
+		var mtween := create_tween()
+		mtween.tween_property(bg_player, "volume_db", target_bg_db, CHASE_VOL_FADE_MS)
 
 
 func _kill_chase_tween(i: int) -> void:

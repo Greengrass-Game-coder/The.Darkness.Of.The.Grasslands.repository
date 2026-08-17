@@ -117,7 +117,7 @@ const VOICELINES: Dictionary = {
 }
 @export var idle_voiceline_min_interval: float = 14.0   # min seconds between idle voicelines
 @export var idle_voiceline_max_interval: float = 28.0   # max seconds between idle voicelines
-var _voiceline_player: AudioStreamPlayer
+var _voiceline_player: AudioStreamPlayer2D
 var _voiceline_queue: Array = []   # queued voiceline paths to play after current finishes
 var _idle_voiceline_timer: float = 0.0
 
@@ -148,11 +148,18 @@ func _ready() -> void:
 
 
 func _setup_voiceline_player() -> void:
-	"""Create the killer's voiceline player (SFX bus) and seed the idle timer."""
-	_voiceline_player = AudioStreamPlayer.new()
+	"""Create the killer's positional voiceline player (SFX bus) and seed the
+	idle timer. Uses AudioStreamPlayer2D so voicelines fade with distance from the
+	listener (the killer's Camera2D) — proximity falloff, but the voiceline is
+	still audible to nearby survivors. The teleport SOUND stays global (players
+	need to hear teleportation from anywhere); only voicelines + hit get proximity."""
+	_voiceline_player = AudioStreamPlayer2D.new()
 	_voiceline_player.name = "VoicelinePlayer"
 	_voiceline_player.bus = &"SFX"
 	_voiceline_player.volume_db = 0.0
+	# Distance falloff: full volume within ~250px, fades to silent by ~800px.
+	_voiceline_player.max_distance = 800.0
+	_voiceline_player.attenuation = 1.6
 	_voiceline_player.finished.connect(_on_voiceline_finished)
 	add_child(_voiceline_player)
 	_reset_idle_voiceline_timer()
@@ -711,16 +718,17 @@ func use_hit() -> void:
 	
 	_ping_hit(target)
 	hit_landed.emit(target, hit_damage)
-	# Check if target is blocking
+	# Check if target is blocking. A successful block fully negates the hit and
+	# unlocks the target's punch (parry reward) — this is a core survivor mechanic.
+	# Survivor bots remain killable because their block is on a long cooldown
+	# (Greengrass block_cooldown = 20s), so most swings land as full damage.
 	if target.has_method("on_block_hit"):
 		if target.on_block_hit():
 			# Block absorbed — unlocks their punch
 			pass
 		else:
-			# Apply damage
-			var absorption: float = target.get_block_absorption() if target.has_method("get_block_absorption") else 0.0
-			var final_damage: float = hit_damage * (1.0 - absorption)
-			_apply_damage(target, final_damage)
+			# Apply full damage (no block active)
+			_apply_damage(target, hit_damage)
 
 
 func find_survivors_in_range() -> Array[Node2D]:
