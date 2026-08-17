@@ -1161,12 +1161,14 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 			# Survivor eliminated — +30s timer bonus if bot killer exists
 			if is_instance_valid(_killer_bot):
 				_on_survivor_eliminated("Player")
-			# The killer (outro) only wins when EVERYONE is dead. If survivor
-			# bots are still alive, the human survivor just spectates — the
-			# match keeps going until all survivors are eliminated or the timer
-			# runs out (which redirects to the lobby, not the outro).
-			_mark_human_dead()
-			_check_all_survivors_eliminated()
+			# When the human survivor dies, end the round and redirect to the
+			# lobby (no killer outro for the local player's own death). The
+			# killer outro plays only when the KILLER is the one eliminating
+			# everyone; the human dying always returns them to the lobby.
+			_killer_won = false
+			if not _round_ended:
+				match_ended.emit()
+				_end_match()
 
 
 func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:
@@ -3487,39 +3489,6 @@ func _on_player_attacked(_stunned: bool) -> void:
 
 
 # ---------- DEATH SEQUENCE ----------
-
-func _mark_human_dead() -> void:
-	"""Mark the human survivor as eliminated WITHOUT ending the match.
-	Greys the player out and disables their movement so they spectate the
-	remaining survivor bots. The killer outro plays only once EVERY survivor
-	is dead (see _check_all_survivors_eliminated); if the timer runs out
-	first, the match redirects to the lobby instead."""
-	if _death_active or not is_instance_valid(_player):
-		return
-	if is_instance_valid(_player):
-		_player.set_physics_process(false)
-		_player.modulate = Color(0.5, 0.5, 0.5, 1.0)
-	# Show a subtle "you died" note so the player knows the match is still on.
-	_show_death_hint()
-
-
-func _show_death_hint() -> void:
-	"""Small non-blocking label telling the dead survivor the match continues."""
-	var hud: CanvasLayer = $HUD
-	if not hud or hud.get_node_or_null("DeathHintLabel") != null:
-		return
-	var lbl := Label.new()
-	lbl.name = "DeathHintLabel"
-	lbl.text = "YOU DIED — match continues while survivors remain"
-	lbl.position = Vector2(20, 70)
-	lbl.size = Vector2(600, 30)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	lbl.add_theme_font_size_override("font_size", 18)
-	lbl.add_theme_color_override("font_color", Color(1, 0.6, 0.4, 1))
-	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	lbl.add_theme_constant_override("outline_size", 4)
-	hud.add_child(lbl)
-
 
 func _start_death_sequence() -> void:
 	"""Start the 5-second death fade-out sequence."""

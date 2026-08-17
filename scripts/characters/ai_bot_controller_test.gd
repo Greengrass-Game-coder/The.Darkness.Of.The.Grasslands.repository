@@ -240,8 +240,11 @@ func _ai_find_target() -> void:
 	_target_retarget_timer -= get_physics_process_delta_time()
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
 	if is_instance_valid(_target) and is_instance_valid(_target.get_parent()) and _target_retarget_timer > 0.0:
+		# Drop a dead target — the killer never keeps chasing a corpse.
+		if _is_dead_survivor(_target):
+			_target = null
 		# Keep the current target if it's still alive and close enough.
-		if global_position.distance_to(_target.global_position) <= aggro_range * 1.3:
+		elif global_position.distance_to(_target.global_position) <= aggro_range * 1.3:
 			_last_known_target_pos = _target.global_position
 			return
 	_target_retarget_timer = TARGET_RETARGET_INTERVAL
@@ -250,6 +253,8 @@ func _ai_find_target() -> void:
 	var best_score: float = INF
 	for s in survivors:
 		if not is_instance_valid(s):
+			continue
+		if _is_dead_survivor(s):
 			continue
 		var d: float = global_position.distance_to(s.global_position)
 		if d > aggro_range:
@@ -293,11 +298,22 @@ func _ai_find_target() -> void:
 		_target = null
 
 
+func _is_dead_survivor(s: Node) -> bool:
+	"""A survivor is 'dead' when their current HP is 0 or below. The killer must
+	ignore these greyed-out corpses (never target, chase, or attack them)."""
+	if not is_instance_valid(s):
+		return true
+	if "current_hp" in s:
+		return float(s.get("current_hp")) <= 0.0
+	# Fallback: any survivor that's been fully disabled/greyed counts as dead.
+	return not s.is_physics_processing()
+
+
 func _get_closest_survivor_distance() -> float:
 	var survivors: Array[Node] = get_tree().get_nodes_in_group("survivors")
 	var nearest_dist: float = INF
 	for s in survivors:
-		if is_instance_valid(s):
+		if is_instance_valid(s) and not _is_dead_survivor(s):
 			var d: float = global_position.distance_to(s.global_position)
 			if d < nearest_dist:
 				nearest_dist = d
@@ -354,6 +370,9 @@ func _rand_reaction() -> float:
 
 func _ai_attack() -> void:
 	if not is_instance_valid(_target):
+		return
+	if _is_dead_survivor(_target):
+		_target = null
 		return
 	if hit_on_cooldown:
 		return
