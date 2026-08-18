@@ -25,13 +25,13 @@ func _ready() -> void:
 
 
 func _on_peer_left(peer_id: int) -> void:
-	var name: String = ""
+	var peer_name: String = ""
 	var p2p: Node = get_node_or_null("/root/P2PManager")
 	if p2p and p2p.players.has(peer_id):
-		name = str(p2p.players[peer_id].get("name", "Unknown"))
+		peer_name = str(p2p.players[peer_id].get("name", "Unknown"))
 	for p: Dictionary in _player_list:
-		if str(p.get("player_id", "")) == str(peer_id) or str(p.get("username", "")) == name:
-			player_disconnected.emit(name)
+		if str(p.get("player_id", "")) == str(peer_id) or str(p.get("username", "")) == peer_name:
+			player_disconnected.emit(peer_name)
 			return
 
 

@@ -104,7 +104,7 @@ shader_parameter/circle_radius = 2.0
 shader_parameter/center_point = Vector2(0.5, 0.5)
 shader_parameter/edge_color = Color(0, 0, 0, 1)
 
-[node name="Lobby" type="Node" unique_id=807402903]
+[node name="Lobby2" type="Node" unique_id=807402903]
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=1538643095]
 position = Vector2(661, 396)
@@ -151,9 +151,9 @@ horizontal_alignment = 1
 position = Vector2(149, -4)
 scale = Vector2(0.82495874, 1.126525)
 stream = ExtResource("2_j2o5w")
-bus = &"Music"
 autoplay = true
 max_distance = 4096.0
+bus = &"Music"
 
 [node name="CountdownTimer" type="Timer" parent="." unique_id=264930212]
 autostart = true

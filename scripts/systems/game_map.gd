@@ -1187,12 +1187,12 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 			# Survivor eliminated — +30s timer bonus if bot killer exists
 			if is_instance_valid(_killer_bot):
 				_on_survivor_eliminated("Player")
-			# The human survivor died, but the round keeps running so the player
-			# can spectate: camera follows the killer bot live, with a panel
-			# showing the roster + the live match timer. The round ends normally
-			# when everyone is dead (killer outro) or the timer runs out (lobby).
-			_enter_spectate_mode()
-			_check_all_survivors_eliminated()
+			# The human survivor died. Keep the round running and hand the LIVE
+			# match over to LiveMatchHost, then go to the lobby WITHOUT freeing
+			# the map — the lobby renders it live in a spectate viewport so the
+			# player can watch the killer + survivors play out with the real
+			# match timer (and arrows to switch between them).
+			_hand_off_for_spectate()
 
 
 func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:
@@ -3513,6 +3513,28 @@ func _on_player_attacked(_stunned: bool) -> void:
 
 
 # ---------- DEATH SEQUENCE ----------
+
+func _hand_off_for_spectate() -> void:
+	"""The human survivor died. Keep the round running, hand the LIVE match to
+	LiveMatchHost (which reparents it into its SubViewport so it survives the
+	scene change), then go to the lobby. The lobby detects the live match and
+	renders it with arrows to switch between killer & survivors."""
+	# Enter spectate (camera on the killer, Q/E + arrows to cycle).
+	_enter_spectate_mode()
+	# The lobby now overlays its own SPECTATING UI on the whole viewport, so hide
+	# the map's in-round spectate panel (it would render embedded in the video).
+	if is_instance_valid(_spectate_panel):
+		_spectate_panel.visible = false
+	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
+	if is_instance_valid(host):
+		host.hand_off(self)
+	# Clear the current-scene handle so change_scene_to_file does NOT free this
+	# map (it's now under LiveMatchHost and must keep simulating).
+	get_tree().current_scene = null
+	get_tree().paused = false
+	SceneFader.go("res://scenes/lobby.tscn", "")
+	print("GameMap: Human died — handed live match to lobby for spectate")
+
 
 func _enter_spectate_mode() -> void:
 	"""After the human survivor dies, keep the round running and put the camera
