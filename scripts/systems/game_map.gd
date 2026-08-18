@@ -131,6 +131,7 @@ var _spectate_cam: Camera2D = null
 var _spectate_panel: CanvasLayer = null
 var _spectate_timer_label: Label = null
 var _spectate_rows: VBoxContainer = null
+var _spectate_target_index: int = 0
 
 # Teleport mini-map
 var _teleport_circles: Array[Node] = []       # Teleport overlay children
@@ -713,6 +714,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		if a_panel:
 			a_panel.toggle_gui()
 		get_viewport().set_input_as_handled()
+	# Q/E cycle the live spectate camera while spectating (E = next, Q = prev)
+	if _spectating and event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_E:
+			_spectate_cycle(1)
+			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_Q:
+			_spectate_cycle(-1)
+			get_viewport().set_input_as_handled()
 
 
 # ═══════════════ STAIRS SYSTEM ═══════════════
@@ -3530,6 +3539,7 @@ func _enter_spectate_mode() -> void:
 	_spectate_cam.zoom = Vector2(1.25, 1.25)
 	add_child(_spectate_cam)
 	_spectate_cam.make_current()
+	_spectate_target_index = 0
 	if is_instance_valid(_killer_bot):
 		_spectate_cam.global_position = _killer_bot.global_position
 	_spectate_cam.reset_smoothing()
@@ -3588,6 +3598,33 @@ func _build_spectate_panel() -> void:
 	spacer.custom_minimum_size = Vector2(0, 8)
 	vbox.add_child(spacer)
 
+	# Cycle hint + clickable arrows (◀ Q  /  E ▶)
+	var hint := Label.new()
+	hint.text = "Q / E  or arrows to switch view"
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1))
+	vbox.add_child(hint)
+
+	var arrows := HBoxContainer.new()
+	arrows.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_child(arrows)
+
+	var left_btn := Button.new()
+	left_btn.text = "◀"
+	left_btn.custom_minimum_size = Vector2(48, 30)
+	left_btn.pressed.connect(_spectate_cycle.bind(-1))
+	arrows.add_child(left_btn)
+
+	var right_btn := Button.new()
+	right_btn.text = "▶"
+	right_btn.custom_minimum_size = Vector2(48, 30)
+	right_btn.pressed.connect(_spectate_cycle.bind(1))
+	arrows.add_child(right_btn)
+
+	var spacer2 := Control.new()
+	spacer2.custom_minimum_size = Vector2(0, 6)
+	vbox.add_child(spacer2)
+
 	var return_btn := Button.new()
 	return_btn.text = "Return to Lobby"
 	return_btn.pressed.connect(_spectate_return_to_lobby)
@@ -3605,15 +3642,21 @@ func _spectate_return_to_lobby() -> void:
 
 
 func _update_spectate_roster() -> void:
-	"""Refresh the roster rows showing the killer + every survivor with [DEAD]."""
+	"""Refresh the roster rows showing the killer + every survivor with [DEAD].
+	The currently watched target is highlighted with a ▶ marker."""
 	if not is_instance_valid(_spectate_rows):
 		return
 	for child: Node in _spectate_rows.get_children():
 		child.queue_free()
 
+	var targets: Array[Node2D] = _spectate_get_targets()
+	if not targets.is_empty():
+		_spectate_target_index = clampi(_spectate_target_index, 0, targets.size() - 1)
+
 	if is_instance_valid(_killer_bot):
 		var krow := Label.new()
-		krow.text = "%s  (KILLER)" % str(_killer_bot.name)
+		var active: bool = not targets.is_empty() and targets[_spectate_target_index] == _killer_bot
+		krow.text = "%s  (KILLER)%s" % [str(_killer_bot.name), "  ▶" if active else ""]
 		krow.add_theme_font_size_override("font_size", 13)
 		krow.add_theme_color_override("font_color", Color(1, 0.7, 0.4, 1))
 		_spectate_rows.add_child(krow)
@@ -3629,8 +3672,9 @@ func _update_spectate_roster() -> void:
 		var name_txt: String = "You" if s == _player else str(s.name)
 		var hp: float = s.get("current_hp") if "current_hp" in s else 0.0
 		var dead: bool = hp <= 0.0 or not s.is_physics_processing()
+		var active_row: bool = not targets.is_empty() and targets[_spectate_target_index] == s
 		var row := Label.new()
-		row.text = "%s  (SURVIVOR)%s" % [name_txt, "  [DEAD]" if dead else ""]
+		row.text = "%s  (SURVIVOR)%s%s" % [name_txt, "  ▶" if active_row else "", "  [DEAD]" if dead else ""]
 		row.add_theme_font_size_override("font_size", 12)
 		row.add_theme_color_override("font_color", Color(0.7, 1, 0.7, 1) if not dead else Color(0.6, 0.6, 0.6, 1))
 		_spectate_rows.add_child(row)
@@ -3647,13 +3691,58 @@ func _update_spectate_timer_text() -> void:
 
 
 func _update_spectate(_delta: float) -> void:
-	"""Each frame: keep the camera on the killer and refresh the live timer/roster."""
+	"""Each frame: keep the camera on the current spectate target (killer by
+	default) and refresh the live timer/roster."""
 	if not _spectating or not is_instance_valid(_spectate_cam):
 		return
-	if is_instance_valid(_killer_bot):
-		_spectate_cam.global_position = _killer_bot.global_position
+	# Prune targets that are no longer valid, then clamp the index.
+	var targets: Array[Node2D] = _spectate_get_targets()
+	if targets.is_empty():
+		_update_spectate_timer_text()
+		_update_spectate_roster()
+		return
+	_spectate_target_index = clampi(_spectate_target_index, 0, targets.size() - 1)
+	var t: Node2D = targets[_spectate_target_index]
+	if is_instance_valid(t):
+		_spectate_cam.global_position = t.global_position
 	_update_spectate_timer_text()
 	_update_spectate_roster()
+
+
+func _spectate_get_targets() -> Array[Node2D]:
+	"""Return the list of spectatable entities: the killer plus every living
+	survivor (bots + human). Only living characters are included so dead ones
+	are automatically skipped when cycling."""
+	var out: Array[Node2D] = []
+	if is_instance_valid(_killer_bot) and not _killer_bot_eliminated:
+		out.append(_killer_bot)
+	for s: Node2D in _survivor_bots:
+		if not is_instance_valid(s):
+			continue
+		var hp: float = s.get("current_hp") if "current_hp" in s else 0.0
+		if hp > 0.0:
+			out.append(s)
+	if is_instance_valid(_player):
+		var php: float = _player.get("current_hp") if "current_hp" in _player else 0.0
+		if php > 0.0:
+			out.append(_player)
+	return out
+
+
+func _spectate_cycle(dir: int) -> void:
+	"""Cycle the live spectate camera. dir=1 → next, dir=-1 → previous."""
+	if not _spectating:
+		return
+	var targets: Array[Node2D] = _spectate_get_targets()
+	if targets.is_empty():
+		return
+	_spectate_target_index = clampi(_spectate_target_index, 0, targets.size() - 1)
+	_spectate_target_index = (_spectate_target_index + dir) % targets.size()
+	if _spectate_target_index < 0:
+		_spectate_target_index += targets.size()
+	if is_instance_valid(_spectate_cam) and is_instance_valid(targets[_spectate_target_index]):
+		_spectate_cam.global_position = targets[_spectate_target_index].global_position
+		_spectate_cam.reset_smoothing()
 
 
 func _start_death_sequence() -> void:
