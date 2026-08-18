@@ -33,8 +33,6 @@ FriendsManager="*res://scripts/systems/friends_manager.gd"
 SaveManager="*res://scripts/systems/save_manager.gd"
 SFXManager="*res://scripts/systems/sfx_manager.gd"
 SoundManager="*res://scripts/systems/sound_manager.gd"
-GDSync="\"\""
-GDSyncSharp="\"\""
 P2PManager="*res://scripts/p2p/p2p_manager.gd"
 LiveMatchHost="*res://scripts/systems/live_match_host.gd"
 

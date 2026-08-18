@@ -642,10 +642,22 @@ func _update_spectate_visibility() -> void:
 		_spectate_timer_label.visible = _spectate_visible
 	# Show/hide the live in-lobby spectate viewport when a match is being held.
 	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	if _spectate_visible and is_instance_valid(host) and host.has_live_match:
+	var live_active: bool = _spectate_visible and is_instance_valid(host) and host.has_live_match
+	if live_active:
 		_build_live_spectate()
 	else:
 		_hide_live_spectate()
+	# While the live match fills the screen, hide the lobby's own HUD (intermission
+	# banner, leaderboard, action bar) and chat so they don't draw over the video.
+	var hud: CanvasLayer = $"../HUD"
+	if is_instance_valid(hud):
+		hud.visible = not live_active
+	var chat_layer: CanvasLayer = get_node_or_null("ChatLayer") as CanvasLayer
+	if is_instance_valid(chat_layer):
+		chat_layer.visible = not live_active
+	var dialogue_layer: CanvasLayer = get_node_or_null("DialogueLayer") as CanvasLayer
+	if is_instance_valid(dialogue_layer):
+		dialogue_layer.visible = not live_active
 
 
 func _build_live_spectate() -> void:
@@ -662,6 +674,14 @@ func _build_live_spectate() -> void:
 	_live_spectate_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_live_spectate_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_live_spectate_root)
+
+	# Opaque black backdrop so the lobby scene can't be seen around the video.
+	var backdrop := ColorRect.new()
+	backdrop.name = "Backdrop"
+	backdrop.color = Color(0, 0, 0, 1)
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_live_spectate_root.add_child(backdrop)
 
 	# The live game view (renders LiveMatchHost.live_viewport texture).
 	_live_spectate_tex = TextureRect.new()
@@ -730,6 +750,17 @@ func _build_live_spectate() -> void:
 func _hide_live_spectate() -> void:
 	if is_instance_valid(_live_spectate_root):
 		_live_spectate_root.visible = false
+	# Restore the lobby HUD/chat/dialogue that we hid while the match filled
+	# the screen (caller triggers this only when leaving live spectate).
+	var hud: CanvasLayer = $"../HUD"
+	if is_instance_valid(hud):
+		hud.visible = true
+	var chat_layer: CanvasLayer = get_node_or_null("ChatLayer") as CanvasLayer
+	if is_instance_valid(chat_layer):
+		chat_layer.visible = true
+	var dialogue_layer: CanvasLayer = get_node_or_null("DialogueLayer") as CanvasLayer
+	if is_instance_valid(dialogue_layer):
+		dialogue_layer.visible = true
 
 
 func _live_spectate_cycle(dir: int) -> void:
@@ -748,7 +779,6 @@ func _update_live_spectate_frame() -> void:
 		return
 	if is_instance_valid(_live_spectate_tex) and is_instance_valid(host.live_viewport):
 		_live_spectate_tex.texture = host.live_viewport.get_texture()
-		_live_spectate_tex.size = host.live_viewport.size
 
 	# Show who's being watched.
 	var watch_txt: String = "the KILLER"

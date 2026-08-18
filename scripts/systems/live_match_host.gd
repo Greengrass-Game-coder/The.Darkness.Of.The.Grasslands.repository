@@ -56,4 +56,3 @@ func release() -> void:
 
 func _exit_tree() -> void:
 	release()
-
