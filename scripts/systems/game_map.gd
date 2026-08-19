@@ -384,10 +384,11 @@ func _setup_music() -> void:
 func _switch_to_ending_music() -> void:
 	"""Switch map music to match-ending track at 30s remaining.
 	Plays as background music — chase can still play on top."""
-	if _lms_active or _round_ended:
+	if _lms_active or _round_ended or _spectating:
 		# During the LMS finale the LMS track is the sole score; don't layer the
 		# generic MATCH_ENDING song on top of it. Also never start it once the
-		# round has ended (the killer-win outro must play ONLY the LMS tail).
+		# round has ended (the killer-win outro must play ONLY the LMS tail), and
+		# never while the dead human is spectating (the match stays silent).
 		return
 	if _ending_music_switched:
 		return
@@ -1529,6 +1530,12 @@ func _update_chase_music(_delta: float) -> void:
 	if _chase_players.is_empty():
 		return
 
+	# While spectating (dead human watching) the match stays silent — no chase.
+	if _spectating:
+		if _chase_active_layer >= 0:
+			_silence_all_chase()
+		return
+
 	# During the LMS finale the LMS track is the sole score — chase themes are
 	# muted and cannot play at all until the round is over.
 	if _lms_active:
@@ -2202,6 +2209,8 @@ func _on_survivor_eliminated(player_name: String) -> void:
 
 func _rewind_ending_music() -> void:
 	"""Restart the ending music from the beginning (after a kill during countdown)."""
+	if _spectating:
+		return
 	var player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
 	if is_instance_valid(player):
 		player.stop()
@@ -2211,8 +2220,9 @@ func _rewind_ending_music() -> void:
 
 func _restore_map_music() -> void:
 	"""Stop ending music and restore normal map music (kill pushed past 31s)."""
-	if _lms_active:
+	if _lms_active or _spectating:
 		# During the LMS finale the LMS track stays; don't restore map music.
+		# Also never while spectating (the dead human watches in silence).
 		return
 	var ending_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
 	if is_instance_valid(ending_player):
@@ -2298,7 +2308,9 @@ func _start_lms() -> void:
 		_lms_music_player.name = "LmsMusicPlayer"
 		_lms_music_player.stream = lms_stream
 		_lms_music_player.bus = &"Music"
-		_lms_music_player.volume_db = -8.0
+		# If the finale begins while the dead human is spectating, keep it silent
+		# (they're only watching) — mechanics continue but no LMS score plays.
+		_lms_music_player.volume_db = -8.0 if not _spectating else -80.0
 		_lms_music_player.autoplay = true
 		_lms_music_player.finished.connect(_on_lms_music_loop)
 		add_child(_lms_music_player)
@@ -3517,12 +3529,13 @@ func _on_player_attacked(_stunned: bool) -> void:
 func _hand_off_for_spectate() -> void:
 	"""The human survivor died. Keep the round running, hand the LIVE match to
 	LiveMatchHost (which reparents it into its SubViewport so it survives the
-	scene change), then go to the lobby. The lobby detects the live match and
-	renders it with arrows to switch between killer & survivors."""
+	scene change), then go to the lobby. The lobby is LINKED to the match's
+	status; clicking SPECTATE there calls LiveMatchHost.return_to_match() to
+	bring this map back and watch the round here in-scene."""
 	# Enter spectate (camera on the killer, Q/E + arrows to cycle).
 	_enter_spectate_mode()
-	# The lobby now overlays its own SPECTATING UI on the whole viewport, so hide
-	# the map's in-round spectate panel (it would render embedded in the video).
+	# The lobby shows a linked status panel instead of rendering this map, so the
+	# map's in-round spectate panel stays hidden until we return to the map.
 	if is_instance_valid(_spectate_panel):
 		_spectate_panel.visible = false
 	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
@@ -3569,7 +3582,35 @@ func _enter_spectate_mode() -> void:
 	_build_spectate_panel()
 	_update_spectate_roster()
 	_update_spectate_timer_text()
+	# The human is dead and only watching — mute the map music and chase layers
+	# (both the chase theme and its build-up layers) so they don't play here.
+	_mute_match_music_for_spectate()
 	print("GameMap: Human died — spectating killer (live)")
+
+
+func _mute_match_music_for_spectate() -> void:
+	"""Spectate: the dead human is only watching, so silence the map music AND
+	all chase-theme layers (build-up + Chase.wav) + the LMS track so nothing
+	scores the scene until they leave or the round ends on its own."""
+	_silence_all_chase()
+	for n: String in ["MapMusicPlayer", "MusicPlayer", "LmsMusicPlayer"]:
+		var p: AudioStreamPlayer = get_node_or_null(n) as AudioStreamPlayer
+		if p:
+			p.stop()
+	print("GameMap: Music muted during spectate")
+
+
+func _on_returned_to_match() -> void:
+	"""Called by LiveMatchHost when the lobby brings this live match back as the
+	current scene (dead player clicked SPECTATE). Restore the spectate camera and
+	re-show the panel; music stays muted while spectating."""
+	_spectating = true
+	if is_instance_valid(_spectate_cam):
+		_spectate_cam.make_current()
+	if is_instance_valid(_spectate_panel):
+		_spectate_panel.visible = true
+	_mute_match_music_for_spectate()
+	print("GameMap: Live match returned to map — spectating")
 
 
 func _build_spectate_panel() -> void:

@@ -2,10 +2,11 @@ extends Node
 ## Persists the running game match so it survives a scene change (death → lobby).
 ##
 ## When the human survivor dies, the game_map does NOT destroy itself. Instead it
-## hands itself over to this autoload (reparented out of the old scene BEFORE the
-## lobby loads), so the killer bot + survivor bots keep playing. The lobby then
-## reads `live_match` and renders it live into a SubViewport, letting the player
-## spectate the ongoing round with arrows to switch between killer & survivors.
+## hands itself over to this autoload (reparented into a SubViewport BEFORE the
+## lobby loads), so the killer bot + survivor bots keep playing. The lobby is
+## LINKED to this held match's status (roster + timer). When the dead player
+## clicks SPECTATE, return_to_match() pulls the match back out of the SubViewport
+## and makes it the current scene again so the round is watched from the game map.
 
 ## The still-running game_map node (null when no live match is being held).
 var live_match: Node2D = null
@@ -46,6 +47,33 @@ func hand_off(match_node: Node2D) -> void:
 			old_parent.remove_child(match_node)
 		live_viewport.add_child(match_node)
 	print("LiveMatchHost: holding live match — spectate available")
+
+
+func return_to_match() -> Node2D:
+	"""Bring the held live match back as the active scene. Called from the lobby
+	when the dead player clicks SPECTATE: the match (still running, still in its
+	spectate mode) is pulled out of the SubViewport, made the current scene again,
+	and the lobby scene is freed. Returns the match node (null if none held)."""
+	if not is_instance_valid(live_match):
+		return null
+	var m: Node2D = live_match
+	var cur: Node = get_tree().current_scene
+	# Pull the match back out of the isolating SubViewport into the main tree.
+	if m.get_parent() == live_viewport:
+		live_viewport.remove_child(m)
+	get_tree().root.add_child(m)
+	get_tree().current_scene = m
+	live_match = null
+	has_live_match = false
+	get_tree().paused = false
+	# Let the match restore its spectate camera/panel (now that it's visible again).
+	if m.has_method("_on_returned_to_match"):
+		m.call("_on_returned_to_match")
+	# Free the lobby now that the match is the scene again.
+	if is_instance_valid(cur) and cur != m:
+		cur.queue_free()
+	print("LiveMatchHost: returned live match to the game map for spectate")
+	return m
 
 
 func release() -> void:
