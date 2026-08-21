@@ -186,4 +186,36 @@ no revives · kill timer bonus · LMS/LGS · HUD · basic multiplayer · audio �
 8. **Waiting-room minigames + Practice Range** — entirely absent.
 9. **Map voting** — entirely absent.
 
-*Last updated: Session 1 (audit complete).*
+---
+
+## Session 2 — Arcade Room + Tetrino (built)
+
+Added a playable arcade room to the lobby.
+
+### What was built
+- **Arcade room** (`res://scenes/arcade_room.tscn` + `res://scripts/systems/arcade_room.gd`):
+  a pitch-black room ("no lighting whatsoever") with a single interactable
+  arcade machine (`assets/objects/arcade machine.png`) and a controllable
+  lobby-person player.
+- **Lobby entrance** (both `lobby.gd` / `lobby_test.gd`): an invisible walk-in
+  Area2D on the right side of the lobby. Walking into it triggers a **black
+  block sweeping right→left** across the screen, then loads the arcade room.
+- **Console boot sequence**: VHS-style flicker → green boot text
+  `COMPUTERING CONSOLE BOOT V0.5P.R.O.T.O.T.Y.P.E.` → quick fake loading bar
+  (10% → 78% → 100% in ~1s).
+- **Minigame browser** (black screen): shows the single cartridge **TETRINO**
+  with its thumbnail (`assets/Thumbnails/Minigame_TETRINO.thumnail.png`).
+  - **WASD** navigation shows: *"This is the minigame we got in the Demo, so
+    either have fun or just leave the game."*
+  - **ENTER** launches Tetrino; **ESC** leaves back to the lobby.
+- **Tetrino title/menu** (menu-first scope): thumbnail + looping
+  `assets/Music/Minigames/tetrino.wav` on the **Music** bus + placeholder play
+  field ("INSERT COIN TO PLAY — coming soon"). ESC returns to the browser.
+- **Controls**: WASD/arrows + Shift to move, E to interact, ESC to back out.
+
+### Decisions
+- Tetrino is **boot + menu first** (title screen + placeholder field) — full
+  playable Tetris is a later task.
+- Room is reached via an **area** (no door), with a right→left black wipe.
+
+*Last updated: Session 2 (arcade room + Tetrino built).*

@@ -43,6 +43,11 @@ signal countdown_finished()
 @onready var evil_potato_area: Area2D = $"../EvilPotato"
 @onready var potato_prompt: Label = $"../EvilPotato/PotatoPrompt"
 
+# Arcade room entrance (right side of the lobby)
+const ARCADE_ROOM_SCENE: String = "res://scenes/arcade_room.tscn"
+@export var arcade_entrance_pos: Vector2 = Vector2(1160, 420)
+@export var arcade_entrance_size: Vector2 = Vector2(120, 220)
+
 @onready var browngrass_dialogue: DialogueLine = preload("res://resources/browngrass_dialogue.tres")
 @onready var flower_dialogue: DialogueLine = preload("res://resources/flower_dialogue.tres")
 @onready var evil_potato_dialogue: DialogueLine = preload("res://resources/evil_potato_dialogue.tres")
@@ -131,6 +136,7 @@ func _ready() -> void:
 	_setup_admin_panel()
 	_setup_chat()
 	_setup_spectate()
+	_setup_arcade_entrance()
 	# _setup_role_toggle() — removed, server assigns roles
 	countdown_finished.connect(_on_lobby_countdown_finished)
 	
@@ -522,6 +528,58 @@ func _setup_spectate() -> void:
 	# LMS track into the lobby (intermission) instead of the normal lobby tune.
 	if GameState.returning_from_lms:
 		_play_lms_in_lobby()
+
+
+# ------------------ Arcade Room Entrance (right side) ------------------
+
+func _setup_arcade_entrance() -> void:
+	"""Create an invisible walk-in area on the right side of the lobby that
+	transitions into the black arcade room with a right-to-left black wipe."""
+	var area := Area2D.new()
+	area.name = "ArcadeEntrance"
+	area.position = arcade_entrance_pos
+	area.collision_layer = 0
+	area.collision_mask = 1  # Player is on layer 1
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = arcade_entrance_size
+	shape.shape = rect
+	area.add_child(shape)
+	area.body_entered.connect(_on_arcade_entrance_entered)
+	# Add to the lobby root (sibling of Player).
+	var root: Node = get_parent()
+	if root:
+		root.add_child(area)
+	else:
+		add_child(area)
+
+
+func _on_arcade_entrance_entered(body: Node2D) -> void:
+	if body != self:
+		return
+	if dialogue_ui.is_dialogue_active() or _is_any_ui_open():
+		return
+	_enter_arcade_room()
+
+
+func _enter_arcade_room() -> void:
+	"""Black block sweeps right→left across the screen, then load the arcade room."""
+	var wipe := ColorRect.new()
+	wipe.color = Color(0, 0, 0, 1)
+	wipe.mouse_filter = Control.MOUSE_FILTER_STOP
+	var vs := get_viewport().get_visible_rect().size
+	wipe.position = Vector2(vs.x, 0)  # Start fully off-screen to the right
+	wipe.size = Vector2(vs.x, vs.y)
+	# Layer above everything.
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	layer.add_child(wipe)
+	get_tree().current_scene.add_child(layer)
+
+	var tween := create_tween()
+	tween.tween_property(wipe, "position", Vector2(0, 0), 0.5)
+	await tween.finished
+	get_tree().change_scene_to_file(ARCADE_ROOM_SCENE)
 
 
 func _create_spectate_button() -> void:

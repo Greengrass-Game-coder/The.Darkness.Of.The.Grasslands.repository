@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cmogasc1na4uo"]
+
+[ext_resource type="Script" uid="uid://cl6jobltyjtss" path="res://scripts/systems/arcade_room.gd" id="1_arcade"]
+
+[node name="ArcadeRoom" type="Node2D" unique_id=121235278]
+script = ExtResource("1_arcade")
