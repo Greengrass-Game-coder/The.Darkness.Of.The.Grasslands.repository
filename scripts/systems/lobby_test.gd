@@ -142,11 +142,6 @@ func _ready() -> void:
 	if GameState.show_analysis:
 		_show_match_analysis()
 
-	# AUTO-SPECTATE: if we arrived here because the human just died, a live match
-	# is being held by LiveMatchHost. Automatically jump straight back INTO the
-	# match scene to watch everyone (killer + survivors) live — no button needed.
-	_auto_spectate_after_lobby()
-
 
 func _setup_chat() -> void:
 	"""Create ChatLayer instance and connect its signals."""
@@ -623,21 +618,6 @@ func _create_spectate_timer_label() -> void:
 	lbl.add_theme_constant_override("outline_size", 4)
 	hud.add_child(lbl)
 	_spectate_timer_label = lbl
-
-
-func _auto_spectate_after_lobby() -> void:
-	"""If the human just died, a live match is held by LiveMatchHost. Stay in the
-	lobby and show a full-screen live view of the running match (the killer +
-	survivors playing out, rendered from LiveMatchHost's SubViewport). No scene
-	bounce, no button press needed — the player watches right from the lobby."""
-	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	if not is_instance_valid(host) or not host.has_live_match:
-		return
-	# Activate the live in-lobby spectate view.
-	_spectate_visible = true
-	_update_spectate_visibility()
-	_build_live_spectate()
-	print("Lobby: Showing live in-lobby spectate of the held match (player died)")
 
 
 func _on_spectate_button_pressed() -> void:
