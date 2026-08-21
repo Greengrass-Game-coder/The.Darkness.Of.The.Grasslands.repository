@@ -142,6 +142,11 @@ func _ready() -> void:
 	if GameState.show_analysis:
 		_show_match_analysis()
 
+	# SYNC GAMEMAP→LOBBY: if the human just died, a live match is held by
+	# LiveMatchHost. Instantly land in the lobby AND sync it to the running game
+	# map — the lobby shows the live match (killer + survivors) right there.
+	_auto_spectate_after_lobby()
+
 
 func _setup_chat() -> void:
 	"""Create ChatLayer instance and connect its signals."""
@@ -618,6 +623,20 @@ func _create_spectate_timer_label() -> void:
 	lbl.add_theme_constant_override("outline_size", 4)
 	hud.add_child(lbl)
 	_spectate_timer_label = lbl
+
+
+func _auto_spectate_after_lobby() -> void:
+	"""SYNC GAMEMAP→LOBBY: if the human just died, a live match is held by
+	LiveMatchHost. Stay in the lobby and show the running match right there —
+	rendered live from LiveMatchHost's SubViewport (the killer + survivors still
+	playing out). Instantly, no scene bounce, no button press."""
+	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
+	if not is_instance_valid(host) or not host.has_live_match:
+		return
+	_spectate_visible = true
+	_update_spectate_visibility()
+	_build_live_spectate()
+	print("Lobby: Synced to live game map for spectate (player died)")
 
 
 func _on_spectate_button_pressed() -> void:
