@@ -50,6 +50,9 @@ const PIECE_SHAPES: Dictionary = {
 const TETRIS_COLS: int = 10
 const TETRIS_ROWS: int = 20
 const CELL: float = 24.0
+# White "base" block tile (solid white square with a black outline) that gets
+# tinted to each piece's colour, so every block looks like a classic Tetris tile.
+const BASE_BLOCK_TEX: String = "res://The Darkness Of The Grasslands assets/objects/Minigame_TETRINO_base_piece.png"
 const LOBBY_SCENE: String = "res://scenes/lobby.tscn"
 const WALK_DIR: String = "res://The Darkness Of The Grasslands assets/Sprites/Lobby person (Player(s))/Walk directions/Lobby person ---- Lobby -AKA- spectator/"
 const FRONT_DIR: String = WALK_DIR + "Front (from human prespective - DOWN)/"
@@ -1242,19 +1245,17 @@ func _render_board() -> void:
 
 
 func _make_block(type: String, cell: float) -> Control:
-	"""Build one clean, solid-colour square block for a piece. Uses the sprite's
-	exact fill colour with a black outline, so it matches the artwork but never
-	glitches (no sprite slicing)."""
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = PIECE_COLORS[type]
-	sb.border_color = Color(0, 0, 0, 1)
-	sb.set_border_width_all(max(1, int(cell / 12.0)))
-	sb.set_corner_radius_all(max(1, int(cell * 0.08)))
-	var panel := Panel.new()
-	panel.add_theme_stylebox_override("panel", sb)
-	panel.size = Vector2(cell, cell)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return panel
+	"""Build one clean, square Tetris block using the white 'base' tile tinted to
+	the piece's colour. The base is a solid white square with a black outline, so
+	self_modulate recolours the fill while the black border stays black — exactly
+	like a classic Tetris tile, with no sprite-slicing glitches."""
+	var block := TextureRect.new()
+	block.texture = load(BASE_BLOCK_TEX)
+	block.self_modulate = PIECE_COLORS[type]
+	block.size = Vector2(cell, cell)
+	block.stretch_mode = TextureRect.STRETCH_SCALE
+	block.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return block
 
 
 func _add_piece_tex(type: String, rot: int, row: int, col: int) -> void:
