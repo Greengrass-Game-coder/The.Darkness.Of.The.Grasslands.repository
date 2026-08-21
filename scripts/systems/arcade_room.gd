@@ -118,6 +118,7 @@ var _beat_accum: float = 0.0       # accumulator for the 140 BPM pulse
 var _pulse_overlay: ColorRect = null
 var _title_thumb: TextureRect = null  # title art used for the start zoom
 var _cart: AudioStreamPlayer = null
+var _intro_zoom_tween: Tween = null  # zoom-in tween during the intro (killed on cancel)
 var _left_was_down: bool = false
 var _right_was_down: bool = false
 var _up_was_down: bool = false
@@ -468,7 +469,11 @@ func _on_enter_pressed() -> void:
 
 
 func _on_esc_pressed() -> void:
-	if _game_active:
+	if _intro_active:
+		# ESC during the cartridge-start intro cancels the entering (pitches the
+		# sound down, purple flash, back to the title menu) instead of exiting.
+		_cancel_tetrino_intro()
+	elif _game_active:
 		_exit_tetrino_game()
 	elif _menu_active:
 		_close_tetrino()
@@ -872,12 +877,58 @@ func _start_tetrino_intro() -> void:
 
 	# Zoom into the title art to "enter" the game.
 	if is_instance_valid(_title_thumb):
-		var tw := create_tween()
-		tw.tween_property(_title_thumb, "scale", Vector2(3.2, 3.2), 1.6) \
+		_intro_zoom_tween = create_tween()
+		_intro_zoom_tween.tween_property(_title_thumb, "scale", Vector2(3.2, 3.2), 1.6) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 	# The game music waits for the cartridge jingle to finish fully before
 	# starting (see _on_cart_finished), so the two never overlap.
+
+
+func _cancel_tetrino_intro() -> void:
+	"""ESC during the cartridge-start intro: cancel the entering. The cartridge
+	sound pitches down like a disc being slowed/ejected, the screen flashes
+	purple and fades away over 0.5s, and the title art un-zooms back to the
+	menu (the game is NOT started)."""
+	if not _intro_active:
+		return
+	_intro_active = false  # stops _on_cart_finished from starting the game
+
+	# Stop the zoom-in and glide the title art back to normal.
+	if is_instance_valid(_intro_zoom_tween):
+		_intro_zoom_tween.kill()
+		_intro_zoom_tween = null
+	if is_instance_valid(_title_thumb):
+		var zt := create_tween()
+		zt.tween_property(_title_thumb, "scale", Vector2.ONE, 0.5) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+	# Pitch the cartridge sound down like a disc winding down.
+	if is_instance_valid(_cart):
+		var pt := create_tween()
+		pt.tween_property(_cart, "pitch_scale", 0.12, 0.5) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		pt.tween_callback(_cleanup_cart)
+
+	# Purple flash that fades away over 0.5s.
+	var flash := ColorRect.new()
+	flash.name = "CancelFlash"
+	flash.color = Color(0.6, 0.0, 1.0, 1.0)
+	flash.position = Vector2(0, 0)
+	flash.size = Vector2(ROOM_W, ROOM_H)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(flash)
+	var ft := create_tween()
+	ft.tween_property(flash, "modulate:a", 0.0, 0.5) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	ft.tween_callback(flash.queue_free)
+
+
+func _cleanup_cart() -> void:
+	if is_instance_valid(_cart):
+		_cart.stop()
+		_cart.queue_free()
+	_cart = null
 
 
 func _on_cart_finished() -> void:
