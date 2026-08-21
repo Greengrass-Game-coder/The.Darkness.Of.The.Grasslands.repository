@@ -237,3 +237,31 @@ Added a playable arcade room to the lobby.
   slicing the fused sprite art, for reliable, glitch-free rendering.
 - D-S3-2: Keep the loop logic in code (stream-level for PCM, `finished`-restart
   for compressed) so it does not depend on `.import` files (which are gitignored).
+
+## Session 4 (Tetrino: collision fix, line-clear flash, win condition + coin economy)
+### Changes
+- **Fixed the piece collision problem**: rendering now uses the board grid as the
+  single source of truth (blocks drawn cell-by-cell). Previously the render list
+  (`_settled`) wasn't updated when lines cleared, so old blocks stayed on screen
+  and new pieces appeared to overlap/clip them.
+- **Line-clear flash**: completing a row flashes it pure white for a moment, then
+  it collapses and disappears (classic Tetris), with gravity/input paused during
+  the flash.
+- **Win condition**: the minigame ends when the FIRST of (score >= 1000) OR
+  (10 lines cleared) happens — a proper win, not a game over.
+- **Win screen**: plays `MINIGAME-COMPLETED.wav`, shows the Grassconatication
+  coin with a shine sweep, a pixelated +N (built-in 5x7 pixel font, no font
+  asset), and the reward/retry/gamble prompts. The coin + earned count also
+  appear on the minigame browser screen.
+- **Coin economy** (rules confirmed): 1st win = +1 coin; after it you can
+  GAMBLE into HARD MODE (faster gravity) — win = 3 coins total, lose = keep only
+  1 (fair punishment). Without gambling, a 2nd win = 2 total (cap). Daily limit:
+  one coin-earning opportunity per calendar day (local midnight reset). Admins
+  are unlimited. Detected clock roll-back (to bypass the daily limit) adds a +5h
+  penalty. Coins persist to disk via SaveManager.
+### Decisions
+- D-S4-1: Board grid is the single source of truth for both collision and
+  rendering (removed the separate `_settled` render list).
+- D-S4-2: Coin/daily-limit state stored in GameState + persisted via SaveManager;
+  time-tamper detection is best-effort (a local game can't be fully tamper-proof).
+- D-S4-3: Hard mode = the gamble; it's entered from the win screen with the G key.

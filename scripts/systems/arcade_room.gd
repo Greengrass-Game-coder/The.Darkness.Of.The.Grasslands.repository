@@ -41,6 +41,33 @@ const CELL: float = 24.0
 # White "base" block tile (solid white square with a black outline) that gets
 # tinted to each piece's colour, so every block looks like a classic Tetris tile.
 const BASE_BLOCK_TEX: String = "res://The Darkness Of The Grasslands assets/objects/Minigame_TETRINO_base_piece.png"
+# Win condition: first to happen of reaching this score or clearing this many lines.
+const WIN_SCORE: int = 1000
+const WIN_LINES: int = 10
+# Win fanfare and the reward coin artwork.
+const TETRINO_COMPLETE: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/MINIGAME-COMPLETED.wav"
+const SAVE_MGR_SCRIPT = preload("res://scripts/systems/save_manager.gd")
+const COIN_TEX: String = "res://The Darkness Of The Grasslands assets/UI/Lobby/Grassconatication coin.png"
+# Time-tamper punishment: if the clock is rolled back to reset the daily coin
+# limit, add this much (seconds) to the wait before coins are available again.
+const TAMPER_PENALTY_SECONDS: int = 5 * 60 * 60
+# Tiny 5x7 dot-matrix pixel font used for the "pixelated numbers" on the coin.
+# Each glyph is 7 rows of 5 chars; '#' is a lit pixel.
+const PIX_FONT: Dictionary = {
+	"0": [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
+	"1": ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."],
+	"2": [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
+	"3": [".###.", "#...#", "....#", "..##.", "....#", "#...#", ".###."],
+	"4": ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."],
+	"5": ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."],
+	"6": ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."],
+	"7": ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."],
+	"8": [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."],
+	"9": [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
+	"+": [".....", "..#..", "..#..", "#####", "..#..", "..#..", "....."],
+	"x": [".....", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "....."],
+	"c": [".....", ".....", ".###.", "#...#", "#....", "#...#", ".###."],
+}
 const LOBBY_SCENE: String = "res://scenes/lobby.tscn"
 const WALK_DIR: String = "res://The Darkness Of The Grasslands assets/Sprites/Lobby person (Player(s))/Walk directions/Lobby person ---- Lobby -AKA- spectator/"
 const FRONT_DIR: String = WALK_DIR + "Front (from human prespective - DOWN)/"
@@ -85,8 +112,7 @@ var _t_was_down: bool = false
 var _theme_label: Label = null
 
 # ── Tetris game state ──
-var _board: Array = []             # 2D grid: "" or piece key for settled cells
-var _settled: Array = []           # Array of {type, rot, row, col} for rendering
+var _board: Array = []             # 2D grid: "" or piece key for settled cells (single source of truth)
 var _cur_type: String = "T"
 var _cur_rot: int = 0
 var _cur_row: int = 0
@@ -115,6 +141,12 @@ var _right_was_down: bool = false
 var _up_was_down: bool = false
 var _down_was_down: bool = false
 var _space_was_down: bool = false
+var _clearing: bool = false        # a line-clear flash is in progress (pause the game)
+var _lines_cleared: int = 0        # total lines cleared this run (win condition)
+var _won: bool = false             # the player won the minigame (not a loss)
+var _hard_mode: bool = false       # this run is the "gamble" hard mode
+var _win_coin: TextureRect = null  # coin shown on the win screen (for shine anim)
+var _g_was_down: bool = false      # edge-detect for the G (gamble) key on the win screen
 
 
 func _ready() -> void:
@@ -383,6 +415,9 @@ func _physics_process(delta: float) -> void:
 		_player.velocity = Vector2.ZERO
 		if is_instance_valid(_sprite):
 			_sprite.animation = _idle_anim
+		if _won:
+			_handle_win_input()
+			return
 		_tetris_handle_input()
 		_tetris_step(delta)
 		_tetris_pulse(delta)
@@ -444,8 +479,9 @@ func _on_e_pressed() -> void:
 
 
 func _on_enter_pressed() -> void:
-	if _game_active and _game_over:
-		# Game over screen: Enter retries.
+	if _game_active and (_game_over or _won):
+		# Game over / win screen: Enter retries (normal mode).
+		_hard_mode = false
 		_start_tetrino_game()
 		return
 	if _intro_active:
@@ -654,6 +690,17 @@ func _show_minigame_browser() -> void:
 	card_name.add_theme_color_override("font_color", p["accent"])
 	card_name.add_theme_font_size_override("font_size", 44)
 	_ui.add_child(card_name)
+
+	# Shiny Grassconatication coin + pixelated count earned from Tetrino.
+	var coin_badge := TextureRect.new()
+	coin_badge.texture = load(COIN_TEX)
+	coin_badge.position = Vector2(ROOM_W / 2.0 - 220, ROOM_H - 150)
+	coin_badge.size = Vector2(36, 36)
+	coin_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	coin_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(coin_badge)
+	_add_pixel_text(_ui, "x" + str(GameState.tetrino_coins_earned),
+		Vector2(ROOM_W / 2.0 - 176, ROOM_H - 142), 3.0, p["accent"])
 
 	# Theme indicator (console-only setting).
 	_theme_label = Label.new()
@@ -943,9 +990,13 @@ func _start_tetrino_game() -> void:
 	_game_active = true
 	_game_over = false
 	_game_lost = false
+	_won = false
+	_clearing = false
+	_lines_cleared = 0
 	_score = 0
 	_level = 1
-	_drop_interval = 1.0
+	# Hard mode ("gamble") starts faster for a tougher challenge.
+	_drop_interval = 0.5 if _hard_mode else 1.0
 	_drop_accum = 0.0
 	_space_was_down = false
 	_left_was_down = false
@@ -1071,7 +1122,6 @@ func _start_tetrino_game() -> void:
 		row.resize(TETRIS_COLS)
 		row.fill("")
 		_board.append(row)
-	_settled = []
 	_spawn_piece()
 	_render_board()
 
@@ -1166,19 +1216,19 @@ func _try_rotate() -> void:
 
 
 func _hard_drop() -> void:
-	if _game_lost or _game_over:
+	if _game_lost or _game_over or _won or _clearing:
 		return
 	var m := _matrix(_cur_type, _cur_rot)
 	while not _collides(_cur_type, _cur_rot, _cur_row + 1, _cur_col):
 		_cur_row += 1
 	_score += 2 * m.size() * m[0].size()
 	_lock_piece()
-	_render_board()
 	_update_score()
 
 
 func _lock_piece() -> void:
-	"""Freeze the current piece into the board, clear lines, spawn the next."""
+	"""Freeze the current piece into the board, flash+clear complete lines, then
+	spawn the next piece (or end the game if the win condition was reached)."""
 	var m := _matrix(_cur_type, _cur_rot)
 	for r in range(m.size()):
 		for c in range(m[r].size()):
@@ -1188,10 +1238,29 @@ func _lock_piece() -> void:
 			var cc: int = _cur_col + c
 			if rr >= 0 and rr < TETRIS_ROWS and cc >= 0 and cc < TETRIS_COLS:
 				_board[rr][cc] = _cur_type
-	_settled.append({"type": _cur_type, "rot": _cur_rot, "row": _cur_row, "col": _cur_col})
 
-	# Clear complete lines.
-	var lines: int = 0
+	_render_board()
+
+	# Find complete rows.
+	var full_rows: Array = []
+	for r in range(TETRIS_ROWS):
+		var full: bool = true
+		for c in range(TETRIS_COLS):
+			if _board[r][c] == "":
+				full = false
+				break
+		if full:
+			full_rows.append(r)
+
+	if full_rows.is_empty():
+		_after_lock()
+		return
+
+	# Flash the completed rows white, then collapse them.
+	_clearing = true
+	await _animate_line_clear(full_rows)
+
+	var cleared: int = 0
 	for r in range(TETRIS_ROWS - 1, -1, -1):
 		var full: bool = true
 		for c in range(TETRIS_COLS):
@@ -1204,31 +1273,59 @@ func _lock_piece() -> void:
 			new_row.resize(TETRIS_COLS)
 			new_row.fill("")
 			_board.insert(0, new_row)
-			lines += 1
+			cleared += 1
 			r += 1  # re-check the same index after removal
 
-	if lines > 0:
-		_score += [0, 100, 300, 500, 800][min(lines, 4)]
-		# Speed up every 10 lines (each line ~ counts toward level).
+	if cleared > 0:
+		_lines_cleared += cleared
+		_score += [0, 100, 300, 500, 800][min(cleared, 4)]
+		# Speed up as the level rises.
 		_level = 1 + int(_score / 500.0)
 		_drop_interval = max(0.15, 1.0 - (0.05 * (_level - 1)))
 		_update_score()
 
-	_spawn_piece()
+	_clearing = false
+	_after_lock()
+
+
+func _after_lock() -> void:
+	"""Common tail of _lock_piece: check the win condition, else spawn the next."""
+	if _score >= WIN_SCORE or _lines_cleared >= WIN_LINES:
+		_show_win()
+		return
 	_render_board()
+	_spawn_piece()
+
+
+func _animate_line_clear(full_rows: Array) -> void:
+	"""Flash the completed rows pure white for a moment (classic Tetris line
+	clear), then let _lock_piece collapse them."""
+	for t in _board_texs:
+		if not is_instance_valid(t):
+			continue
+		var row: int = int(round(t.position.y / CELL))
+		if full_rows.has(row):
+			t.self_modulate = Color(1, 1, 1, 1)
+	await get_tree().create_timer(0.28).timeout
 
 
 func _render_board() -> void:
-	"""Rebuild all piece TextureRects on the board layer from settled + current."""
+	"""Rebuild all piece blocks on the board layer from the _board grid (the
+	single source of truth) plus the currently falling piece."""
 	for t in _board_texs:
 		if is_instance_valid(t):
 			t.queue_free()
 	_board_texs.clear()
 	if not is_instance_valid(_board_layer):
 		return
-	for sp in _settled:
-		_add_piece_tex(sp["type"], sp["rot"], sp["row"], sp["col"])
-	if not _game_lost:
+	for r in range(TETRIS_ROWS):
+		for c in range(TETRIS_COLS):
+			if _board[r][c] != "":
+				var block: Control = _make_block(_board[r][c], CELL)
+				block.position = Vector2(c * CELL, r * CELL)
+				_board_layer.add_child(block)
+				_board_texs.append(block)
+	if not _game_lost and not _won:
 		_add_piece_tex(_cur_type, _cur_rot, _cur_row, _cur_col)
 
 
@@ -1316,7 +1413,7 @@ func _tetris_step(delta: float) -> void:
 	if _game_lost:
 		_show_game_over()
 		return
-	if _game_over:
+	if _game_over or _won or _clearing:
 		return
 	_drop_accum += delta
 	if _drop_accum >= _drop_interval:
@@ -1329,7 +1426,7 @@ func _tetris_step(delta: float) -> void:
 
 
 func _tetris_handle_input() -> void:
-	if _game_lost or _game_over:
+	if _game_lost or _game_over or _won or _clearing:
 		return
 	var left := Input.is_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_LEFT)
 	var right := Input.is_key_pressed(KEY_RIGHT) or Input.is_physical_key_pressed(KEY_RIGHT)
@@ -1360,6 +1457,10 @@ func _show_game_over() -> void:
 	if _game_over:
 		return
 	_game_over = true
+	# If this was a hard-mode gamble run, apply the fair punishment: you lose the
+	# chance at the 2nd coin and are left with only the 1st.
+	if _hard_mode:
+		_on_gamble_lost()
 	var p := _palette()
 	var ov := ColorRect.new()
 	ov.color = Color(0, 0, 0, 0.75)
@@ -1367,14 +1468,234 @@ func _show_game_over() -> void:
 	ov.size = Vector2(ROOM_W, ROOM_H)
 	ov.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(ov)
+	var title: String = "GAME OVER"
+	if _hard_mode:
+		title = "GAMBLE LOST\n(kept " + str(GameState.tetrino_coins_earned) + " coin)"
 	var lbl := Label.new()
-	lbl.text = "GAME OVER\nScore: " + str(_score) + "\nPress [ENTER] to retry"
+	lbl.text = title + "\nScore: " + str(_score) + "\nPress [ENTER] to retry"
 	lbl.position = Vector2(0, 260)
-	lbl.size = Vector2(ROOM_W, 160)
+	lbl.size = Vector2(ROOM_W, 200)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.add_theme_color_override("font_color", p["accent"])
-	lbl.add_theme_font_size_override("font_size", 36)
+	lbl.add_theme_font_size_override("font_size", 34)
 	_ui.add_child(lbl)
+
+
+# ═══════════════ WIN / COIN REWARD ═══════════════
+
+func _now_sec() -> int:
+	return int(Time.get_unix_time_from_system())
+
+
+func _same_day(a: int, b: int) -> bool:
+	var da := Time.get_datetime_dict_from_unix_time(a)
+	var db := Time.get_datetime_dict_from_unix_time(b)
+	return da["year"] == db["year"] and da["month"] == db["month"] and da["day"] == db["day"]
+
+
+func _detect_time_tamper(now: int) -> void:
+	"""Best-effort anti-farming: if the wall clock has been rolled back since we
+	last recorded a time (the classic daily-limit bypass), add a +5h penalty."""
+	if GameState.tetrino_last_seen_time > 0 and now < GameState.tetrino_last_seen_time:
+		GameState.tetrino_time_penalty_until = max(GameState.tetrino_time_penalty_until, now + TAMPER_PENALTY_SECONDS)
+	if GameState.tetrino_last_coin_time > 0 and now < GameState.tetrino_last_coin_time:
+		GameState.tetrino_time_penalty_until = max(GameState.tetrino_time_penalty_until, now + TAMPER_PENALTY_SECONDS)
+	GameState.tetrino_last_seen_time = max(GameState.tetrino_last_seen_time, now)
+
+
+func _daily_available(now: int) -> bool:
+	"""Can this player earn a coin from Tetrino right now? Admins are unlimited;
+	everyone else gets one coin-earning opportunity per calendar day."""
+	if GameState.is_admin:
+		return true
+	if GameState.tetrino_time_penalty_until > 0 and now < GameState.tetrino_time_penalty_until:
+		return false
+	if GameState.tetrino_last_coin_time <= 0:
+		return true
+	return not _same_day(GameState.tetrino_last_coin_time, now)
+
+
+func _save_tetrino_state() -> void:
+	var uname: String = AuthManager.current_username
+	if uname.is_empty():
+		return
+	SAVE_MGR_SCRIPT.autosave(uname)
+
+
+func _resolve_win_reward() -> int:
+	"""Apply the confirmed coin rules on a win and return how many coins were
+	awarded this run (0..3). Updates GameState and persists."""
+	var now := _now_sec()
+	_detect_time_tamper(now)
+	var awarded := 0
+	if _daily_available(now) and not GameState.tetrino_gambled:
+		var coins: int = GameState.tetrino_coins_earned
+		if _hard_mode:
+			# Gamble: a hard-mode win guarantees 3 coins total.
+			if coins < 3:
+				awarded = 3 - coins
+				GameState.tetrino_coins_earned = 3
+			GameState.tetrino_gambled = true
+			GameState.tetrino_last_coin_time = now
+		elif coins < 2:
+			# Normal: 1st win → 1 coin, 2nd win → 2 (cap at 2).
+			awarded = 1
+			GameState.tetrino_coins_earned = coins + 1
+			GameState.tetrino_last_coin_time = now
+	elif _hard_mode:
+		GameState.tetrino_gambled = true
+	if awarded > 0:
+		GameState.add_money(awarded)
+		_save_tetrino_state()
+	return awarded
+
+
+func _on_gamble_lost() -> void:
+	"""Lost the hard-mode gamble: drop to just the first coin and lock further
+	earning (no 2nd coin) as a fair punishment."""
+	if GameState.tetrino_coins_earned > 1:
+		GameState.tetrino_coins_earned = 1
+	GameState.tetrino_gambled = true
+	_save_tetrino_state()
+
+
+func _add_pixel_text(parent: Node, text: String, pos: Vector2, px_size: float, color: Color) -> void:
+	"""Draw a string using the tiny 5x7 pixel font as scaled ColorRect pixels."""
+	var x := 0.0
+	for ch in text:
+		var glyph: Array = PIX_FONT.get(String(ch), [])
+		for row in range(glyph.size()):
+			var line: String = glyph[row]
+			for col in range(line.length()):
+				if line[col] == "#":
+					var px := ColorRect.new()
+					px.color = color
+					px.position = pos + Vector2((x + col) * px_size, row * px_size)
+					px.size = Vector2(px_size, px_size)
+					px.mouse_filter = Control.MOUSE_FILTER_IGNORE
+					parent.add_child(px)
+		x += 6.0  # glyph advance (5 wide + 1 spacing)
+
+
+func _make_coin_shiny() -> void:
+	"""A soft white sheen that sweeps across the reward coin, clipped to it."""
+	if not is_instance_valid(_win_coin):
+		return
+	var clip := Control.new()
+	clip.name = "CoinShine"
+	clip.position = _win_coin.position
+	clip.size = _win_coin.size
+	clip.clip_contents = true
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(clip)
+	var band := ColorRect.new()
+	band.color = Color(1, 1, 1, 0.32)
+	band.position = Vector2(-_win_coin.size.x, 0)
+	band.size = Vector2(_win_coin.size.x * 0.6, _win_coin.size.y)
+	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip.add_child(band)
+	var tw := create_tween().set_loops()
+	tw.tween_property(band, "position:x", _win_coin.size.x * 1.8, 1.5) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_interval(0.5)
+
+
+func _show_win() -> void:
+	"""The minigame was won: play the completion fanfare, show the shiny reward
+	coin with a pixelated +N, and offer retry / gamble."""
+	if _won:
+		return
+	_won = true
+
+	# Play the win fanfare (replace the tetrino music).
+	if _music:
+		_music.stop()
+	var complete := AudioStreamPlayer.new()
+	complete.stream = load(TETRINO_COMPLETE)
+	complete.bus = "Music"
+	add_child(complete)
+	complete.play()
+
+	var awarded := _resolve_win_reward()
+	var can_gamble: bool = _daily_available(_now_sec()) \
+		and GameState.tetrino_coins_earned == 1 and not GameState.tetrino_gambled
+	var p := _palette()
+
+	var ov := ColorRect.new()
+	ov.color = Color(0, 0, 0, 0.8)
+	ov.position = Vector2(0, 0)
+	ov.size = Vector2(ROOM_W, ROOM_H)
+	ov.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(ov)
+
+	var title := Label.new()
+	title.text = "CONGRATULATIONS!"
+	title.position = Vector2(0, 96)
+	title.size = Vector2(ROOM_W, 60)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", p["accent"])
+	title.add_theme_font_size_override("font_size", 54)
+	_ui.add_child(title)
+
+	var sub := Label.new()
+	sub.text = "YOU WIN — TETRINO COMPLETE"
+	sub.position = Vector2(0, 168)
+	sub.size = Vector2(ROOM_W, 40)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.add_theme_color_override("font_color", p["text"])
+	sub.add_theme_font_size_override("font_size", 24)
+	_ui.add_child(sub)
+
+	# The shiny reward coin, centred.
+	_win_coin = TextureRect.new()
+	_win_coin.texture = load(COIN_TEX)
+	_win_coin.position = Vector2(ROOM_W / 2.0 - 62, 232)
+	_win_coin.size = Vector2(124, 124)
+	_win_coin.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_win_coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(_win_coin)
+	_make_coin_shiny()
+
+	# Pixelated "+N" next to the coin.
+	if awarded > 0:
+		_add_pixel_text(_ui, "+" + str(awarded), Vector2(ROOM_W / 2.0 + 92, 292), 4.0, Color(1.0, 0.85, 0.2))
+	else:
+		_add_pixel_text(_ui, "+0", Vector2(ROOM_W / 2.0 + 92, 292), 4.0, p["text_dim"])
+
+	var reward := Label.new()
+	if awarded > 0:
+		reward.text = "Reward: " + str(awarded) + " Grassconatication coin" + ("s" if awarded > 1 else "")
+	else:
+		reward.text = "No coin today" + ("" if GameState.is_admin else " (daily limit)") + " — play for fun!"
+	reward.position = Vector2(0, 380)
+	reward.size = Vector2(ROOM_W, 40)
+	reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reward.add_theme_color_override("font_color", p["text"])
+	reward.add_theme_font_size_override("font_size", 22)
+	_ui.add_child(reward)
+
+	var prompt := Label.new()
+	var lines: Array = ["Press [ENTER] to play again"]
+	if can_gamble:
+		lines.append("Press [G] to GAMBLE — HARD MODE (3 coins on win)")
+	prompt.text = "\n".join(lines)
+	prompt.position = Vector2(0, 440)
+	prompt.size = Vector2(ROOM_W, 90)
+	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	prompt.add_theme_color_override("font_color", p["accent"])
+	prompt.add_theme_font_size_override("font_size", 22)
+	_ui.add_child(prompt)
+
+
+func _handle_win_input() -> void:
+	"""On the win screen: G starts the hard-mode gamble run (when available)."""
+	var g := Input.is_key_pressed(KEY_G) or Input.is_physical_key_pressed(KEY_G)
+	if g and not _g_was_down:
+		if _daily_available(_now_sec()) and GameState.tetrino_coins_earned == 1 \
+				and not GameState.tetrino_gambled:
+			_hard_mode = true
+			_start_tetrino_game()
+	_g_was_down = g
 
 
 func _exit_tetrino_game() -> void:

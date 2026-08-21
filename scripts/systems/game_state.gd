@@ -40,6 +40,18 @@ var console_theme: String = "system"
 ## Money tracking per player
 var player_money: int = 0
 
+## Tetrino minigame coin-reward state (persisted via SaveManager):
+## - tetrino_coins_earned: total coins earned from Tetrino (0..3; 3 = gamble win)
+## - tetrino_last_coin_time: unix time of the most recent coin earned (daily limit)
+## - tetrino_gambled: whether the player took the hard-mode gamble (permanent)
+## - tetrino_time_penalty_until: if the clock was tampered with, coins unlock only after this
+## - tetrino_last_seen_time: last recorded wall-clock time, used to detect roll-backs
+var tetrino_coins_earned: int = 0
+var tetrino_last_coin_time: int = 0
+var tetrino_gambled: bool = false
+var tetrino_time_penalty_until: int = 0
+var tetrino_last_seen_time: int = 0
+
 ## Rings (Killer chance) tracking per player
 var player_rings: Dictionary = {}
 

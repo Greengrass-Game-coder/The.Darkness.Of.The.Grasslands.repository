@@ -157,7 +157,12 @@ static func autosave(username: String) -> bool:
 		"selected_killer": GameState.selected_killer,
 		"hide_leaderboard": GameState.hide_leaderboard,
 		"epilepsy_safe_mode": GameState.epilepsy_safe_mode,
-		"is_admin": GameState.is_admin
+		"is_admin": GameState.is_admin,
+		"tetrino_coins_earned": GameState.tetrino_coins_earned,
+		"tetrino_last_coin_time": GameState.tetrino_last_coin_time,
+		"tetrino_gambled": GameState.tetrino_gambled,
+		"tetrino_time_penalty_until": GameState.tetrino_time_penalty_until,
+		"tetrino_last_seen_time": GameState.tetrino_last_seen_time
 	}
 	# Also include audio bus volumes
 	for bus_name in ["Master", "Music", "SFX"]:
@@ -194,6 +199,16 @@ static func autoload(username: String) -> bool:
 		GameState.epilepsy_safe_mode = data.epilepsy_safe_mode
 	if data.has("is_admin"):
 		GameState.is_admin = data.is_admin
+	if data.has("tetrino_coins_earned"):
+		GameState.tetrino_coins_earned = data.tetrino_coins_earned
+	if data.has("tetrino_last_coin_time"):
+		GameState.tetrino_last_coin_time = data.tetrino_last_coin_time
+	if data.has("tetrino_gambled"):
+		GameState.tetrino_gambled = data.tetrino_gambled
+	if data.has("tetrino_time_penalty_until"):
+		GameState.tetrino_time_penalty_until = data.tetrino_time_penalty_until
+	if data.has("tetrino_last_seen_time"):
+		GameState.tetrino_last_seen_time = data.tetrino_last_seen_time
 	
 	# Restore audio bus volumes
 	for bus_name in ["Master", "Music", "SFX"]:
