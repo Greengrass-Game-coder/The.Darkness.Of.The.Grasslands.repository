@@ -122,17 +122,6 @@ var _death_active: bool = false
 var _death_overlay: ColorRect = null
 var _death_fade_progress: float = 0.0
 
-# Spectate state — after the human survivor dies, the round keeps running and a
-# live camera follows the killer bot. A panel shows the roster (killer + all
-# survivors with [DEAD] markers) plus the LIVE match timer. Follows ONLY the
-# killer (no survivor cycling). Ends on killer outro or timer-out (→ lobby).
-var _spectating: bool = false
-var _spectate_cam: Camera2D = null
-var _spectate_panel: CanvasLayer = null
-var _spectate_timer_label: Label = null
-var _spectate_rows: VBoxContainer = null
-var _spectate_target_index: int = 0
-
 # Teleport mini-map
 var _teleport_circles: Array[Node] = []       # Teleport overlay children
 var _teleport_markers_active: bool = false     # Whether markers are being shown
@@ -384,11 +373,10 @@ func _setup_music() -> void:
 func _switch_to_ending_music() -> void:
 	"""Switch map music to match-ending track at 30s remaining.
 	Plays as background music — chase can still play on top."""
-	if _lms_active or _round_ended or _spectating:
+	if _lms_active or _round_ended:
 		# During the LMS finale the LMS track is the sole score; don't layer the
 		# generic MATCH_ENDING song on top of it. Also never start it once the
-		# round has ended (the killer-win outro must play ONLY the LMS tail), and
-		# never while the dead human is spectating (the match stays silent).
+		# round has ended (the killer-win outro must play ONLY the LMS tail).
 		return
 	if _ending_music_switched:
 		return
@@ -715,14 +703,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		if a_panel:
 			a_panel.toggle_gui()
 		get_viewport().set_input_as_handled()
-	# Q/E cycle the live spectate camera while spectating (E = next, Q = prev)
-	if _spectating and event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_E:
-			_spectate_cycle(1)
-			get_viewport().set_input_as_handled()
-		elif event.keycode == KEY_Q:
-			_spectate_cycle(-1)
-			get_viewport().set_input_as_handled()
 
 
 # ═══════════════ STAIRS SYSTEM ═══════════════
@@ -967,10 +947,6 @@ func _process(delta: float) -> void:
 	if _death_active:
 		_update_death_fade(delta)
 	
-	# Live spectate of the killer bot after the human dies.
-	if _spectating:
-		_update_spectate(delta)
-
 
 func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 	"""Create ability icon slots in the HUD below the sprint bar, centered."""
@@ -1188,11 +1164,10 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 			# Survivor eliminated — +30s timer bonus if bot killer exists
 			if is_instance_valid(_killer_bot):
 				_on_survivor_eliminated("Player")
-			# The human survivor died. Keep the round running and hand the LIVE
-			# match over to LiveMatchHost, then go to the lobby. The lobby then
-			# AUTOMATICALLY returns to this live match so the player watches the
-			# killer + survivors play out from the map.
-			_hand_off_for_spectate()
+			# The killer (AI bot or human) won here.
+			_killer_won = true
+			# Start death sequence
+			_start_death_sequence()
 
 
 func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:
@@ -1527,12 +1502,6 @@ func _update_chase_music(_delta: float) -> void:
 	Only ONE layer plays at a time (no stacking)."""
 
 	if _chase_players.is_empty():
-		return
-
-	# While spectating (dead human watching) the match stays silent — no chase.
-	if _spectating:
-		if _chase_active_layer >= 0:
-			_silence_all_chase()
 		return
 
 	# During the LMS finale the LMS track is the sole score — chase themes are
@@ -2208,8 +2177,6 @@ func _on_survivor_eliminated(player_name: String) -> void:
 
 func _rewind_ending_music() -> void:
 	"""Restart the ending music from the beginning (after a kill during countdown)."""
-	if _spectating:
-		return
 	var player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
 	if is_instance_valid(player):
 		player.stop()
@@ -2219,9 +2186,8 @@ func _rewind_ending_music() -> void:
 
 func _restore_map_music() -> void:
 	"""Stop ending music and restore normal map music (kill pushed past 31s)."""
-	if _lms_active or _spectating:
+	if _lms_active:
 		# During the LMS finale the LMS track stays; don't restore map music.
-		# Also never while spectating (the dead human watches in silence).
 		return
 	var ending_player: AudioStreamPlayer = get_node_or_null("MusicPlayer")
 	if is_instance_valid(ending_player):
@@ -2307,9 +2273,7 @@ func _start_lms() -> void:
 		_lms_music_player.name = "LmsMusicPlayer"
 		_lms_music_player.stream = lms_stream
 		_lms_music_player.bus = &"Music"
-		# If the finale begins while the dead human is spectating, keep it silent
-		# (they're only watching) — mechanics continue but no LMS score plays.
-		_lms_music_player.volume_db = -8.0 if not _spectating else -80.0
+		_lms_music_player.volume_db = -8.0
 		_lms_music_player.autoplay = true
 		_lms_music_player.finished.connect(_on_lms_music_loop)
 		add_child(_lms_music_player)
@@ -3525,287 +3489,6 @@ func _on_player_attacked(_stunned: bool) -> void:
 
 # ---------- DEATH SEQUENCE ----------
 
-func _hand_off_for_spectate() -> void:
-	"""The human survivor died. Keep the round running, hand the LIVE match to
-	LiveMatchHost (which reparents it into its SubViewport so it survives the
-	scene change), then go to the lobby. The lobby is LINKED to the match's
-	status; clicking SPECTATE there calls LiveMatchHost.return_to_match() to
-	bring this map back and watch the round here in-scene."""
-	# Enter spectate (camera on the killer, Q/E + arrows to cycle).
-	_enter_spectate_mode()
-	# The lobby shows a linked status panel instead of rendering this map, so the
-	# map's in-round spectate panel stays hidden until we return to the map.
-	if is_instance_valid(_spectate_panel):
-		_spectate_panel.visible = false
-	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	if is_instance_valid(host):
-		host.hand_off(self)
-	# Clear the current-scene handle so change_scene_to_file does NOT free this
-	# map (it's now under LiveMatchHost and must keep simulating).
-	get_tree().current_scene = null
-	get_tree().paused = false
-	SceneFader.go("res://scenes/lobby.tscn", "")
-	print("GameMap: Human died — handed live match to lobby for spectate")
-
-
-func _enter_spectate_mode() -> void:
-	"""After the human survivor dies, keep the round running and put the camera
-	on the killer bot live. A panel shows the roster + the live match timer. The
-	round still ends normally when everyone is dead (killer outro) or the timer
-	runs out (→ lobby)."""
-	if _spectating:
-		return
-	_spectating = true
-
-	# Disable the human player's own input/movement (they're dead).
-	if is_instance_valid(_player):
-		_player.set_physics_process(false)
-		_player.modulate = Color(0.5, 0.5, 0.5, 1.0)
-		var pcam: Camera2D = _player.get_node_or_null("Camera2D") as Camera2D
-		if is_instance_valid(pcam):
-			pcam.enabled = false
-
-	# Dedicated live spectate camera that follows the killer.
-	_spectate_cam = Camera2D.new()
-	_spectate_cam.name = "SpectateCamera"
-	_spectate_cam.position_smoothing_enabled = true
-	_spectate_cam.position_smoothing_speed = 6.0
-	_spectate_cam.zoom = Vector2(1.25, 1.25)
-	add_child(_spectate_cam)
-	_spectate_cam.make_current()
-	_spectate_target_index = 0
-	if is_instance_valid(_killer_bot):
-		_spectate_cam.global_position = _killer_bot.global_position
-	_spectate_cam.reset_smoothing()
-
-	_build_spectate_panel()
-	_update_spectate_roster()
-	_update_spectate_timer_text()
-	# The human is dead and only watching — mute the map music and chase layers
-	# (both the chase theme and its build-up layers) so they don't play here.
-	_mute_match_music_for_spectate()
-	print("GameMap: Human died — spectating killer (live)")
-
-
-func _mute_match_music_for_spectate() -> void:
-	"""Spectate: the dead human is only watching, so silence the map music AND
-	all chase-theme layers (build-up + Chase.wav) + the LMS track so nothing
-	scores the scene until they leave or the round ends on its own."""
-	_silence_all_chase()
-	for n: String in ["MapMusicPlayer", "MusicPlayer", "LmsMusicPlayer"]:
-		var p: AudioStreamPlayer = get_node_or_null(n) as AudioStreamPlayer
-		if p:
-			p.stop()
-	print("GameMap: Music muted during spectate")
-
-
-func _on_returned_to_match() -> void:
-	"""Called by LiveMatchHost when the lobby brings this live match back as the
-	current scene (dead player clicked SPECTATE). Restore the spectate camera and
-	re-show the panel; music stays muted while spectating."""
-	_spectating = true
-	if is_instance_valid(_spectate_cam):
-		_spectate_cam.make_current()
-	if is_instance_valid(_spectate_panel):
-		_spectate_panel.visible = true
-	_mute_match_music_for_spectate()
-	print("GameMap: Live match returned to map — spectating")
-
-
-func _build_spectate_panel() -> void:
-	"""Build the spectate HUD: title, roster rows, live match timer, return button."""
-	if is_instance_valid(_spectate_panel):
-		return
-	_spectate_panel = CanvasLayer.new()
-	_spectate_panel.name = "SpectatePanel"
-	add_child(_spectate_panel)
-
-	var margin := 16
-	var panel := PanelContainer.new()
-	panel.name = "Panel"
-	panel.position = Vector2(margin, margin)
-	panel.size = Vector2(300, 240)
-	_spectate_panel.add_child(panel)
-
-	var vbox := VBoxContainer.new()
-	vbox.name = "VBox"
-	panel.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "SPECTATING — watching the KILLER"
-	title.add_theme_font_size_override("font_size", 15)
-	title.add_theme_color_override("font_color", Color(1, 0.7, 0.4, 1))
-	vbox.add_child(title)
-
-	_spectate_timer_label = Label.new()
-	_spectate_timer_label.name = "Timer"
-	_spectate_timer_label.add_theme_font_size_override("font_size", 18)
-	_spectate_timer_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	vbox.add_child(_spectate_timer_label)
-
-	var sep := HSeparator.new()
-	vbox.add_child(sep)
-
-	var rows_label := Label.new()
-	rows_label.text = "ROSTER"
-	rows_label.add_theme_font_size_override("font_size", 12)
-	rows_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
-	vbox.add_child(rows_label)
-
-	_spectate_rows = VBoxContainer.new()
-	_spectate_rows.name = "Rows"
-	vbox.add_child(_spectate_rows)
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 8)
-	vbox.add_child(spacer)
-
-	# Cycle hint + clickable arrows (◀ Q  /  E ▶)
-	var hint := Label.new()
-	hint.text = "Q / E  or arrows to switch view"
-	hint.add_theme_font_size_override("font_size", 11)
-	hint.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1))
-	vbox.add_child(hint)
-
-	var arrows := HBoxContainer.new()
-	arrows.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_child(arrows)
-
-	var left_btn := Button.new()
-	left_btn.text = "◀"
-	left_btn.custom_minimum_size = Vector2(48, 30)
-	left_btn.pressed.connect(_spectate_cycle.bind(-1))
-	arrows.add_child(left_btn)
-
-	var right_btn := Button.new()
-	right_btn.text = "▶"
-	right_btn.custom_minimum_size = Vector2(48, 30)
-	right_btn.pressed.connect(_spectate_cycle.bind(1))
-	arrows.add_child(right_btn)
-
-	var spacer2 := Control.new()
-	spacer2.custom_minimum_size = Vector2(0, 6)
-	vbox.add_child(spacer2)
-
-	var return_btn := Button.new()
-	return_btn.text = "Return to Lobby"
-	return_btn.pressed.connect(_spectate_return_to_lobby)
-	vbox.add_child(return_btn)
-
-
-func _spectate_return_to_lobby() -> void:
-	"""Leave the spectate view and go to the lobby. The round keeps running and is
-	handed to LiveMatchHost so the lobby's SPECTATE button can link back into the
-	match scene (watch everyone from the map again)."""
-	if _round_ended:
-		return
-	_hand_off_for_spectate()
-
-
-func _update_spectate_roster() -> void:
-	"""Refresh the roster rows showing the killer + every survivor with [DEAD].
-	The currently watched target is highlighted with a ▶ marker."""
-	if not is_instance_valid(_spectate_rows):
-		return
-	for child: Node in _spectate_rows.get_children():
-		child.queue_free()
-
-	var targets: Array[Node2D] = _spectate_get_targets()
-	if not targets.is_empty():
-		_spectate_target_index = clampi(_spectate_target_index, 0, targets.size() - 1)
-
-	if is_instance_valid(_killer_bot):
-		var krow := Label.new()
-		var active: bool = not targets.is_empty() and targets[_spectate_target_index] == _killer_bot
-		krow.text = "%s  (KILLER)%s" % [str(_killer_bot.name), "  ▶" if active else ""]
-		krow.add_theme_font_size_override("font_size", 13)
-		krow.add_theme_color_override("font_color", Color(1, 0.7, 0.4, 1))
-		_spectate_rows.add_child(krow)
-
-	# All survivor bots + the human survivor.
-	var all_survivors: Array[Node2D] = []
-	all_survivors.append_array(_survivor_bots)
-	if is_instance_valid(_player):
-		all_survivors.append(_player)
-	for s: Node2D in all_survivors:
-		if not is_instance_valid(s):
-			continue
-		var name_txt: String = "You" if s == _player else str(s.name)
-		var hp: float = s.get("current_hp") if "current_hp" in s else 0.0
-		var dead: bool = hp <= 0.0 or not s.is_physics_processing()
-		var active_row: bool = not targets.is_empty() and targets[_spectate_target_index] == s
-		var row := Label.new()
-		row.text = "%s  (SURVIVOR)%s%s" % [name_txt, "  ▶" if active_row else "", "  [DEAD]" if dead else ""]
-		row.add_theme_font_size_override("font_size", 12)
-		row.add_theme_color_override("font_color", Color(0.7, 1, 0.7, 1) if not dead else Color(0.6, 0.6, 0.6, 1))
-		_spectate_rows.add_child(row)
-
-
-func _update_spectate_timer_text() -> void:
-	"""Show the LIVE match timer in the spectate panel."""
-	if not is_instance_valid(_spectate_timer_label):
-		return
-	var secs: int = maxi(0, ceili(_time_remaining))
-	var mm: int = int(secs / 60.0)
-	var ss: int = secs % 60
-	_spectate_timer_label.text = "MATCH — %02d:%02d" % [mm, ss]
-
-
-func _update_spectate(_delta: float) -> void:
-	"""Each frame: keep the camera on the current spectate target (killer by
-	default) and refresh the live timer/roster."""
-	if not _spectating or not is_instance_valid(_spectate_cam):
-		return
-	# Prune targets that are no longer valid, then clamp the index.
-	var targets: Array[Node2D] = _spectate_get_targets()
-	if targets.is_empty():
-		_update_spectate_timer_text()
-		_update_spectate_roster()
-		return
-	_spectate_target_index = clampi(_spectate_target_index, 0, targets.size() - 1)
-	var t: Node2D = targets[_spectate_target_index]
-	if is_instance_valid(t):
-		_spectate_cam.global_position = t.global_position
-	_update_spectate_timer_text()
-	_update_spectate_roster()
-
-
-func _spectate_get_targets() -> Array[Node2D]:
-	"""Return the list of spectatable entities: the killer plus every living
-	survivor (bots + human). Only living characters are included so dead ones
-	are automatically skipped when cycling."""
-	var out: Array[Node2D] = []
-	if is_instance_valid(_killer_bot) and not _killer_bot_eliminated:
-		out.append(_killer_bot)
-	for s: Node2D in _survivor_bots:
-		if not is_instance_valid(s):
-			continue
-		var hp: float = s.get("current_hp") if "current_hp" in s else 0.0
-		if hp > 0.0:
-			out.append(s)
-	if is_instance_valid(_player):
-		var php: float = _player.get("current_hp") if "current_hp" in _player else 0.0
-		if php > 0.0:
-			out.append(_player)
-	return out
-
-
-func _spectate_cycle(dir: int) -> void:
-	"""Cycle the live spectate camera. dir=1 → next, dir=-1 → previous."""
-	if not _spectating:
-		return
-	var targets: Array[Node2D] = _spectate_get_targets()
-	if targets.is_empty():
-		return
-	_spectate_target_index = clampi(_spectate_target_index, 0, targets.size() - 1)
-	_spectate_target_index = (_spectate_target_index + dir) % targets.size()
-	if _spectate_target_index < 0:
-		_spectate_target_index += targets.size()
-	if is_instance_valid(_spectate_cam) and is_instance_valid(targets[_spectate_target_index]):
-		_spectate_cam.global_position = targets[_spectate_target_index].global_position
-		_spectate_cam.reset_smoothing()
-
-
 func _start_death_sequence() -> void:
 	"""Start the 5-second death fade-out sequence."""
 	if _death_active:
@@ -4212,16 +3895,6 @@ func _cleanup_for_lobby() -> void:
 	_ending_vignette = null
 	_ending_screen_created = false
 	_death_active = false
-	# Free the spectate view (camera + panel) if we were spectating.
-	_spectating = false
-	if is_instance_valid(_spectate_cam):
-		_spectate_cam.queue_free()
-	_spectate_cam = null
-	if is_instance_valid(_spectate_panel):
-		_spectate_panel.queue_free()
-	_spectate_panel = null
-	_spectate_timer_label = null
-	_spectate_rows = null
 	
 	# Free bots
 	if is_instance_valid(_killer_bot):

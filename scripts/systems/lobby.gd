@@ -80,11 +80,6 @@ var _last_roster_sig: String = ""
 var _spectate_phase: String = ""
 var _spectate_time_remaining: float = 0.0
 var _spectate_timer_tick: float = 0.0
-# Live in-lobby spectate of a handed-off match (rendered via a TextureRect that
-# grabs LiveMatchHost's live SubViewport texture every frame).
-var _live_spectate_root: Control = null
-var _live_spectate_tex: TextureRect = null
-var _live_spectate_watch_label: Label = null
 
 # BitmapLabel references (Font1 sprite text replacements)
 var _bitmap_countdown: BitmapLabel = null
@@ -141,11 +136,6 @@ func _ready() -> void:
 	# Show match-end analysis if returning from a match
 	if GameState.show_analysis:
 		_show_match_analysis()
-
-	# SYNC GAMEMAP→LOBBY: if the human just died, a live match is held by
-	# LiveMatchHost. Instantly land in the lobby AND sync it to the running game
-	# map — the lobby shows the live match (killer + survivors) right there.
-	_auto_spectate_after_lobby()
 
 
 func _setup_chat() -> void:
@@ -408,9 +398,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		if k == KEY_F12 or k == KEY_PRINT:
 			_on_screenshot_taken()
 			get_viewport().set_input_as_handled()
-		elif _spectate_visible and (k == KEY_E or k == KEY_Q):
-			_live_spectate_cycle(1 if k == KEY_E else -1)
-			get_viewport().set_input_as_handled()
 		elif k == KEY_ESCAPE:
 			if _settings_layer and _settings_layer.visible:
 				_settings_layer.close()
@@ -625,20 +612,6 @@ func _create_spectate_timer_label() -> void:
 	_spectate_timer_label = lbl
 
 
-func _auto_spectate_after_lobby() -> void:
-	"""SYNC GAMEMAP→LOBBY: if the human just died, a live match is held by
-	LiveMatchHost. Stay in the lobby and show the running match right there —
-	rendered live from LiveMatchHost's SubViewport (the killer + survivors still
-	playing out). Instantly, no scene bounce, no button press."""
-	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	if not is_instance_valid(host) or not host.has_live_match:
-		return
-	_spectate_visible = true
-	_update_spectate_visibility()
-	_build_live_spectate()
-	print("Lobby: Synced to live game map for spectate (player died)")
-
-
 func _on_spectate_button_pressed() -> void:
 	if dialogue_ui.is_dialogue_active():
 		return
@@ -659,202 +632,6 @@ func _update_spectate_visibility() -> void:
 		_spectate_panel.visible = _spectate_visible
 	if is_instance_valid(_spectate_timer_label):
 		_spectate_timer_label.visible = _spectate_visible
-	# Show/hide the live in-lobby spectate viewport when a match is being held.
-	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	var live_active: bool = _spectate_visible and is_instance_valid(host) and host.has_live_match
-	if live_active:
-		_build_live_spectate()
-	else:
-		_hide_live_spectate()
-	# While the live match fills the screen, hide the lobby's own HUD (intermission
-	# banner, leaderboard, action bar) and chat so they don't draw over the video.
-	var hud: CanvasLayer = $"../HUD"
-	if is_instance_valid(hud):
-		hud.visible = not live_active
-	var chat_layer: CanvasLayer = get_node_or_null("ChatLayer") as CanvasLayer
-	if is_instance_valid(chat_layer):
-		chat_layer.visible = not live_active
-	var dialogue_layer: CanvasLayer = get_node_or_null("DialogueLayer") as CanvasLayer
-	if is_instance_valid(dialogue_layer):
-		dialogue_layer.visible = not live_active
-
-
-func _build_live_spectate() -> void:
-	"""Build (once) a full-screen live spectate view: a TextureRect that renders
-	LiveMatchHost's live SubViewport, with ◀ / ▶ arrows to switch between the
-	killer and the survivor bots, and a label naming who's being watched."""
-	if is_instance_valid(_live_spectate_root):
-		_live_spectate_root.visible = true
-		_update_live_spectate_frame()
-		return
-
-	_live_spectate_root = Control.new()
-	_live_spectate_root.name = "LiveSpectateRoot"
-	_live_spectate_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_live_spectate_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_live_spectate_root)
-
-	# Opaque black backdrop so the lobby scene can't be seen around the video.
-	var backdrop := ColorRect.new()
-	backdrop.name = "Backdrop"
-	backdrop.color = Color(0, 0, 0, 1)
-	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_live_spectate_root.add_child(backdrop)
-
-	# The live game view (renders LiveMatchHost.live_viewport texture).
-	_live_spectate_tex = TextureRect.new()
-	_live_spectate_tex.name = "LiveTex"
-	_live_spectate_tex.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_live_spectate_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_live_spectate_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_live_spectate_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_live_spectate_root.add_child(_live_spectate_tex)
-
-	# Header: "SPECTATING — watching X"
-	var header := Label.new()
-	header.text = "SPECTATING"
-	header.position = Vector2(20, 16)
-	header.size = Vector2(400, 30)
-	header.add_theme_font_size_override("font_size", 22)
-	header.add_theme_color_override("font_color", Color(1, 0.8, 0.5, 1))
-	header.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	header.add_theme_constant_override("outline_size", 4)
-	_live_spectate_root.add_child(header)
-
-	_live_spectate_watch_label = Label.new()
-	_live_spectate_watch_label.name = "WatchLabel"
-	_live_spectate_watch_label.position = Vector2(20, 50)
-	_live_spectate_watch_label.size = Vector2(400, 26)
-	_live_spectate_watch_label.add_theme_font_size_override("font_size", 16)
-	_live_spectate_watch_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	_live_spectate_watch_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	_live_spectate_watch_label.add_theme_constant_override("outline_size", 3)
-	_live_spectate_root.add_child(_live_spectate_watch_label)
-
-	# Controls bar (arrows + hint) at the bottom.
-	var bar := HBoxContainer.new()
-	bar.name = "Controls"
-	bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	bar.position = Vector2(0, 660)
-	bar.size = Vector2(1280, 60)
-	_live_spectate_root.add_child(bar)
-
-	var left := Button.new()
-	left.text = "◀"
-	left.custom_minimum_size = Vector2(90, 48)
-	left.add_theme_font_size_override("font_size", 28)
-	left.pressed.connect(_live_spectate_cycle.bind(-1))
-	bar.add_child(left)
-
-	var hint := Label.new()
-	hint.text = "  Q / E  or these arrows to switch  "
-	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 16)
-	hint.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-	hint.add_theme_constant_override("outline_size", 3)
-	bar.add_child(hint)
-
-	var right := Button.new()
-	right.text = "▶"
-	right.custom_minimum_size = Vector2(90, 48)
-	right.add_theme_font_size_override("font_size", 28)
-	right.pressed.connect(_live_spectate_cycle.bind(1))
-	bar.add_child(right)
-
-	_update_live_spectate_frame()
-
-
-func _hide_live_spectate() -> void:
-	if is_instance_valid(_live_spectate_root):
-		_live_spectate_root.visible = false
-	# Restore the lobby HUD/chat/dialogue that we hid while the match filled
-	# the screen (caller triggers this only when leaving live spectate).
-	var hud: CanvasLayer = $"../HUD"
-	if is_instance_valid(hud):
-		hud.visible = true
-	var chat_layer: CanvasLayer = get_node_or_null("ChatLayer") as CanvasLayer
-	if is_instance_valid(chat_layer):
-		chat_layer.visible = true
-	var dialogue_layer: CanvasLayer = get_node_or_null("DialogueLayer") as CanvasLayer
-	if is_instance_valid(dialogue_layer):
-		dialogue_layer.visible = true
-
-
-func _live_spectate_cycle(dir: int) -> void:
-	"""Cycle the live spectate camera on the held match (arrows + Q/E)."""
-	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	if is_instance_valid(host) and is_instance_valid(host.live_match) and host.live_match.has_method("_spectate_cycle"):
-		host.live_match.call("_spectate_cycle", dir)
-
-
-func _update_live_spectate_frame() -> void:
-	"""Each frame while live-spectating: pull the live match's SubViewport texture
-	and show who's being watched. Also keeps the match timer in sync."""
-	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	if not is_instance_valid(host) or not host.has_live_match or not is_instance_valid(host.live_viewport):
-		_hide_live_spectate()
-		return
-	if is_instance_valid(_live_spectate_tex) and is_instance_valid(host.live_viewport):
-		_live_spectate_tex.texture = host.live_viewport.get_texture()
-
-	# Show who's being watched.
-	var watch_txt: String = "the KILLER"
-	if is_instance_valid(host.live_match) and host.live_match.has_method("_spectate_get_targets"):
-		var targets: Array = host.live_match.call("_spectate_get_targets")
-		var idx: int = int(host.live_match.get("_spectate_target_index"))
-		if not targets.is_empty() and idx >= 0 and idx < targets.size():
-			var t: Node2D = targets[idx] as Node2D
-			if is_instance_valid(t):
-				watch_txt = "the KILLER" if t == host.live_match.get("_killer_bot") else "SURVIVOR %s" % t.name
-	if is_instance_valid(_live_spectate_watch_label):
-		_live_spectate_watch_label.text = "Watching: %s" % watch_txt
-
-	# Sync the on-screen match timer to the live match's remaining time.
-	var match_map: Node2D = host.live_match
-	if is_instance_valid(match_map) and "_time_remaining" in match_map:
-		_spectate_time_remaining = float(match_map.get("_time_remaining"))
-		_spectate_phase = "ROUND_ACTIVE"
-		_update_spectate_timer_text()
-
-
-func _link_live_match_status() -> void:
-	"""Link the lobby's spectate panel to the held live match: refresh the roster
-	(killer + living survivors, dead ones marked) and sync the match timer. The
-	panel/timer are shown automatically whenever a live round is being held."""
-	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	if not is_instance_valid(host) or not is_instance_valid(host.live_match):
-		return
-	# Do NOT force the panel visible — death strictly lands in the plain lobby.
-	# The panel is only shown when the player opens it via the Spectate button.
-	var m: Node2D = host.live_match
-
-	# Build the roster from the live match's living + dead characters.
-	var players: Array[Dictionary] = []
-	if m.has_method("_spectate_get_targets"):
-		var alive_targets: Array = m.call("_spectate_get_targets")
-		# Killer always first.
-		var killer: Node2D = m.get("_killer_bot") if "_killer_bot" in m else null
-		var killer_dead: bool = "_killer_bot_eliminated" in m and bool(m.get("_killer_bot_eliminated"))
-		if is_instance_valid(killer):
-			players.append({"username": "KILLER", "role": "killer", "alive": not killer_dead})
-		for s: Node2D in alive_targets:
-			if is_instance_valid(s) and s != killer:
-				var hp: float = s.get("current_hp") if "current_hp" in s else 0.0
-				players.append({"username": s.name, "role": "survivor", "alive": hp > 0.0})
-	_spectate_players = players
-	# Only rebuild the roster rows when it actually changed (called each frame).
-	var sig: String = str(_spectate_players)
-	if sig != _last_roster_sig:
-		_last_roster_sig = sig
-		_update_spectate_rows()
-
-	# Sync the match timer.
-	if "_time_remaining" in m:
-		_spectate_time_remaining = float(m.get("_time_remaining"))
-		_spectate_phase = "ROUND_ACTIVE"
-		_update_spectate_timer_text()
 
 
 func _on_spectate_player_list(players: Array) -> void:
@@ -1201,15 +978,6 @@ func _process(delta: float) -> void:
 			_spectate_timer_tick -= 1.0
 			_spectate_time_remaining = maxf(0.0, _spectate_time_remaining - 1.0)
 			_update_spectate_timer_text()
-
-	# Link the lobby's spectate panel to the held live match's status (roster +
-	# timer) whenever a live round is being held by LiveMatchHost.
-	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
-	if is_instance_valid(host) and host.has_live_match:
-		_link_live_match_status()
-	# Refresh the live in-lobby spectate view each frame (renders the match video).
-	if _spectate_visible and _live_spectate_root != null and _live_spectate_root.visible:
-		_update_live_spectate_frame()
 
 	# Handle analysis overlay timer
 	if _analysis_overlay != null:
