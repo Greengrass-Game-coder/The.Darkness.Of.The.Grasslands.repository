@@ -13,18 +13,6 @@ const CARTRIDGE_START: String = "res://The Darkness Of The Grasslands assets/Sou
 const TETRINO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
 # 140 BPM → one beat every 60/140 seconds (pulse the game to the music).
 const BEAT_SECONDS: float = 60.0 / 140.0
-const TETRINO_OBJ: String = "res://The Darkness Of The Grasslands assets/objects/"
-# The seven tetromino block sprites live in the objects folder — each one is
-# the piece that Tetris uses, keyed by its letter.
-const PIECE_TEX: Dictionary = {
-	"I": TETRINO_OBJ + "Minigame_TETRINO_I_piece.png",
-	"J": TETRINO_OBJ + "Minigame_TETRINO_J_piece.png",
-	"L": TETRINO_OBJ + "Minigame_TETRINO_L_piece.png",
-	"O": TETRINO_OBJ + "Minigame_TETRINO_O_piece.png",
-	"S": TETRINO_OBJ + "Minigame_TETRINO_S_piece.png",
-	"T": TETRINO_OBJ + "Minigame_TETRINO_T_piece.png",
-	"Z": TETRINO_OBJ + "Minigame_TETRINO_Z_piece.png",
-}
 # Solid fill colors taken from each piece sprite (the sprites are flat-color
 # blocks with a black outline), so the game blocks match the artwork exactly.
 const PIECE_COLORS: Dictionary = {
