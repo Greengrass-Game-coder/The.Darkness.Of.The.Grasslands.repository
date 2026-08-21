@@ -1659,8 +1659,8 @@ func _show_win() -> void:
 	# The shiny reward coin, centred.
 	_win_coin = TextureRect.new()
 	_win_coin.texture = load(COIN_TEX)
-	_win_coin.position = Vector2(ROOM_W / 2.0 - 62, 232)
-	_win_coin.size = Vector2(124, 124)
+	_win_coin.position = Vector2(ROOM_W / 2.0 - 42, 244)
+	_win_coin.size = Vector2(84, 84)
 	_win_coin.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_win_coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(_win_coin)
@@ -1668,9 +1668,9 @@ func _show_win() -> void:
 
 	# Pixelated "+N" next to the coin.
 	if awarded > 0:
-		_add_pixel_text(_ui, "+" + str(awarded), Vector2(ROOM_W / 2.0 + 92, 292), 4.0, Color(1.0, 0.85, 0.2))
+		_add_pixel_text(_ui, "+" + str(awarded), Vector2(ROOM_W / 2.0 + 64, 296), 4.0, Color(1.0, 0.85, 0.2))
 	else:
-		_add_pixel_text(_ui, "+0", Vector2(ROOM_W / 2.0 + 92, 292), 4.0, p["text_dim"])
+		_add_pixel_text(_ui, "+0", Vector2(ROOM_W / 2.0 + 64, 296), 4.0, p["text_dim"])
 
 	var reward := Label.new()
 	if awarded > 0:
