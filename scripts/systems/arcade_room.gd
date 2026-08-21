@@ -707,12 +707,12 @@ func _show_minigame_browser() -> void:
 	coin_badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	coin_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	coin_badge.position = Vector2(ROOM_W / 2.0 - 220, ROOM_H - 156)
-	coin_badge.size = Vector2(16, 16)
+	coin_badge.size = Vector2(32, 32)
 	coin_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	coin_badge.texture = load(COIN_TEX)
 	_ui.add_child(coin_badge)
 	_add_pixel_text(_ui, "x" + str(GameState.tetrino_coins_earned),
-		Vector2(ROOM_W / 2.0 - 198, ROOM_H - 150), 2.0, p["accent"])
+		Vector2(ROOM_W / 2.0 - 182, ROOM_H - 150), 2.0, p["accent"])
 
 	# Theme indicator (console-only setting).
 	_theme_label = Label.new()
@@ -1658,13 +1658,13 @@ func _show_win() -> void:
 	sub.add_theme_font_size_override("font_size", 24)
 	_ui.add_child(sub)
 
-	# The shiny reward coin, centred — tiny 10x10 px. Set expand/size BEFORE the
+	# The shiny reward coin, centred — 40x40 px. Set expand/size BEFORE the
 	# texture so the node doesn't auto-grow to the texture's native size.
 	_win_coin = TextureRect.new()
 	_win_coin.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_win_coin.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_win_coin.position = Vector2(ROOM_W / 2.0 - 5, 264)
-	_win_coin.size = Vector2(10, 10)
+	_win_coin.position = Vector2(ROOM_W / 2.0 - 20, 264)
+	_win_coin.size = Vector2(40, 40)
 	_win_coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_win_coin.texture = load(COIN_TEX)
 	_ui.add_child(_win_coin)
@@ -1672,9 +1672,9 @@ func _show_win() -> void:
 
 	# Pixelated "+N" next to the coin.
 	if awarded > 0:
-		_add_pixel_text(_ui, "+" + str(awarded), Vector2(ROOM_W / 2.0 + 8, 280), 1.5, Color(1.0, 0.85, 0.2))
+		_add_pixel_text(_ui, "+" + str(awarded), Vector2(ROOM_W / 2.0 + 26, 288), 2.5, Color(1.0, 0.85, 0.2))
 	else:
-		_add_pixel_text(_ui, "+0", Vector2(ROOM_W / 2.0 + 8, 280), 1.5, p["text_dim"])
+		_add_pixel_text(_ui, "+0", Vector2(ROOM_W / 2.0 + 26, 288), 2.5, p["text_dim"])
 
 	var reward := Label.new()
 	if awarded > 0:
