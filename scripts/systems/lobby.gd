@@ -807,11 +807,8 @@ func _link_live_match_status() -> void:
 	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
 	if not is_instance_valid(host) or not is_instance_valid(host.live_match):
 		return
-	# A live match being held means we arrived here dead — surface the panel.
-	if is_instance_valid(_spectate_panel):
-		_spectate_panel.visible = true
-	if is_instance_valid(_spectate_timer_label):
-		_spectate_timer_label.visible = true
+	# Do NOT force the panel visible — death strictly lands in the plain lobby.
+	# The panel is only shown when the player opens it via the Spectate button.
 	var m: Node2D = host.live_match
 
 	# Build the roster from the live match's living + dead characters.
