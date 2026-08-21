@@ -72,6 +72,7 @@ var _analysis_timer: float = 0.0
 var _friends_panel: FriendsPanel = null
 
 # Spectate state — the toggleable "who's playing" panel + live match timer
+var _spectate_btn: TextureButton = null
 var _spectate_panel: Control = null
 var _spectate_timer_label: Label = null
 var _spectate_visible: bool = false
@@ -537,7 +538,26 @@ func _create_spectate_button() -> void:
 	btn.pressed.connect(_on_spectate_button_pressed)
 	btn.mouse_entered.connect(func(): _spectate_show_hint(true))
 	btn.mouse_exited.connect(func(): _spectate_show_hint(false))
+	_spectate_btn = btn
+	# Start transparent + unactivatable until a match is begun (or just was).
+	_update_spectate_button_state()
 	hud.add_child(btn)
+
+
+func _update_spectate_button_state() -> void:
+	"""Gate the Spectate button: transparent + disabled until a match is running
+	(or has just ended — the LOBBY_ANALYSIS phase). Only then is it fully opaque
+	and clickable. This lets the lobby 'know there's a game going' via the live
+	match phase + roster broadcast from the server, backed up by GameState."""
+	if not is_instance_valid(_spectate_btn):
+		return
+	var match_active: bool = (
+		_spectate_phase in ["ROUND_ACTIVE", "LAST_MAN_STANDING", "LOBBY_ANALYSIS"]
+		or not _spectate_players.is_empty()
+		or GameState.match_in_progress
+	)
+	_spectate_btn.disabled = not match_active
+	_spectate_btn.modulate = Color(1, 1, 1, 1.0 if match_active else 0.35)
 
 
 func _create_spectate_panel() -> void:
@@ -615,6 +635,9 @@ func _create_spectate_timer_label() -> void:
 func _on_spectate_button_pressed() -> void:
 	if dialogue_ui.is_dialogue_active():
 		return
+	# Cannot spectate unless a match is active (or just ended).
+	if is_instance_valid(_spectate_btn) and _spectate_btn.disabled:
+		return
 	_spectate_visible = not _spectate_visible
 	_update_spectate_visibility()
 
@@ -642,6 +665,7 @@ func _on_spectate_player_list(players: Array) -> void:
 			normalized.append(p as Dictionary)
 	_spectate_players = normalized
 	_update_spectate_rows()
+	_update_spectate_button_state()
 
 
 func _on_spectate_phase(phase: String, time_remaining: float) -> void:
@@ -650,6 +674,7 @@ func _on_spectate_phase(phase: String, time_remaining: float) -> void:
 	_spectate_time_remaining = time_remaining
 	_spectate_timer_tick = 0.0
 	_update_spectate_timer_text()
+	_update_spectate_button_state()
 	_apply_intermission_music()
 
 

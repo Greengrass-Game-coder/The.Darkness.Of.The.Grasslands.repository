@@ -270,6 +270,10 @@ func _ready() -> void:
 	_round_ended = false
 	_killer_won = false
 	_update_timer_label()
+
+	# Let the lobby know a match is now in progress (spectate sync).
+	GameState.match_in_progress = true
+	GameState.game_phase = "ROUND_ACTIVE"
 	
 	# TEST MODE: the human ALWAYS starts as a survivor. The killer role is EARNED
 	# mid-match by solving puzzles (RING_KILLER_THRESHOLD rings → _promote_player_to_killer).
@@ -3825,6 +3829,11 @@ func _end_match() -> void:
 	if _round_ended:
 		return
 	_round_ended = true
+
+	# The match is over — lobby can no longer count this as an in-progress game
+	# (analysis phase still shows briefly as "just ended" via the server).
+	GameState.match_in_progress = false
+	GameState.game_phase = "LOBBY_ANALYSIS"
 	
 	# TEST MODE round-end gift: +1 ring (persistent) for every round played, plus
 	# increment the player's "rounds played" counter. Applied BEFORE the killer-won

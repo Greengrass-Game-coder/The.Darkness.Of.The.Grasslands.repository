@@ -264,6 +264,10 @@ func _ready() -> void:
 	_round_ended = false
 	_killer_won = false
 	_update_timer_label()
+
+	# Let the lobby know a match is now in progress (spectate sync).
+	GameState.match_in_progress = true
+	GameState.game_phase = "ROUND_ACTIVE"
 	
 	# Determine if this player should be the killer based on rings
 	var gs = get_node("/root/GameState")
@@ -3535,6 +3539,11 @@ func _end_match() -> void:
 	if _round_ended:
 		return
 	_round_ended = true
+
+	# The match is over — lobby can no longer count this as an in-progress game
+	# (analysis phase still shows briefly as "just ended" via the server).
+	GameState.match_in_progress = false
+	GameState.game_phase = "LOBBY_ANALYSIS"
 	
 	# Round-end reward: +1 gift ring (persistent) for every round played, plus
 	# increment the player's "rounds played" counter. Applied BEFORE the killer-won
