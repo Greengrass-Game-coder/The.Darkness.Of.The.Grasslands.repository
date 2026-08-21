@@ -46,7 +46,26 @@ func hand_off(match_node: Node2D) -> void:
 		if is_instance_valid(old_parent):
 			old_parent.remove_child(match_node)
 		live_viewport.add_child(match_node)
+	# CRITICAL: after reparenting into the SubViewport, the match's spectate
+	# camera must become the current camera OF THAT SubViewPORT (not the main
+	# viewport). Otherwise the live view renders blank/black in the lobby.
+	_make_spectate_cam_current(match_node)
 	print("LiveMatchHost: holding live match — spectate available")
+
+
+func _make_spectate_cam_current(match_node: Node2D) -> void:
+	"""Re-apply the match's spectate camera as the current camera for the live
+	SubViewport. Camera2D.make_current() targets whatever viewport the camera is
+	currently inside; after hand_off the camera is inside live_viewport, so this
+	makes it current there and the SubViewport renders the running round."""
+	var cam: Camera2D = match_node.get_node_or_null("SpectateCamera") as Camera2D
+	if not is_instance_valid(cam):
+		# Fall back to the player camera if the spectate cam isn't present yet.
+		var player: Node2D = match_node.get_node_or_null("Player") as Node2D
+		if is_instance_valid(player):
+			cam = player.get_node_or_null("Camera2D") as Camera2D
+	if is_instance_valid(cam):
+		cam.make_current()
 
 
 func return_to_match() -> Node2D:
