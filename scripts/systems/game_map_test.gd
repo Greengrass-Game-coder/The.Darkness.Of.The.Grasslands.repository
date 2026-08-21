@@ -1194,10 +1194,9 @@ func _on_player_hp_changed(current_hp: float, max_hp: float, fill: ColorRect, la
 			if is_instance_valid(_killer_bot):
 				_on_survivor_eliminated("Player")
 			# The human survivor died. Keep the round running and hand the LIVE
-			# match over to LiveMatchHost, then go to the lobby WITHOUT freeing
-			# the map — the lobby renders it live in a spectate viewport so the
-			# player can watch the killer + survivors play out with the real
-			# match timer (and arrows to switch between them).
+			# match over to LiveMatchHost, then go to the lobby. The lobby then
+			# AUTOMATICALLY returns to this live match so the player watches the
+			# killer + survivors play out from the map.
 			_hand_off_for_spectate()
 
 
@@ -3838,13 +3837,12 @@ func _build_spectate_panel() -> void:
 
 
 func _spectate_return_to_lobby() -> void:
-	"""Leave the spectate view and go to the lobby."""
+	"""Leave the spectate view and go to the lobby. The round keeps running and is
+	handed to LiveMatchHost so the lobby's SpECTATE button can link back into the
+	match scene (watch everyone from the map again)."""
 	if _round_ended:
 		return
-	_killer_won = false
-	if not _round_ended:
-		match_ended.emit()
-		_end_match()
+	_hand_off_for_spectate()
 
 
 func _update_spectate_roster() -> void:

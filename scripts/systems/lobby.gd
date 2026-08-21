@@ -139,6 +139,11 @@ func _ready() -> void:
 	if GameState.show_analysis:
 		_show_match_analysis()
 
+	# AUTO-SPECTATE: if we arrived here because the human just died, a live match
+	# is being held by LiveMatchHost. Automatically jump straight back INTO the
+	# match scene to watch everyone (killer + survivors) live — no button needed.
+	_auto_spectate_after_lobby()
+
 
 func _setup_chat() -> void:
 	"""Create ChatLayer instance and connect its signals."""
@@ -612,6 +617,25 @@ func _create_spectate_timer_label() -> void:
 	lbl.add_theme_constant_override("outline_size", 4)
 	hud.add_child(lbl)
 	_spectate_timer_label = lbl
+
+
+func _auto_spectate_after_lobby() -> void:
+	"""If the human just died, a live match is held by LiveMatchHost. Briefly let
+	the lobby appear, then automatically return to the match scene to watch
+	everyone live — no Spectate button press needed."""
+	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
+	if not is_instance_valid(host) or not host.has_live_match:
+		return
+	# Wait one frame so the lobby has fully entered the tree, then jump back in.
+	var return_delay := get_tree().create_timer(0.5)
+	return_delay.timeout.connect(_on_auto_spectate_return)
+	print("Lobby: Auto-returning to live match for spectate (player died)")
+
+
+func _on_auto_spectate_return() -> void:
+	var host: LiveMatchHost = get_node_or_null("/root/LiveMatchHost") as LiveMatchHost
+	if is_instance_valid(host) and host.has_live_match:
+		host.return_to_match()
 
 
 func _on_spectate_button_pressed() -> void:
