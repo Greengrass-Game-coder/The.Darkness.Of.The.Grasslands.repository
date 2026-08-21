@@ -219,3 +219,21 @@ Added a playable arcade room to the lobby.
 - Room is reached via an **area** (no door), with a right→left black wipe.
 
 *Last updated: Session 2 (arcade room + Tetrino built).*
+
+## Session 3 (piece rendering + music loop fixes)
+### Changes
+- **Game blocks are now drawn procedurally** as clean solid-colour squares with a
+  black outline, using each piece sprite's exact fill colour. This fixes the
+  "glitching" (missing blocks / thin-line artifacts) that came from slicing the
+  tightly-fused piece sprites into block textures. Pieces now render as clean,
+  complete 4-block shapes in the playfield and the NEXT queue.
+- **tetrino.wav now plays fully and loops seamlessly.** The .wav was being
+  imported as QOA-compressed, which made the stream-level loop-end math wrong
+  (it cut the track short at ~5.5s). The import is now uncompressed 16-bit PCM,
+  so the loop covers the entire 13.7s track. Code also falls back to restarting
+  on `finished` if a compressed import is ever encountered, so looping is robust.
+### Decisions
+- D-S3-1: Use procedural blocks (piece colours from the sprites) rather than
+  slicing the fused sprite art, for reliable, glitch-free rendering.
+- D-S3-2: Keep the loop logic in code (stream-level for PCM, `finished`-restart
+  for compressed) so it does not depend on `.import` files (which are gitignored).

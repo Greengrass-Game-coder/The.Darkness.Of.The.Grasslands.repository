@@ -25,6 +25,17 @@ const PIECE_TEX: Dictionary = {
 	"T": TETRINO_OBJ + "Minigame_TETRINO_T_piece.png",
 	"Z": TETRINO_OBJ + "Minigame_TETRINO_Z_piece.png",
 }
+# Solid fill colors taken from each piece sprite (the sprites are flat-color
+# blocks with a black outline), so the game blocks match the artwork exactly.
+const PIECE_COLORS: Dictionary = {
+	"I": Color(0.0, 0.635, 0.91),
+	"J": Color(1.0, 0.537, 0.729),
+	"L": Color(1.0, 0.498, 0.153),
+	"O": Color(1.0, 0.949, 0.0),
+	"S": Color(0.929, 0.11, 0.141),
+	"T": Color(0.639, 0.286, 0.643),
+	"Z": Color(0.133, 0.694, 0.298),
+}
 # Base orientation of each piece as a 0/1 matrix, matching the sprite's natural
 # orientation (I is vertical, O is 2x2, etc.).
 const PIECE_SHAPES: Dictionary = {
@@ -102,7 +113,6 @@ var _next_queue: Array = []        # Upcoming piece types (7-bag)
 var _next_layer: Control = null    # Layer showing the upcoming pieces
 var _next_texs: Array = []         # TextureRects currently shown in NEXT
 var _score_lbl: Label = null
-var _block_cache: Dictionary = {}  # piece key -> 2D Array of block textures
 var _intro_active: bool = false    # cartridge-start zoom intro is playing
 var _beat_accum: float = 0.0       # accumulator for the 140 BPM pulse
 var _pulse_overlay: ColorRect = null
@@ -806,29 +816,42 @@ func _rebuild_tetrino() -> void:
 
 
 func _play_music() -> void:
-	"""Start tetrino.wav looping with a one-time fade-in. The track loops
-	seamlessly at the stream level, so the fade only ever runs once — never on
-	subsequent loop iterations."""
+	"""Start tetrino.wav looping seamlessly (full track, no fade-in). If the
+	audio is imported as uncompressed 16-bit PCM we loop at the stream level so
+	there's no gap; if it's a compressed import (QOA/ADPCM) we fall back to
+	restarting on the `finished` signal so the track always plays fully and
+	repeats."""
 	if _music == null:
 		_music = AudioStreamPlayer.new()
 		_music.stream = load(TETRINO_MUSIC)
 		_music.bus = "Music"
-		# Force forward looping so the track repeats (even if the .wav lacks
-		# embedded loop points). Loop the WHOLE track from start to end: the
-		# loop fields are in sample frames, not bytes, so derive the full frame
-		# count from the raw PCM size and sample format.
-		if _music.stream is AudioStreamWAV:
-			var wav: AudioStreamWAV = _music.stream as AudioStreamWAV
-			wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
-			wav.loop_begin = 0
-			var bytes_per_sample: int = 2 if wav.format == AudioStreamWAV.FORMAT_16_BITS else 1
-			var bytes_per_frame: int = bytes_per_sample * (2 if wav.stereo else 1)
-			if bytes_per_frame > 0:
-				wav.loop_end = int(wav.data.size() / bytes_per_frame)
 		add_child(_music)
+		var wav: AudioStreamWAV = _music.stream as AudioStreamWAV
+		if wav:
+			if wav.format == AudioStreamWAV.FORMAT_16_BITS:
+				# Uncompressed PCM: loop the WHOLE track at the stream level for
+				# a truly seamless repeat. Loop fields are in sample frames (not
+				# bytes), so derive the full frame count from the raw PCM size.
+				wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+				wav.loop_begin = 0
+				var bytes_per_frame: int = 2 * (2 if wav.stereo else 1)
+				if bytes_per_frame > 0:
+					wav.loop_end = int(wav.data.size() / bytes_per_frame)
+			else:
+				# Compressed import: loop points aren't reliable, so restart on
+				# finish to keep the track repeating.
+				wav.loop_mode = AudioStreamWAV.LOOP_DISABLED
+				_music.finished.connect(_on_music_finished)
 	if not _music.playing:
 		# Start at full volume immediately (no fade-in).
 		_music.volume_db = -6.0
+		_music.play()
+
+
+func _on_music_finished() -> void:
+	"""Restart the looped track (used only when the import is compressed and
+	stream-level looping isn't available)."""
+	if is_instance_valid(_music):
 		_music.play()
 
 
@@ -1160,78 +1183,34 @@ func _render_board() -> void:
 		_add_piece_tex(_cur_type, _cur_rot, _cur_row, _cur_col)
 
 
-func _block_grid(type: String) -> Array:
-	"""Slice a piece sprite into its individual square block textures.
-	Each block is cropped from the sprite at its cell in the base matrix, so it
-	renders as a clean, non-squished square block."""
-	if _block_cache.has(type):
-		return _block_cache[type]
-	var tex: Texture2D = load(PIECE_TEX[type])
-	var img: Image = tex.get_image()
-	img.convert(Image.FORMAT_RGBA8)
-	var W: int = img.get_width()
-	var H: int = img.get_height()
-	var base: Array = PIECE_SHAPES[type]
-	var R: int = base.size()
-	var C: int = base[0].size()
-	var cw: float = W / float(C)
-	var ch: float = H / float(R)
-	var grid: Array = []
-	for r in range(R):
-		var g_row: Array = []
-		for c in range(C):
-			if base[r][c] == 0:
-				g_row.append(null)
-				continue
-			var sub := img.get_region(Rect2(c * cw, r * ch, cw, ch))
-			g_row.append(ImageTexture.create_from_image(sub))
-		grid.append(g_row)
-	_block_cache[type] = grid
-	return grid
+func _make_block(type: String, cell: float) -> Control:
+	"""Build one clean, solid-colour square block for a piece. Uses the sprite's
+	exact fill colour with a black outline, so it matches the artwork but never
+	glitches (no sprite slicing)."""
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = PIECE_COLORS[type]
+	sb.border_color = Color(0, 0, 0, 1)
+	sb.set_border_width_all(max(1, int(cell / 12.0)))
+	sb.set_corner_radius_all(max(1, int(cell * 0.08)))
+	var panel := Panel.new()
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.size = Vector2(cell, cell)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return panel
 
 
 func _add_piece_tex(type: String, rot: int, row: int, col: int) -> void:
-	# Render the piece block-by-block so every block is a clean square (no
-	# squish from stretching the whole sprite).
+	# Render the piece block-by-block: every block is a clean, square, solid
+	# colour with a black outline — no squish, no missing blocks.
 	var m := _matrix(type, rot)
-	var grid: Array = _block_grid(type)
 	for r in range(m.size()):
 		for c in range(m[r].size()):
 			if m[r][c] == 0:
 				continue
-			# Find which base-matrix cell this rotated cell came from, so we
-			# reuse the correct block sprite.
-			var base_cell: Array = _cell_in_base(type, rot, r, c)
-			var sub: Texture2D = grid[base_cell[0]][base_cell[1]]
-			if sub == null:
-				continue
-			var tex := TextureRect.new()
-			tex.texture = sub
-			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			tex.stretch_mode = TextureRect.STRETCH_SCALE
-			tex.size = Vector2(CELL, CELL)
-			tex.position = Vector2((col + c) * CELL, (row + r) * CELL)
-			tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			_board_layer.add_child(tex)
-			_board_texs.append(tex)
-
-
-func _cell_in_base(type: String, rot: int, r: int, c: int) -> Array:
-	"""Invert the clockwise rotation to map a rotated cell (r,c) back to its
-	base-matrix cell (in the base 0/1 matrix)."""
-	var b: Array = PIECE_SHAPES[type]
-	var bR: int = b.size()
-	var bC: int = b[0].size()
-	var rotn: int = (rot % 4 + 4) % 4
-	match rotn:
-		0:
-			return [r, c]
-		1:
-			return [bR - 1 - c, r]
-		2:
-			return [bR - 1 - r, bC - 1 - c]
-		_:
-			return [c, bC - 1 - r]
+			var block: Control = _make_block(type, CELL)
+			block.position = Vector2((col + c) * CELL, (row + r) * CELL)
+			_board_layer.add_child(block)
+			_board_texs.append(block)
 
 
 func _update_score() -> void:
@@ -1254,23 +1233,14 @@ func _render_next() -> void:
 func _add_next_tex(type: String, slot: int) -> void:
 	var preview_cell: float = 22.0
 	var base: Array = PIECE_SHAPES[type]
-	var grid: Array = _block_grid(type)
 	for r in range(base.size()):
 		for c in range(base[r].size()):
 			if base[r][c] == 0:
 				continue
-			var sub: Texture2D = grid[r][c]
-			if sub == null:
-				continue
-			var tex := TextureRect.new()
-			tex.texture = sub
-			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			tex.stretch_mode = TextureRect.STRETCH_SCALE
-			tex.size = Vector2(preview_cell, preview_cell)
-			tex.position = Vector2(30 + c * preview_cell, slot * 90.0 + r * preview_cell)
-			tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			_next_layer.add_child(tex)
-			_next_texs.append(tex)
+			var block: Control = _make_block(type, preview_cell)
+			block.position = Vector2(30 + c * preview_cell, slot * 90.0 + r * preview_cell)
+			_next_layer.add_child(block)
+			_next_texs.append(block)
 
 
 func _tetris_pulse(delta: float) -> void:
