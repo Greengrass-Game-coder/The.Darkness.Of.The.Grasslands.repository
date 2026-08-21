@@ -265,3 +265,28 @@ Added a playable arcade room to the lobby.
 - D-S4-2: Coin/daily-limit state stored in GameState + persisted via SaveManager;
   time-tamper detection is best-effort (a local game can't be fully tamper-proof).
 - D-S4-3: Hard mode = the gamble; it's entered from the win screen with the G key.
+
+## Session 5 (Arcade console power-on/off + entry/exit transitions)
+### Changes
+- **Turn off the console** (ESC while in the TETRINO browser): the screen goes
+  WHITE and shrinks down vertically toward the middle until it's gone (CRT
+  power-off), returning you to the idle arcade room so you can press E to boot
+  it up again.
+- **Leave the arcade room** (walk left off the left edge, or ESC while idle):
+  a black block sweeps LEFT→RIGHT across the screen covering it, then loads the
+  lobby.
+- **Enter the arcade room** (walk right in the lobby): black block sweeps
+  RIGHT→LEFT revealing the room (already existed, but was broken because the
+  lobby's invisible walk-in area failed to attach during scene setup).
+- **Fixed the arcade-entrance bug**: `_setup_arcade_entrance()` called
+  `add_child()` while the lobby parent was still busy setting up, so the walk-in
+  area was never added and you couldn't enter the arcade room. Now uses
+  `add_child.call_deferred()` (in both lobby.gd and lobby_test.gd).
+- **Console branding**: boot text now reads "COMPUTERING CONSOLE — THE MAGIC
+  ENTERTAINER — BOOT V0.5P.R.O.T.O.T.Y.P.E."
+### Decisions
+- D-S5-1: The power-off (white vertical-shrink) is the console's turn-off effect
+  and is tied to closing the TETRINO browser (ESC); leaving the room uses the
+  black block left→right instead.
+- D-S5-2: Leaving the room is done by walking left off the left edge (reverse of
+  entering by walking right), matching the user's requested left→right black wipe.

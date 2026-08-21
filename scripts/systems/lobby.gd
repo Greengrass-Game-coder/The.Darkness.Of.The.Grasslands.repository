@@ -546,12 +546,14 @@ func _setup_arcade_entrance() -> void:
 	shape.shape = rect
 	area.add_child(shape)
 	area.body_entered.connect(_on_arcade_entrance_entered)
-	# Add to the lobby root (sibling of Player).
+	# Add to the lobby root (sibling of Player). Use call_deferred so the area
+	# is attached AFTER the lobby scene finishes setting up its children —
+	# otherwise add_child() fails because the parent is still busy.
 	var root: Node = get_parent()
 	if root:
-		root.add_child(area)
+		root.add_child.call_deferred(area)
 	else:
-		add_child(area)
+		add_child.call_deferred(area)
 
 
 func _on_arcade_entrance_entered(body: Node2D) -> void:

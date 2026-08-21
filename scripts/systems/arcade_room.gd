@@ -80,10 +80,12 @@ const ROOM_W: float = 1280.0
 const ROOM_H: float = 768.0
 const MACHINE_POS: Vector2 = Vector2(940, 430)
 const PLAYER_START: Vector2 = Vector2(220, 430)
+# Walk past this X (left edge of the room) to leave back to the lobby.
+const LEFT_EXIT_X: float = -20.0
 
 # ── Boot sequence timing ──
 const FLICKER_DURATION: float = 0.7
-const BOOT_TEXT: String = "COMPUTERING CONSOLE BOOT V0.5P.R.O.T.O.T.Y.P.E."
+const BOOT_TEXT: String = "COMPUTERING CONSOLE — THE MAGIC ENTERTAINER — BOOT V0.5P.R.O.T.O.T.Y.P.E."
 const LOAD_DURATION: float = 1.0
 
 # ── Theme persistence (console-only; never touched by normal settings) ──
@@ -147,6 +149,7 @@ var _won: bool = false             # the player won the minigame (not a loss)
 var _hard_mode: bool = false       # this run is the "gamble" hard mode
 var _win_coin: TextureRect = null  # coin shown on the win screen (for shine anim)
 var _g_was_down: bool = false      # edge-detect for the G (gamble) key on the win screen
+var _leaving: bool = false         # a leave/black-block transition is in progress
 
 
 func _ready() -> void:
@@ -450,6 +453,10 @@ func _physics_process(delta: float) -> void:
 		if is_instance_valid(_sprite):
 			_sprite.animation = _idle_anim
 	_player.move_and_slide()
+	# Leave the arcade room by walking left (back to the lobby). Only reachable
+	# while idle in the room (the console states return earlier above).
+	if _player.global_position.x < LEFT_EXIT_X:
+		_leave_arcade_room()
 
 
 func _update_walk_anim(dir: Vector2) -> void:
@@ -505,11 +512,14 @@ func _on_esc_pressed() -> void:
 	elif _menu_active:
 		_close_tetrino()
 	elif _browser_active:
-		_leave_arcade_room()
+		# ESC in the browser turns the console OFF (white vertical-shrink),
+		# returning you to the idle room where you can boot it up again with E.
+		_turn_off_console()
 	elif _boot_active:
 		# Skip boot and go straight to the browser.
 		_show_minigame_browser()
 	else:
+		# Idle in the room: leave back to the lobby (black block left→right).
 		_leave_arcade_room()
 
 
@@ -1732,7 +1742,55 @@ func _close_tetrino() -> void:
 # ═══════════════ TRANSITIONS ═══════════════
 
 func _leave_arcade_room() -> void:
+	"""Leave the arcade room: a black block sweeps LEFT→RIGHT across the screen
+	(covering it), then load the lobby. This is the reverse of the right→left
+	wipe that plays when entering from the lobby."""
+	if _leaving:
+		return
+	_leaving = true
+	var wipe := ColorRect.new()
+	wipe.color = Color(0, 0, 0, 1)
+	wipe.position = Vector2(-ROOM_W, 0)  # Start fully off-screen to the left
+	wipe.size = Vector2(ROOM_W, ROOM_H)
+	wipe.mouse_filter = Control.MOUSE_FILTER_STOP
+	_ui.add_child(wipe)
+	var tween := create_tween()
+	tween.tween_property(wipe, "position", Vector2(0, 0), 0.45)
+	await tween.finished
 	get_tree().change_scene_to_file(LOBBY_SCENE)
+
+
+func _turn_off_console() -> void:
+	"""Turn the arcade console OFF (CRT power-off): the screen goes white and
+	shrinks down vertically toward the middle until it's gone. Returns you to
+	the idle arcade room so you can press E to boot it up again."""
+	if _leaving:
+		return
+	_boot_active = false
+	_browser_active = false
+	_menu_active = false
+	_game_active = false
+	if _music:
+		_music.stop()
+	# Clear any on-screen console UI (browser / menu / overlays).
+	for child: Node in _ui.get_children():
+		child.queue_free()
+
+	# White screen that collapses vertically to the middle (power-off).
+	var white := ColorRect.new()
+	white.color = Color(1, 1, 1, 1)
+	white.position = Vector2(0, 0)
+	white.size = Vector2(ROOM_W, ROOM_H)
+	white.mouse_filter = Control.MOUSE_FILTER_STOP
+	_ui.add_child(white)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(white, "size:y", 0.0, 0.45)
+	tween.tween_property(white, "position:y", ROOM_H / 2.0, 0.45)
+	await tween.finished
+	white.queue_free()
+	if is_instance_valid(_machine_prompt):
+		_machine_prompt.visible = false
 
 
 func _reveal_from_black() -> void:
