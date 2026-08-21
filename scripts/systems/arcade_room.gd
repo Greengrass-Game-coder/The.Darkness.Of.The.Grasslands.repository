@@ -102,8 +102,8 @@ var _boot_active: bool = false
 var _browser_active: bool = false   # Minigame browser (list of cartridges)
 var _menu_active: bool = false      # A specific minigame's title/menu is showing
 var _game_active: bool = false      # The actual Tetris minigame is running
-var _browser_msg: Label = null      # The "only this in the demo" nag text
-var _browser_msg_visible: bool = false
+var _browser_cartridge: Control = null  # the Tetrino cartridge (nudged/shaken on nav)
+var _cart_shaking: bool = false          # true while the cartridge shake plays
 var _music: AudioStreamPlayer = null
 var _idle_anim: String = "idle_down"
 var _e_was_down: bool = false
@@ -633,7 +633,6 @@ func _show_minigame_browser() -> void:
 	if _browser_active:
 		return
 	_browser_active = true
-	_browser_msg_visible = false
 	# Music is NOT played here — tetrino.wav only plays inside the Tetris game.
 
 	var p := _palette()
@@ -673,33 +672,42 @@ func _show_minigame_browser() -> void:
 	_ui.add_child(title)
 
 	# The single cartridge: Tetrino (highlighted/selected) as a glossy screen.
+	# Held in one container so the whole cartridge (card + thumb + name) can be
+	# nudged & shaken as a unit when the player tries to navigate elsewhere.
+	var cartridge := Control.new()
+	cartridge.name = "TetrinoCartridge"
+	cartridge.position = Vector2((ROOM_W - 420) / 2.0, 150)
+	cartridge.size = Vector2(420, 300)
+	_ui.add_child(cartridge)
+	_browser_cartridge = cartridge
+
 	var card := ColorRect.new()
 	card.name = "TetrinoCard"
 	card.color = p["panel"]
-	card.position = Vector2((ROOM_W - 420) / 2.0, 150)
+	card.position = Vector2.ZERO
 	card.size = Vector2(420, 300)
-	_ui.add_child(card)
+	cartridge.add_child(card)
 
 	var thumb := TextureRect.new()
 	thumb.texture = load(TETRINO_THUMB)
-	thumb.position = card.position + Vector2(40, 40)
+	thumb.position = Vector2(40, 40)
 	thumb.size = Vector2(338, 220)
 	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_ui.add_child(thumb)
+	cartridge.add_child(thumb)
 
 	# Glossy screen reflection on top of the thumbnail.
 	var gloss := _make_glossy_screen(thumb.size)
-	gloss.position = thumb.position
-	_ui.add_child(gloss)
+	gloss.position = Vector2(40, 40)
+	cartridge.add_child(gloss)
 
 	var card_name := Label.new()
 	card_name.text = "TETRINO"
-	card_name.position = Vector2(0, card.position.y + 230)
-	card_name.size = Vector2(ROOM_W, 60)
+	card_name.position = Vector2(0, 230)
+	card_name.size = Vector2(420, 60)
 	card_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card_name.add_theme_color_override("font_color", p["accent"])
 	card_name.add_theme_font_size_override("font_size", 44)
-	_ui.add_child(card_name)
+	cartridge.add_child(card_name)
 
 	# Shiny Grassconatication coin + pixelated count earned from Tetrino.
 	# expand/size set BEFORE the texture so it stays tiny (16x16).
@@ -735,28 +743,50 @@ func _show_minigame_browser() -> void:
 
 
 func _on_browser_navigate() -> void:
-	"""WASD in the browser: in the demo there's only Tetrino, so show a friendly
-	notice that this is all we've got — have fun or leave."""
+	"""WASD in the browser: there's only Tetrino, so pressing any direction
+	nudges the cartridge that way and shakes it — 'nothing to navigate to' —
+	then it settles back to the middle."""
 	if not _browser_active or _menu_active or _boot_active:
 		return
-	if _browser_msg_visible:
+	if _cart_shaking:
 		return
-	_browser_msg_visible = true
-	var p := _palette()
-	_browser_msg = Label.new()
-	_browser_msg.text = "This is the minigame we got in the Demo, so either have fun or just leave the game."
-	_browser_msg.position = Vector2(0, ROOM_H - 130)
-	_browser_msg.size = Vector2(ROOM_W, 40)
-	_browser_msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_browser_msg.add_theme_color_override("font_color", p["text"])
-	_browser_msg.add_theme_font_size_override("font_size", 20)
-	_ui.add_child(_browser_msg)
-	# Auto-hide after a moment so it doesn't permanently clutter the screen.
-	await get_tree().create_timer(4.0).timeout
-	if is_instance_valid(_browser_msg):
-		_browser_msg.queue_free()
-		_browser_msg = null
-		_browser_msg_visible = false
+	var dir := Vector2.ZERO
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		dir.y -= 1
+	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		dir.y += 1
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		dir.x -= 1
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		dir.x += 1
+	dir = dir.normalized()
+	if dir == Vector2.ZERO:
+		return
+	_shake_browser_cartridge(dir)
+
+
+func _shake_browser_cartridge(dir: Vector2) -> void:
+	"""Move the cartridge opposite the pressed direction (W pushes it down,
+	A pushes it right, etc.), shake it to show there's nothing to navigate to,
+	then settle it back to the middle and stop."""
+	if not is_instance_valid(_browser_cartridge):
+		return
+	_cart_shaking = true
+	var base: Vector2 = _browser_cartridge.position
+	var nudge: Vector2 = -dir * 16.0          # opposite the key you pressed
+	var axis: Vector2 = nudge.normalized()
+	var tw := create_tween()
+	# 1) push it that way and stop.
+	tw.tween_property(_browser_cartridge, "position", base + nudge, 0.12)
+	# 2) shake in place — decaying back-and-forth along the same axis.
+	for i in 4:
+		var amp: float = 6.0 * (1.0 - float(i) / 5.0)
+		var sgn := 1.0 if i % 2 == 0 else -1.0
+		tw.tween_property(_browser_cartridge, "position",
+			base + nudge + axis * (sgn * amp), 0.05)
+	# 3) glide back to the middle and stop.
+	tw.tween_property(_browser_cartridge, "position", base, 0.16)
+	tw.tween_callback(func() -> void: _cart_shaking = false)
 
 
 func _launch_tetrino() -> void:
@@ -770,8 +800,8 @@ func _clear_browser() -> void:
 	_browser_active = false
 	for child: Node in _ui.get_children():
 		child.queue_free()
-	_browser_msg = null
-	_browser_msg_visible = false
+	_browser_cartridge = null
+	_cart_shaking = false
 
 
 func _rebuild_browser() -> void:

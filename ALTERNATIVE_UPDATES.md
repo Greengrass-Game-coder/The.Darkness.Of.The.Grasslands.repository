@@ -306,3 +306,19 @@ Added a playable arcade room to the lobby.
 ### Decisions
 - D-S6-1: For any TextureRect we size ourselves, assign `expand_mode`/`size`
   before the texture so the node doesn't auto-grow to the texture size.
+
+## Session 7 (Arcade browser: cartridge nudge & shake on WASD)
+### Change
+- Replaced the "this is all we've got" nag text in the minigame browser with a
+  tactile rejection animation. Pressing WASD (no other minigame to navigate to)
+  now nudges the Tetrino cartridge OPPOSITE the pressed key (W pushes it down,
+  A pushes it right, S up, D left), shakes it in place, then settles it back to
+  the middle and stops.
+- Refactored the cartridge into a single Control container (card + thumbnail +
+  gloss + name) so it moves & shakes as one unit.
+### Decisions
+- D-S7-1: Since there's only one minigame in the demo, every WASD direction is
+  a dead end — the cartridge always shakes and returns to center. This is the
+  intended "nothing to navigate to" feedback.
+- D-S7-2: Direction is opposite the pressed key (per user's spec: W->down,
+  A->right, etc.).
