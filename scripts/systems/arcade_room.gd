@@ -867,16 +867,23 @@ func _start_tetrino_intro() -> void:
 	_cart.stream = load(CARTRIDGE_START)
 	_cart.bus = "SFX"
 	add_child(_cart)
+	_cart.finished.connect(_on_cart_finished)
 	_cart.play()
 
 	# Zoom into the title art to "enter" the game.
 	if is_instance_valid(_title_thumb):
 		var tw := create_tween()
-		tw.tween_property(_title_thumb, "scale", Vector2(3.2, 3.2), 1.55) \
+		tw.tween_property(_title_thumb, "scale", Vector2(3.2, 3.2), 1.6) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
-	# Wait for the jingle, then start the game (unless the player backed out).
-	await get_tree().create_timer(1.55).timeout
+	# The game music waits for the cartridge jingle to finish fully before
+	# starting (see _on_cart_finished), so the two never overlap.
+
+
+func _on_cart_finished() -> void:
+	"""The cartridge-start jingle has played to the end — now begin the actual
+	game (which starts the tetrino music). Guards so a back-out during the
+	intro cancels it."""
 	if not _intro_active:
 		return
 	_intro_active = false
