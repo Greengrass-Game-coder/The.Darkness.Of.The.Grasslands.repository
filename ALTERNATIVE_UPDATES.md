@@ -1,0 +1,189 @@
+# The Darkness Of The Grasslands — Alternative Updates & Decision Log
+
+> Purpose: a running log of development decisions, scope cuts, and things the user
+> has explicitly said NOT to put into next releases. Future-me (and anyone picking
+> up the project) reads this before making changes so nothing already-decided gets
+> contradicted or re-added by accident.
+>
+> Source of truth for the game vision: the full "The Darkness Of The Grasslands —
+> Full Planned Game Plan" document. This file tracks deviations, clarifications,
+> and confirmed decisions on top of that plan.
+
+---
+
+## Decision Log
+
+### Session 1 — Plan review & audit kickoff (current)
+
+The user reviewed the full game plan. Decisions confirmed:
+
+| # | Topic | Decision | Note |
+|---|-------|----------|------|
+| D1 | **LGS/LMS/LWS naming** | **Undecided — treat as alternatives for now.** | Use any of: **LGS (Last Grass Standing)**, **LMS (Last Man Standing)**, **LWS (Last Woman Standing)**. Code currently uses `LAST_MAN_STANDING` / `LMS`. **We will focus on this later.** |
+| D2 | **Demo roster** | **Demo ships with killer ViolentGrass + survivor GreenGrass only.** | Other characters (Pink, Yellow, Orange, Cyan, Grey, AmberGrass, etc.) are unlockable/later content, not in the demo's free starting roster. |
+| D3 | **Session task** | **Audit current game vs plan** (compare what's built against the plan and report gaps/mismatches). | Nothing is being built yet; the first deliverable is a gap/mismatch report. |
+| D4 | **MD file** | Keep a **full decision log** (not just "do NOT include" items). | This file. It logs both what we ARE doing and what we explicitly decided NOT to do. |
+
+> Note: The **kill timer bonus** was removed from the decision log (previously logged as
+> "+30s vs plan's +15s"). The kill bonus decision is no longer tracked here.
+
+---
+
+## Do NOT include (explicit cuts / avoided features)
+
+> Anything the user explicitly says should NOT go into a release gets logged here
+> so it is not accidentally added later.
+
+- *(none yet — nothing explicitly cut as of Session 1)*
+
+---
+
+## Pending / open items
+
+- **LGS/LMS/LWS naming** (D1): code uses `LAST_MAN_STANDING` / `LMS`. All three names are
+  acceptable alternatives; final choice deferred — **we will focus on this later**.
+- **Audit report** (D3): full current-vs-plan gap analysis — **DONE (below)**.
+
+---
+
+## AUDIT — Current game vs. Full Plan (Session 1)
+
+Verified against the live codebase (`scripts/`, `scenes/`, `assets/`). Legend:
+**✅ Done** · **🟡 Partial / present but incomplete** · **❌ Not built**.
+
+### Core match format (§2, §54)
+- ✅ Match flow: Lobby → Intermission → Killer Intro → Round → LMS/LGS → Ending → Rewards → Lobby. All present in `game_map.gd` / `lobby.gd`.
+- ✅ 4-minute round: `MATCH_DURATION = 240.0` (both map + server).
+- ✅ No-revive philosophy: survivors stay dead for the match.
+- 🟡 Intermission is currently a 60s lobby countdown (`countdown_duration = 60.0`), not a separate dedicated intermission scene. It mostly works as the plan's "intermission".
+
+### Kill timer mechanic (§6)
+- ✅ Every kill adds time to the match timer.
+- ✅ Timer ticks up to target via `add_timer_bonus()` / `_bonus_target`.
+- ℹ️ Current code adds +30s per kill. (Kill bonus decision removed from the log — see D1 note.)
+
+### LGS / Last Grass Standing (§8)
+- ✅ Fully built as "LMS" (`_lms_active`, `LMS_MUSIC`, heartbeat, VFX, kill zoom, final-chase presentation, reveal arrow).
+- 🟡 Naming: code uses `LAST_MAN_STANDING` / `LMS`; **LGS/LMS/LWS are all acceptable alternatives (D1)** — final choice deferred. Not yet renamed.
+
+### Victories (§9–10)
+- ✅ Killer win when 0 survivors (outro + analysis).
+- ✅ Survivor win when timer hits 0 with ≥1 survivor alive.
+- ✅ Rewards: +1 gift ring + rounds-count per match (`_end_match`).
+
+### Killer roster (§11)
+- ✅ **ViolentGrass** — playable, 6666 HP (`max_hp = 6666.0`), intro + outro, multiple skins.
+- 🟡 Monster GreenGrass, BlueGrass–Glitched, RedGrass, PurpleGrass — planned, **not built** (no controllers/scenes).
+
+### Survivor roster (§12–14)
+- ✅ **GreenGrass** — playable (healer/sentinel, block/punch/heal abilities).
+- 🟡 Pink, Yellow, Orange, Cyan, Dark Grey, Grey, AmberGrass — planned, **not built** as playable characters. Classes (Healer/Sentinel/Looper/Hacker) are design concepts only.
+
+### Abilities / health / damage (§15–16)
+- ✅ Character-specific abilities + cooldowns (Greengrass: block, punch, spare-flower heal; ViolentGrass: attacks/teleport).
+- ✅ Character-specific HP (6666 killer vs 100-ish survivor).
+- 🟡 Not every planned class has an ability set (only the built characters do).
+
+### Puzzles (§17)
+- ✅ 3 puzzle types: Memory, Wiring, Rhythm (`puzzles/`).
+- ✅ **Every puzzle has 5 levels** (`Level %d/5`, `_puzzle_level` 1–5) — matches plan exactly.
+- 🟡 Only 3 of the planned puzzle purposes wired (objectives); unlock/resource/fuel purposes not yet.
+
+### Waiting-room minigames (§18–20)
+- ❌ **Tetris-style (Tetrino/sirteT), Save the Princess, Practice Range** — none built.
+- ❌ Minigame → 2 Grass Coins progression — not built.
+- ❌ **Cartridges** unlock system — not built.
+
+### Currency / Shop / Browngrass (§21–22)
+- ✅ Currency exists as `player_money` (add/spend) — but named "money", **not "Grass Coins"**.
+- 🟡 Shop exists (`shop_layer.tscn`) but only shows 2 character cards (ViolentGrass + Greengrass) + a SKINS browser; no actual purchases/prices yet.
+- 🟡 Browngrass as shop NPC — planned, not confirmed built.
+
+### Character levels / milestone skins (§23–25)
+- ❌ Character levels / XP — **not built** (no level system in `game_state.gd`).
+- ❌ Milestone skins (Greengrass L25/50/75, ViolentGrass extremes) — not built.
+- 🟡 Some skin assets/skins exist via the SKINS browser, but no level-gated milestones.
+
+### Achievements (§26)
+- ❌ Achievements UI + any achievements — **not built**.
+
+### Chat / Quick Chat (§27)
+- ✅ Player chat exists (WebSocket chat + admin commands).
+- ❌ Quick Chat — **not built**; no character-specific quick-chat dialogue.
+
+### HUD (§28)
+- ✅ Health bar, stamina bar, ability icons, timer, damage VFX (shake + vignette).
+- ❌ Minimap, objectives list, match state/LGS state panel, status effects — not built.
+
+### Minimap (§29)
+- ❌ No minimap (only a teleport "minimap" close helper, not an actual map minimap).
+
+### Damage floats (§30)
+- ❌ **No floating damage numbers** (no `-25` / `-9000` popups). Only labels used for AI name tags.
+
+### Main map / environment (§31–32)
+- ✅ Large forest map via `MapManager` (blueprint-driven collisions + navigation).
+- 🟡 Interactive objects partial: puzzle triggers + a few interactables; doors/hidden areas/lore objects/collectibles not fully built.
+
+### Map voting (§33)
+- ❌ **Map voting — not built.**
+
+### Killer intros/outros (§34–35)
+- ✅ 1 killer intro (Violentgrass) + 1 killer outro (Violentgrass+Killer+Outro) both wired.
+
+### Animation system (§36)
+- 🟡 Many animated assets exist (idle/walk/attack via `AnimateSprite2D`, bot controllers); full per-character animation set not complete.
+
+### Music & audio (§37–38)
+- ✅ ~14 audio files, Lobby/Menu/Match/Chase/LMS music, dynamic chase layers, voicelines.
+- 🟡 Full dynamic-music ladder (normal→tension→chase→LGS→ending) partially built (chase + LMS + ending present; menu/victory/defeat/special-mode themes partial).
+
+### Lore & delivery (§39–41)
+- 🟡 Lore via killer intro/outro + some environmental pieces exist.
+- ❌ Full lore delivery (letters, hidden rooms, collectibles, secret achievements) — not built.
+
+### Save system (§42)
+- ✅ Robust save system (`save_manager.gd`: per-user `user://saves`, atomic writes, backup recovery, schema versioning).
+- ❌ **Encryption** — not implemented (plain JSON currently).
+- ❌ Saves coins/rings but not levels/achievements/cartridges (those don't exist yet).
+
+### Multiplayer networking (§43)
+- ✅ Dedicated server (`dedicated_server.gd`) is authoritative for match events (phase, player list, roles).
+- ✅ WebSocket NetworkManager client + P2P bridge (`p2p_*`).
+- 🟡 Client-side simulation still does a lot locally; full authoritative health/damage/ability sync is partial.
+
+### Starting characters (§44)
+- ✅ Demo/free roster = ViolentGrass (killer) + GreenGrass (survivor) — **matches D2**.
+
+### External servers & special modes (§45–51)
+- ❌ **Double Trouble** (2K/16S), **Infection**, **HELL MODE**, **"HOLY EVERYONE IS HIGH!!"**, **One Bounce** — none built.
+- ✅ Canon-vs-gameplay separation is a design principle (respected; special modes non-canon).
+- 🟡 `double_trouble` flag exists in `game_state.gd` but the mode isn't implemented.
+
+### Demo scope (§52) — what IS in the demo today
+✅ Lobby · Intermission (countdown) · one main map · ViolentGrass · GreenGrass ·
+survivor+killer gameplay · timer · health · damage · abilities · puzzles ·
+no revives · kill timer bonus · LMS/LGS · HUD · basic multiplayer · audio ·
+1 killer intro · 1 killer outro.
+❌ Still missing from the demo list: **minimap**.
+
+### Development phases (§53)
+- Phases 1–5 (foundation, core gameplay, LGS, map, interface) → largely **built**.
+- Phase 6 (progression: XP/levels/coins/shop/unlocks/skins/achievements) → 🟡 partial (money + shop shell; no XP/levels/achievements).
+- Phase 7 (presentation) → 🟡 partial (intro/outro/audio good; full per-character set incomplete).
+- Phases 8–11 (more characters/maps/modes) → mostly ❌ planned.
+
+---
+
+### Biggest gaps to close first (recommended order for the demo)
+1. **Minimap** — the only explicitly listed demo item not present.
+2. **Damage floats** — cheap, high-impact feedback, fits the -9000 joke.
+3. **LGS/LMS/LWS naming** — pick a final name (D1) and align the code (low-risk rename).
+4. **XP / character levels + milestone skins** — core progression missing.
+5. **Grass Coins currency naming** — align `player_money` → Grass Coins.
+6. **Achievements UI** — entirely absent.
+7. **Quick Chat** — entirely absent.
+8. **Waiting-room minigames + Practice Range** — entirely absent.
+9. **Map voting** — entirely absent.
+
+*Last updated: Session 1 (audit complete).*
