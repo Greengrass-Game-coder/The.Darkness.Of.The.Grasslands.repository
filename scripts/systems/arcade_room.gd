@@ -704,13 +704,13 @@ func _show_minigame_browser() -> void:
 	# Shiny Grassconatication coin + pixelated count earned from Tetrino.
 	var coin_badge := TextureRect.new()
 	coin_badge.texture = load(COIN_TEX)
-	coin_badge.position = Vector2(ROOM_W / 2.0 - 220, ROOM_H - 150)
-	coin_badge.size = Vector2(36, 36)
+	coin_badge.position = Vector2(ROOM_W / 2.0 - 220, ROOM_H - 156)
+	coin_badge.size = Vector2(16, 16)
 	coin_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	coin_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(coin_badge)
 	_add_pixel_text(_ui, "x" + str(GameState.tetrino_coins_earned),
-		Vector2(ROOM_W / 2.0 - 176, ROOM_H - 142), 3.0, p["accent"])
+		Vector2(ROOM_W / 2.0 - 198, ROOM_H - 150), 2.0, p["accent"])
 
 	# Theme indicator (console-only setting).
 	_theme_label = Label.new()
