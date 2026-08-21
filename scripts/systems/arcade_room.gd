@@ -702,12 +702,14 @@ func _show_minigame_browser() -> void:
 	_ui.add_child(card_name)
 
 	# Shiny Grassconatication coin + pixelated count earned from Tetrino.
+	# expand/size set BEFORE the texture so it stays tiny (16x16).
 	var coin_badge := TextureRect.new()
-	coin_badge.texture = load(COIN_TEX)
+	coin_badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	coin_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	coin_badge.position = Vector2(ROOM_W / 2.0 - 220, ROOM_H - 156)
 	coin_badge.size = Vector2(16, 16)
-	coin_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	coin_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	coin_badge.texture = load(COIN_TEX)
 	_ui.add_child(coin_badge)
 	_add_pixel_text(_ui, "x" + str(GameState.tetrino_coins_earned),
 		Vector2(ROOM_W / 2.0 - 198, ROOM_H - 150), 2.0, p["accent"])
@@ -1656,13 +1658,15 @@ func _show_win() -> void:
 	sub.add_theme_font_size_override("font_size", 24)
 	_ui.add_child(sub)
 
-	# The shiny reward coin, centred — tiny 10x10 px.
+	# The shiny reward coin, centred — tiny 10x10 px. Set expand/size BEFORE the
+	# texture so the node doesn't auto-grow to the texture's native size.
 	_win_coin = TextureRect.new()
-	_win_coin.texture = load(COIN_TEX)
+	_win_coin.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_win_coin.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_win_coin.position = Vector2(ROOM_W / 2.0 - 5, 264)
 	_win_coin.size = Vector2(10, 10)
-	_win_coin.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_win_coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_win_coin.texture = load(COIN_TEX)
 	_ui.add_child(_win_coin)
 	_make_coin_shiny()
 

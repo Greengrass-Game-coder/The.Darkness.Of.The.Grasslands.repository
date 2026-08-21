@@ -290,3 +290,19 @@ Added a playable arcade room to the lobby.
   black block left→right instead.
 - D-S5-2: Leaving the room is done by walking left off the left edge (reverse of
   entering by walking right), matching the user's requested left→right black wipe.
+
+## Session 6 (Fix: Grassconatication coin actually rendering big)
+### Bug found
+- The coin badges kept looking big no matter what size I set. Root cause: the
+  TextureRect's `texture` was assigned BEFORE `expand_mode`. With the default
+  `EXPAND_KEEP_SIZE`, assigning a texture makes the node auto-grow to the
+  texture's native size (248x245) and it never shrank back, so setting
+  `size = 10x10` had no effect.
+- Fix: set `expand_mode = EXPAND_IGNORE_SIZE` (and `size`/`stretch_mode`) BEFORE
+  assigning the texture, so the node stays at the requested size and the
+  texture is scaled to fit. Applied to both the win-screen coin (10x10) and the
+  browser badge (16x16). Verified via runtime debug print (`size=(10,10)`) and
+  on-screen inspection.
+### Decisions
+- D-S6-1: For any TextureRect we size ourselves, assign `expand_mode`/`size`
+  before the texture so the node doesn't auto-grow to the texture size.
