@@ -33,6 +33,10 @@ var selected_killer: String = "Violentgrass"  # Will be set from CharacterData
 var hide_leaderboard: bool = false
 var epilepsy_safe_mode: bool = true
 
+## Console (arcade room) theme: "system", "light", or "dark". Console-only —
+## only changeable inside the arcade console, never in normal settings.
+var console_theme: String = "system"
+
 ## Money tracking per player
 var player_money: int = 0
 

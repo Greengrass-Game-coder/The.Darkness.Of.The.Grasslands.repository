@@ -28,6 +28,10 @@ const FLICKER_DURATION: float = 0.7
 const BOOT_TEXT: String = "COMPUTERING CONSOLE BOOT V0.5P.R.O.T.O.T.Y.P.E."
 const LOAD_DURATION: float = 1.0
 
+# ── Theme persistence (console-only; never touched by normal settings) ──
+const THEME_CFG: String = "user://console_theme.cfg"
+const THEME_CYCLE: Array[String] = ["system", "light", "dark"]
+
 # ── State ──
 var _player: CharacterBody2D = null
 var _sprite: AnimatedSprite2D = null
@@ -37,6 +41,7 @@ var _ui: CanvasLayer = null
 var _boot_active: bool = false
 var _browser_active: bool = false   # Minigame browser (list of cartridges)
 var _menu_active: bool = false      # A specific minigame's title/menu is showing
+var _game_active: bool = false      # The actual Tetris minigame is running
 var _browser_msg: Label = null      # The "only this in the demo" nag text
 var _browser_msg_visible: bool = false
 var _music: AudioStreamPlayer = null
@@ -45,15 +50,95 @@ var _e_was_down: bool = false
 var _esc_was_down: bool = false
 var _enter_was_down: bool = false
 var _nav_was_down: bool = false
+var _t_was_down: bool = false
+var _theme_label: Label = null
 
 
 func _ready() -> void:
+	_load_theme()
 	_build_room()
 	_build_player()
 	_build_machine()
 	_build_ui()
 	# Reveal from black (right-to-left wipe continues from the lobby).
 	_reveal_from_black()
+
+
+# ═══════════════ CONSOLE THEME (console-only) ═══════════════
+
+func _load_theme() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(THEME_CFG) == OK:
+		var t: String = str(cfg.get_value("console", "theme", "system"))
+		if t in THEME_CYCLE:
+			GameState.console_theme = t
+
+
+func _save_theme() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("console", "theme", GameState.console_theme)
+	cfg.save(THEME_CFG)
+
+
+func _cycle_theme() -> void:
+	var idx: int = THEME_CYCLE.find(GameState.console_theme)
+	GameState.console_theme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.size()]
+	_save_theme()
+	# Rebuild the current screen (browser or menu) with the new palette.
+	if _menu_active:
+		_rebuild_tetrino()
+	elif _browser_active:
+		_rebuild_browser()
+	_update_theme_label()
+
+
+func _resolved_theme() -> String:
+	# "system" follows the OS light/dark preference.
+	if GameState.console_theme == "system":
+		var dark: bool = DisplayServer.is_dark_mode_supported() and DisplayServer.is_dark_mode()
+		return "dark" if dark else "light"
+	return GameState.console_theme
+
+
+func _palette() -> Dictionary:
+	var light: bool = _resolved_theme() == "light"
+	if light:
+		return {
+			"bg": Color(0.93, 0.91, 0.86, 1),       # old-computer beige
+			"panel": Color(0.84, 0.80, 0.72, 1),    # darker beige panel
+			"panel_edge": Color(0.45, 0.42, 0.38, 1),
+			"text": Color(0.08, 0.08, 0.10, 1),     # near-black text
+			"text_dim": Color(0.25, 0.25, 0.27, 1),
+			"accent": Color(0.0, 0.25, 0.6, 1),     # classic blue
+			"gloss": Color(1, 1, 1, 0.55),
+		}
+	return {
+		"bg": Color(0, 0, 0, 1),
+		"panel": Color(0.10, 0.11, 0.14, 1),
+		"panel_edge": Color(0.28, 0.32, 0.4, 1),
+		"text": Color(0.85, 0.95, 1.0, 1),
+		"text_dim": Color(0.7, 0.75, 0.8, 1),
+		"accent": Color(0.3, 1.0, 1.0, 1),
+		"gloss": Color(1, 1, 1, 0.18),
+	}
+
+
+func _update_theme_label() -> void:
+	if is_instance_valid(_theme_label):
+		_theme_label.text = "DISPLAY: %s" % GameState.console_theme.to_upper()
+
+
+func _make_glossy_screen(size: Vector2) -> ColorRect:
+	"""A glossy glass highlight over a thumbnail/screen. Uses a ColorRect with
+	a shader-based diagonal shine so it looks like a reflective CRT screen."""
+	var gloss := ColorRect.new()
+	gloss.position = Vector2.ZERO
+	gloss.size = size
+	gloss.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://scripts/systems/arcade_gloss.gdshader")
+	gloss.material = mat
+	return gloss
 
 
 # ═══════════════ ROOM CONSTRUCTION ═══════════════
@@ -204,6 +289,13 @@ func _physics_process(_delta: float) -> void:
 	# Minigame browser: WASD tries to navigate, Enter launches the highlighted
 	# game, Esc leaves. In the demo there is only Tetrino, so WASD just shows a
 	# friendly "this is all we have" nag.
+	# Enter: in the browser it launches Tetrino; on the Tetrino title screen it
+	# starts the actual minigame (which is when the music plays).
+	var enter_down := Input.is_key_pressed(KEY_ENTER) or Input.is_physical_key_pressed(KEY_ENTER)
+	if enter_down and not _enter_was_down:
+		_on_enter_pressed()
+	_enter_was_down = enter_down
+
 	if _browser_active and not _menu_active and not _boot_active:
 		var nav_down := (
 			Input.is_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_W)
@@ -213,14 +305,14 @@ func _physics_process(_delta: float) -> void:
 		)
 		if nav_down and not _nav_was_down:
 			_on_browser_navigate()
-		var enter_down := Input.is_key_pressed(KEY_ENTER) or Input.is_physical_key_pressed(KEY_ENTER)
-		if enter_down and not _enter_was_down:
-			_launch_tetrino()
+		var t_down := Input.is_key_pressed(KEY_T) or Input.is_physical_key_pressed(KEY_T)
+		if t_down and not _t_was_down:
+			_cycle_theme()
 		_nav_was_down = nav_down
-		_enter_was_down = enter_down
+		_t_was_down = t_down
 	else:
 		_nav_was_down = false
-		_enter_was_down = false
+		_t_was_down = false
 
 	if _boot_active or _menu_active:
 		_player.velocity = Vector2.ZERO
@@ -277,8 +369,19 @@ func _on_e_pressed() -> void:
 		_start_boot_sequence()
 
 
+func _on_enter_pressed() -> void:
+	if _browser_active and not _menu_active and not _boot_active:
+		_launch_tetrino()
+	elif _menu_active and not _game_active:
+		# On the Tetrino title screen, Enter starts the actual minigame — this
+		# is when the music begins to play.
+		_start_tetrino_game()
+
+
 func _on_esc_pressed() -> void:
-	if _menu_active:
+	if _game_active:
+		_exit_tetrino_game()
+	elif _menu_active:
 		_close_tetrino()
 	elif _browser_active:
 		_leave_arcade_room()
@@ -312,21 +415,23 @@ func _start_boot_sequence() -> void:
 
 
 func _run_boot() -> void:
-	# 1) VHS-style flicker: rapid random black/white flashes.
+	# 1) VHS-style flicker: the screen goes black and stays black (the flicker
+	#    is expressed as a barely-visible shimmer, never white).
 	var flick := ColorRect.new()
+	flick.name = "BootBlack"
 	flick.color = Color(0, 0, 0, 1)
 	flick.position = Vector2(0, 0)
 	flick.size = Vector2(ROOM_W, ROOM_H)
 	flick.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(flick)
 
+	# Black-only flicker: nudge opacity a touch for a CRT shimmer feel.
 	var t_end := Time.get_ticks_msec() + int(FLICKER_DURATION * 1000.0)
 	while Time.get_ticks_msec() < t_end:
-		flick.color = Color(1, 1, 1, 1) if randi() % 2 == 0 else Color(0, 0, 0, 1)
+		flick.color = Color(0, 0, 0, randf_range(0.85, 1.0))
 		await get_tree().create_timer(randf_range(0.02, 0.06)).timeout
 	flick.color = Color(0, 0, 0, 1)
 	await get_tree().create_timer(0.1).timeout
-	flick.queue_free()
 
 	# 2) Boot text (monospace-style, centered).
 	var boot_lbl := Label.new()
@@ -339,6 +444,7 @@ func _run_boot() -> void:
 	_ui.add_child(boot_lbl)
 	await get_tree().create_timer(0.8).timeout
 	boot_lbl.queue_free()
+	# Screen stays black (flick overlay still up) through boot text + loading.
 
 	# 3) Quick fake loading bar: 10% → 78% → 100% in ~1s.
 	var bar_bg := ColorRect.new()
@@ -380,6 +486,9 @@ func _run_boot() -> void:
 	bar_fill.queue_free()
 	pct_lbl.queue_free()
 
+	# Boot is done — lift the black overlay and reveal the console navigator.
+	flick.queue_free()
+
 	_boot_active = false
 	_show_minigame_browser()
 
@@ -387,45 +496,55 @@ func _run_boot() -> void:
 # ═══════════════ MINIGAME BROWSER ═══════════════
 
 func _show_minigame_browser() -> void:
-	"""Black-screen cartridge browser. In the demo there is only one minigame:
-	Tetrino. WASD navigation just shows a friendly 'this is all we have' nag."""
+	"""Cartridge browser. In the demo there is only one minigame: Tetrino.
+	WASD navigation just shows a friendly 'this is all we have' nag. Themed like
+	an authentic old computer (light beige / dark CRT), with glossy screens."""
 	if _browser_active:
 		return
 	_browser_active = true
 	_browser_msg_visible = false
+	# Music is NOT played here — tetrino.wav only plays inside the Tetris game.
 
-	# Looping music for the minigame (starts once the machine is booted).
-	if _music == null:
-		_music = AudioStreamPlayer.new()
-		_music.stream = load(TETRINO_MUSIC)
-		_music.bus = "Music"
-		_music.volume_db = -6.0
-		add_child(_music)
-	if not _music.playing:
-		_music.play()
+	var p := _palette()
 
-	# Black backdrop.
+	# Backdrop (themed).
 	var bg := ColorRect.new()
 	bg.name = "BrowserBG"
-	bg.color = Color(0, 0, 0, 1)
+	bg.color = p["bg"]
 	bg.position = Vector2(0, 0)
 	bg.size = Vector2(ROOM_W, ROOM_H)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(bg)
 
+	# Authentic CRT bezel frame around the display area.
+	var bezel := ColorRect.new()
+	bezel.name = "BrowserBezel"
+	bezel.color = Color(0.12, 0.12, 0.14, 1)
+	bezel.position = Vector2(60, 40)
+	bezel.size = Vector2(ROOM_W - 120, ROOM_H - 110)
+	_ui.add_child(bezel)
+
+	# Inner screen (themed panel).
+	var screen := ColorRect.new()
+	screen.name = "BrowserScreen"
+	screen.color = p["bg"]
+	screen.position = bezel.position + Vector2(14, 14)
+	screen.size = bezel.size - Vector2(28, 28)
+	_ui.add_child(screen)
+
 	var title := Label.new()
 	title.text = "MINIGAME BROWSER"
-	title.position = Vector2(0, 40)
-	title.size = Vector2(ROOM_W, 50)
+	title.position = Vector2(screen.position.x, screen.position.y + 24)
+	title.size = Vector2(screen.size.x, 50)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_color_override("font_color", Color(0.5, 1.0, 1.0, 1))
+	title.add_theme_color_override("font_color", p["accent"])
 	title.add_theme_font_size_override("font_size", 40)
 	_ui.add_child(title)
 
-	# The single cartridge: Tetrino (highlighted/selected).
+	# The single cartridge: Tetrino (highlighted/selected) as a glossy screen.
 	var card := ColorRect.new()
 	card.name = "TetrinoCard"
-	card.color = Color(0.1, 0.12, 0.16, 1)
+	card.color = p["panel"]
 	card.position = Vector2((ROOM_W - 420) / 2.0, 150)
 	card.size = Vector2(420, 300)
 	_ui.add_child(card)
@@ -437,21 +556,36 @@ func _show_minigame_browser() -> void:
 	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_ui.add_child(thumb)
 
+	# Glossy screen reflection on top of the thumbnail.
+	var gloss := _make_glossy_screen(thumb.size)
+	gloss.position = thumb.position
+	_ui.add_child(gloss)
+
 	var card_name := Label.new()
 	card_name.text = "TETRINO"
 	card_name.position = Vector2(0, card.position.y + 230)
 	card_name.size = Vector2(ROOM_W, 60)
 	card_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	card_name.add_theme_color_override("font_color", Color(0.3, 1.0, 1.0, 1))
+	card_name.add_theme_color_override("font_color", p["accent"])
 	card_name.add_theme_font_size_override("font_size", 44)
 	_ui.add_child(card_name)
 
+	# Theme indicator (console-only setting).
+	_theme_label = Label.new()
+	_theme_label.position = Vector2(0, ROOM_H - 108)
+	_theme_label.size = Vector2(ROOM_W, 28)
+	_theme_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_theme_label.add_theme_color_override("font_color", p["text_dim"])
+	_theme_label.add_theme_font_size_override("font_size", 16)
+	_ui.add_child(_theme_label)
+	_update_theme_label()
+
 	var hint := Label.new()
-	hint.text = "WASD  navigate   •   ENTER  play   •   ESC  leave"
+	hint.text = "WASD  navigate   •   T  display   •   ENTER  play   •   ESC  leave"
 	hint.position = Vector2(0, ROOM_H - 80)
 	hint.size = Vector2(ROOM_W, 30)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
+	hint.add_theme_color_override("font_color", p["text_dim"])
 	hint.add_theme_font_size_override("font_size", 18)
 	_ui.add_child(hint)
 
@@ -464,12 +598,13 @@ func _on_browser_navigate() -> void:
 	if _browser_msg_visible:
 		return
 	_browser_msg_visible = true
+	var p := _palette()
 	_browser_msg = Label.new()
 	_browser_msg.text = "This is the minigame we got in the Demo, so either have fun or just leave the game."
 	_browser_msg.position = Vector2(0, ROOM_H - 130)
 	_browser_msg.size = Vector2(ROOM_W, 40)
 	_browser_msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_browser_msg.add_theme_color_override("font_color", Color(1, 1, 0.8, 1))
+	_browser_msg.add_theme_color_override("font_color", p["text"])
 	_browser_msg.add_theme_font_size_override("font_size", 20)
 	_ui.add_child(_browser_msg)
 	# Auto-hide after a moment so it doesn't permanently clutter the screen.
@@ -495,33 +630,41 @@ func _clear_browser() -> void:
 	_browser_msg_visible = false
 
 
+func _rebuild_browser() -> void:
+	_clear_browser()
+	_show_minigame_browser()
+
+
 # ═══════════════ TETRINO TITLE / MENU ═══════════════
 
 func _show_tetrino_menu() -> void:
 	if _menu_active:
 		return
 	_menu_active = true
+	_game_active = false
+	# Music is NOT started here — it only plays once the player actually
+	# enters the minigame (see _start_tetrino_game).
 
-	# Looping music for the minigame.
-	if _music == null:
-		_music = AudioStreamPlayer.new()
-		_music.stream = load(TETRINO_MUSIC)
-		_music.bus = "Music"
-		_music.volume_db = -6.0
-		add_child(_music)
-	if not _music.playing:
-		_music.play()
+	var p := _palette()
 
-	# Black backdrop behind the menu.
+	# Backdrop behind the menu (themed).
 	var bg := ColorRect.new()
 	bg.name = "TetrinoBG"
-	bg.color = Color(0, 0, 0, 1)
+	bg.color = p["bg"]
 	bg.position = Vector2(0, 0)
 	bg.size = Vector2(ROOM_W, ROOM_H)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(bg)
 
-	# Thumbnail as the title art.
+	# CRT bezel frame.
+	var bezel := ColorRect.new()
+	bezel.name = "TetrinoBezel"
+	bezel.color = Color(0.12, 0.12, 0.14, 1)
+	bezel.position = Vector2(60, 40)
+	bezel.size = Vector2(ROOM_W - 120, ROOM_H - 110)
+	_ui.add_child(bezel)
+
+	# Thumbnail as the title art (glossy screen).
 	var thumb := TextureRect.new()
 	thumb.texture = load(TETRINO_THUMB)
 	thumb.position = Vector2((ROOM_W - 338) / 2.0, 70)
@@ -529,52 +672,161 @@ func _show_tetrino_menu() -> void:
 	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_ui.add_child(thumb)
 
+	var gloss := _make_glossy_screen(thumb.size)
+	gloss.position = thumb.position
+	_ui.add_child(gloss)
+
 	var title := Label.new()
 	title.text = "TETRINO"
 	title.position = Vector2(0, 340)
 	title.size = Vector2(ROOM_W, 60)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_color_override("font_color", Color(0.3, 1.0, 1.0, 1))
+	title.add_theme_color_override("font_color", p["accent"])
 	title.add_theme_font_size_override("font_size", 56)
 	_ui.add_child(title)
 
 	# Placeholder play field (menu-first scope).
 	var field_border := ColorRect.new()
-	field_border.color = Color(0.25, 0.25, 0.3, 1)
+	field_border.color = p["panel_edge"]
 	field_border.position = Vector2((ROOM_W - 220) / 2.0, 430)
 	field_border.size = Vector2(220, 220)
 	_ui.add_child(field_border)
 
 	var field_bg := ColorRect.new()
-	field_bg.color = Color(0.05, 0.05, 0.08, 1)
+	field_bg.color = p["panel"]
 	field_bg.position = Vector2((ROOM_W - 216) / 2.0, 434)
 	field_bg.size = Vector2(212, 212)
 	_ui.add_child(field_bg)
 
 	var hint := Label.new()
-	hint.text = "INSERT COIN TO PLAY\n(coming soon)"
+	hint.text = "INSERT COIN TO PLAY"
 	hint.position = Vector2(0, ROOM_H - 120)
 	hint.size = Vector2(ROOM_W, 50)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.7))
-	hint.add_theme_font_size_override("font_size", 20)
+	hint.add_theme_color_override("font_color", p["accent"])
+	hint.add_theme_font_size_override("font_size", 24)
 	_ui.add_child(hint)
+
+	var back := Label.new()
+	back.text = "Press [ENTER] to play   •   [ESC] to exit"
+	back.position = Vector2(0, ROOM_H - 60)
+	back.size = Vector2(ROOM_W, 30)
+	back.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	back.add_theme_color_override("font_color", p["text_dim"])
+	back.add_theme_font_size_override("font_size", 14)
+	_ui.add_child(back)
+
+
+func _rebuild_tetrino() -> void:
+	_menu_active = false
+	for child: Node in _ui.get_children():
+		child.queue_free()
+	_show_tetrino_menu()
+
+
+func _play_music() -> void:
+	"""Start tetrino.wav looping with a one-time fade-in. The track loops
+	seamlessly at the stream level, so the fade only ever runs once — never on
+	subsequent loop iterations."""
+	if _music == null:
+		_music = AudioStreamPlayer.new()
+		_music.stream = load(TETRINO_MUSIC)
+		_music.bus = "Music"
+		# Force forward looping so the track repeats (even if the .wav lacks
+		# embedded loop points).
+		if _music.stream is AudioStreamWAV:
+			var wav: AudioStreamWAV = _music.stream as AudioStreamWAV
+			wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			if wav.loop_end <= 0:
+				wav.loop_end = int(wav.data.size() / 2.0)
+		add_child(_music)
+	if not _music.playing:
+		_music.volume_db = -60.0
+		_music.play()
+		var tween := create_tween()
+		tween.tween_property(_music, "volume_db", -6.0, 1.5).set_trans(Tween.TRANS_SINE)
+
+
+func _start_tetrino_game() -> void:
+	"""Player pressed ENTER on the title screen — the actual Tetris minigame
+	now begins, which is when the music fades in."""
+	if not _menu_active or _game_active:
+		return
+	_game_active = true
+
+	_play_music()
+	var p := _palette()
+
+	# Clear the title menu and draw the live game screen.
+	for child: Node in _ui.get_children():
+		child.queue_free()
+
+	var bg := ColorRect.new()
+	bg.color = p["bg"]
+	bg.position = Vector2(0, 0)
+	bg.size = Vector2(ROOM_W, ROOM_H)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(bg)
+
+	var bezel := ColorRect.new()
+	bezel.color = Color(0.12, 0.12, 0.14, 1)
+	bezel.position = Vector2(60, 40)
+	bezel.size = Vector2(ROOM_W - 120, ROOM_H - 110)
+	_ui.add_child(bezel)
+
+	var field_border := ColorRect.new()
+	field_border.color = p["panel_edge"]
+	field_border.position = Vector2((ROOM_W - 220) / 2.0, 120)
+	field_border.size = Vector2(440, 500)
+	_ui.add_child(field_border)
+
+	var field_bg := ColorRect.new()
+	field_bg.color = p["panel"]
+	field_bg.position = Vector2((ROOM_W - 216) / 2.0, 124)
+	field_bg.size = Vector2(432, 492)
+	_ui.add_child(field_bg)
+
+	var playing := Label.new()
+	playing.text = "TETRINO — PLAYING"
+	playing.position = Vector2(0, 80)
+	playing.size = Vector2(ROOM_W, 40)
+	playing.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	playing.add_theme_color_override("font_color", p["accent"])
+	playing.add_theme_font_size_override("font_size", 28)
+	_ui.add_child(playing)
 
 	var back := Label.new()
 	back.text = "Press [ESC] to exit"
 	back.position = Vector2(0, ROOM_H - 60)
 	back.size = Vector2(ROOM_W, 30)
 	back.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	back.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
+	back.add_theme_color_override("font_color", p["text_dim"])
 	back.add_theme_font_size_override("font_size", 14)
 	_ui.add_child(back)
 
 
-func _close_tetrino() -> void:
+func _exit_tetrino_game() -> void:
+	"""ESC from inside the game goes back to the Tetrino title screen and stops
+	the music (it only plays while actually in the minigame)."""
+	if not _game_active:
+		return
+	if _music:
+		_music.stop()
 	_menu_active = false
+	_game_active = false
 	for child: Node in _ui.get_children():
 		child.queue_free()
-	# Back to the cartridge browser (music keeps looping).
+	_show_tetrino_menu()
+
+
+func _close_tetrino() -> void:
+	_menu_active = false
+	_game_active = false
+	for child: Node in _ui.get_children():
+		child.queue_free()
+	# Back to the cartridge browser (music stops — it only plays in the game).
+	if _music:
+		_music.stop()
 	_show_minigame_browser()
 
 
