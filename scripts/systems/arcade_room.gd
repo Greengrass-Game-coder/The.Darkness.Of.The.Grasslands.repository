@@ -344,7 +344,7 @@ func _build_machine() -> void:
 
 	_machine_prompt = Label.new()
 	_machine_prompt.name = "InteractPrompt"
-	_machine_prompt.text = "Press [E] to play TETRINO"
+	_machine_prompt.text = "Press [E] to boot up The Magic Entertainer™"
 	_machine_prompt.position = Vector2(-110, -80)
 	_machine_prompt.size = Vector2(220, 30)
 	_machine_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
