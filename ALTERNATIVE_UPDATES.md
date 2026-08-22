@@ -388,3 +388,15 @@ Added a playable arcade room to the lobby.
 - D-S11-1: Effects kept deliberately subtle so text stays readable; no glitchy
   distortion or constant screen shaking. Static is intentionally stronger
   during the brief boot/loading phase, then fully gone.
+
+## Session 12 (Multi-line Tetrino clear pause)
+### Changes
+- Line clears now pause the game based on how many lines were completed:
+  - Single line: quick 0.28s white flash, unchanged.
+  - Double / triple / more: the minigame FREEZES for a full 1.0s (via the
+    existing `_clearing` flag, which already blocks gravity + input) with a
+    brief full-screen white flash, then the rows collapse, the score is added,
+    and play resumes.
+### Decisions
+- D-S12-1: Multi-line clears earn their impact with a longer freeze (1s) so the
+  score feels earned; single lines stay snappy.

@@ -1536,15 +1536,36 @@ func _after_lock() -> void:
 
 
 func _animate_line_clear(full_rows: Array) -> void:
-	"""Flash the completed rows pure white for a moment (classic Tetris line
-	clear), then let _lock_piece collapse them."""
+	"""Pause the game to show the cleared rows, then let _lock_piece collapse
+	them and award the score. A single line does a quick flash; a double, triple
+	or more freezes the minigame for a full second (via the _clearing flag) with
+	a brief white flash so the big clear lands with impact before play resumes."""
+	var n := full_rows.size()
+	# Flash the completed rows pure white (classic Tetris line clear).
 	for t in _board_texs:
 		if not is_instance_valid(t):
 			continue
 		var row: int = int(round(t.position.y / CELL))
 		if full_rows.has(row):
 			t.self_modulate = Color(1, 1, 1, 1)
-	await get_tree().create_timer(0.28).timeout
+
+	# Single line: quick flash and back to business.
+	if n <= 1:
+		await get_tree().create_timer(0.28).timeout
+		return
+
+	# Double / triple / more: stop the minigame for a second to clear all these
+	# lines. A brief full-screen white flash sells the impact, then we carry on.
+	var flash := ColorRect.new()
+	flash.color = Color(1, 1, 1, 0.55)
+	flash.position = Vector2(0, 0)
+	flash.size = Vector2(ROOM_W, ROOM_H)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(flash)
+	var ft := create_tween()
+	ft.tween_property(flash, "modulate:a", 0.0, 0.3)
+	ft.tween_callback(flash.queue_free)
+	await get_tree().create_timer(1.0).timeout
 
 
 func _render_board() -> void:
