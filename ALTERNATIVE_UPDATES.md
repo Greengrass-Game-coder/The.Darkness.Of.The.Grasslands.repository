@@ -413,3 +413,26 @@ Added a playable arcade room to the lobby.
 ### Decisions
 - D-S13-1: Loading duration is derived from the actual boot-up clip length at
   runtime, so the handoff stays in sync even if the audio file changes.
+
+## Session 14 (Two-cartridge camera-pan browser + coin spending)
+### Changes
+- The console browser now shows TWO cartridges in a horizontal row:
+  - "TETRINO" — FREE (the original).
+  - "TETRINO 2" — a copy costing 2 Grass coins (to test navigation + currency).
+- Navigation works like the old single-cartridge browser: cartridges sit in a
+  row and the "camera" (a panning container) slides so the selected cartridge is
+  always centered, exactly where the player navigated. Thumbnails keep their
+  glossy screen reflections.
+- Navigating past the end of the row does NOT wrap around — it refuses and plays
+  the navigation-error sound (no cartridge exists that way).
+- Selecting the paid cartridge checks your Grass-coin balance: if you can't
+  afford it, it plays the error sound and flashes "NOT ENOUGH COINS"; if you
+  can, it spends the coins (tetrino_coins_spent, persisted) and launches Tetrino.
+- The browser coin badge now shows the spendable balance (earned - spent).
+- Player movement is frozen while the console is booting (confirmed existing
+  _boot_active gate).
+### Decisions
+- D-S14-1: Paid cartridges deduct from a spendable balance (earned - spent) kept
+  in the Tetrino coin domain, displayed in the badge and persisted via SaveManager.
+- D-S14-2: Browser navigation is camera-pan (not wrap-around); at the row ends it
+  refuses with the navigation-error sound.

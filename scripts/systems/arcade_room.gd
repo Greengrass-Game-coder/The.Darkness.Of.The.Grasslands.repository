@@ -114,6 +114,12 @@ var _browser_active: bool = false   # Minigame browser (list of cartridges)
 var _menu_active: bool = false      # A specific minigame's title/menu is showing
 var _game_active: bool = false      # The actual Tetris minigame is running
 var _browser_cartridge: Control = null  # the Tetrino cartridge (nudged/shaken on nav)
+var _browser_index: int = 0                 # which browser cartridge is selected
+var _browser_entries: Array = []            # each: {name, thumb, cost} in Grass coins
+var _browser_cartridges: Array = []         # built cartridge Control nodes
+var _browser_row: Control = null            # row container that pans like a camera
+var _browser_highlight: ColorRect = null    # gold selection frame around the chosen cartridge
+var _cant_afford_label: Label = null        # transient "not enough coins" note
 var _cart_shaking: bool = false          # true while the cartridge shake plays
 var _music: AudioStreamPlayer = null
 var _idle_anim: String = "idle_down"
@@ -529,12 +535,54 @@ func _on_enter_pressed() -> void:
 
 
 func _confirm_launch_tetrino() -> void:
-	"""Play the console confirm sound then launch the highlighted minigame.
-	Called on a beat so the blip and the transition land on the rhythm. When
-	Tetris is the chosen game, its selection jingle plays too."""
+	"""Play the console confirm sound, then either spend the highlighted
+	cartridge's cost and launch it, or refuse with an error if the player can't
+	afford it. Called on a beat so the blip and the transition land on rhythm."""
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
+	var cost: int = _selected_cartridge_cost()
+	if cost > _coin_balance():
+		_play_console_sfx(CONSOLE_ERROR, 0.8, 1.25)
+		_show_cant_afford(cost)
+		return
+	if cost > 0:
+		_spend_coins(cost)
 	_play_console_sfx(TETRINO_CHOICE, 1.0, 1.0)
 	_launch_tetrino()
+
+
+func _selected_cartridge_cost() -> int:
+	if _browser_entries.is_empty():
+		return 0
+	var idx: int = clampi(_browser_index, 0, _browser_entries.size() - 1)
+	return int(_browser_entries[idx]["cost"])
+
+
+func _coin_balance() -> int:
+	"""Spendable Grass-coin balance = coins earned minus coins spent."""
+	return maxi(GameState.tetrino_coins_earned - GameState.tetrino_coins_spent, 0)
+
+
+func _spend_coins(n: int) -> void:
+	GameState.tetrino_coins_spent += n
+	_save_tetrino_state()
+
+
+func _show_cant_afford(cost: int) -> void:
+	"""Briefly flash a 'not enough coins' note on the browser screen."""
+	if _cant_afford_label != null and is_instance_valid(_cant_afford_label):
+		_cant_afford_label.queue_free()
+	var lbl := Label.new()
+	lbl.text = "NOT ENOUGH COINS — need %d" % cost
+	lbl.position = Vector2(0, ROOM_H - 190)
+	lbl.size = Vector2(ROOM_W, 30)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.4, 0.3, 1))
+	lbl.add_theme_font_size_override("font_size", 22)
+	_ui.add_child(lbl)
+	_cant_afford_label = lbl
+	await get_tree().create_timer(1.4).timeout
+	if is_instance_valid(lbl):
+		lbl.queue_free()
 
 
 func _on_esc_pressed() -> void:
@@ -740,45 +788,85 @@ func _show_minigame_browser() -> void:
 	title.add_theme_font_size_override("font_size", 40)
 	_ui.add_child(title)
 
-	# The single cartridge: Tetrino (highlighted/selected) as a glossy screen.
-	# Held in one container so the whole cartridge (card + thumb + name) can be
-	# nudged & shaken as a unit when the player tries to navigate elsewhere.
-	var cartridge := Control.new()
-	cartridge.name = "TetrinoCartridge"
-	cartridge.position = Vector2((ROOM_W - 420) / 2.0, 150)
-	cartridge.size = Vector2(420, 300)
-	_ui.add_child(cartridge)
-	_browser_cartridge = cartridge
+	# Cartridges sit in a horizontal row and the "camera" (the row container)
+	# pans so the selected cartridge is always centered on screen — exactly the
+	# old single-cartridge look, but with more to navigate to. First is the free
+	# Tetrino; the second is a paid copy costing 2 Grass coins (to test
+	# navigation and the coin-spending currency).
+	_browser_entries = [
+		{"name": "TETRINO", "thumb": TETRINO_THUMB, "cost": 0},
+		{"name": "TETRINO 2", "thumb": TETRINO_THUMB, "cost": 2},
+	]
+	_browser_index = 0
+	_browser_cartridges = []
 
-	var card := ColorRect.new()
-	card.name = "TetrinoCard"
-	card.color = p["panel"]
-	card.position = Vector2.ZERO
-	card.size = Vector2(420, 300)
-	cartridge.add_child(card)
+	var card_w := 420.0
+	var card_h := 300.0
+	var gap := 80.0
+	var row := Control.new()
+	row.name = "BrowserRow"
+	row.position = Vector2(0, 150)
+	_ui.add_child(row)
+	_browser_row = row
 
-	var thumb := TextureRect.new()
-	thumb.texture = load(TETRINO_THUMB)
-	thumb.position = Vector2(40, 40)
-	thumb.size = Vector2(338, 220)
-	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	cartridge.add_child(thumb)
+	# Gold highlight frame sits in the row, behind the selected cartridge.
+	_browser_highlight = ColorRect.new()
+	_browser_highlight.name = "BrowserHighlight"
+	_browser_highlight.color = Color(1.0, 0.84, 0.3, 0.9)
+	_browser_highlight.size = Vector2(card_w + 12, card_h + 12)
+	_browser_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(_browser_highlight)
 
-	# Glossy screen reflection on top of the thumbnail.
-	var gloss := _make_glossy_screen(thumb.size)
-	gloss.position = Vector2(40, 40)
-	cartridge.add_child(gloss)
+	for i in range(_browser_entries.size()):
+		var entry: Dictionary = _browser_entries[i]
+		var cartridge := Control.new()
+		cartridge.name = "Cartridge%d" % i
+		cartridge.position = Vector2(i * (card_w + gap), 0)
+		cartridge.size = Vector2(card_w, card_h)
+		row.add_child(cartridge)
+		_browser_cartridges.append(cartridge)
 
-	var card_name := Label.new()
-	card_name.text = "TETRINO"
-	card_name.position = Vector2(0, 230)
-	card_name.size = Vector2(420, 60)
-	card_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	card_name.add_theme_color_override("font_color", p["accent"])
-	card_name.add_theme_font_size_override("font_size", 44)
-	cartridge.add_child(card_name)
+		var card := ColorRect.new()
+		card.color = p["panel"]
+		card.position = Vector2.ZERO
+		card.size = Vector2(card_w, card_h)
+		cartridge.add_child(card)
 
-	# Shiny Grassconatication coin + pixelated count earned from Tetrino.
+		var thumb := TextureRect.new()
+		thumb.texture = load(entry["thumb"])
+		thumb.position = Vector2(40, 40)
+		thumb.size = Vector2(338, 220)
+		thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		cartridge.add_child(thumb)
+
+		# Glossy screen reflection on top of the thumbnail.
+		var gloss := _make_glossy_screen(thumb.size)
+		gloss.position = Vector2(40, 40)
+		cartridge.add_child(gloss)
+
+		var card_name := Label.new()
+		card_name.text = entry["name"]
+		card_name.position = Vector2(0, 200)
+		card_name.size = Vector2(card_w, 40)
+		card_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card_name.add_theme_color_override("font_color", p["accent"])
+		card_name.add_theme_font_size_override("font_size", 40)
+		cartridge.add_child(card_name)
+
+		var cost_lbl := Label.new()
+		cost_lbl.text = "FREE" if entry["cost"] == 0 else "%d COINS" % entry["cost"]
+		cost_lbl.position = Vector2(0, 246)
+		cost_lbl.size = Vector2(card_w, 30)
+		cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cost_lbl.add_theme_color_override("font_color",
+			p["accent"] if entry["cost"] == 0 else Color(1.0, 0.8, 0.2, 1))
+		cost_lbl.add_theme_font_size_override("font_size", 22)
+		cartridge.add_child(cost_lbl)
+
+	# Snap to cartridge 0 (no pan) on first show.
+	_center_browser(false)
+
+	# Shiny Grassconatication coin + pixelated spendable balance (earned - spent).
 	# expand/size set BEFORE the texture so it stays tiny (16x16).
 	var coin_badge := TextureRect.new()
 	coin_badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -788,7 +876,7 @@ func _show_minigame_browser() -> void:
 	coin_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	coin_badge.texture = load(COIN_TEX)
 	_ui.add_child(coin_badge)
-	_add_pixel_text(_ui, "x" + str(GameState.tetrino_coins_earned),
+	_add_pixel_text(_ui, "x" + str(_coin_balance()),
 		Vector2(ROOM_W / 2.0 - 172, ROOM_H - 140), 2.0, p["accent"])
 
 	# Theme indicator (console-only setting).
@@ -816,12 +904,9 @@ func _show_minigame_browser() -> void:
 
 
 func _on_browser_navigate() -> void:
-	"""WASD in the browser: there's only Tetrino, so pressing any direction
-	nudges the cartridge that way and shakes it — 'nothing to navigate to' —
-	then it settles back to the middle."""
+	"""WASD in the browser moves the selection between the cartridges
+	(left/right, with up/down as a fallback)."""
 	if not _browser_active or _menu_active or _boot_active:
-		return
-	if _cart_shaking:
 		return
 	var dir := Vector2.ZERO
 	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
@@ -835,35 +920,60 @@ func _on_browser_navigate() -> void:
 	dir = dir.normalized()
 	if dir == Vector2.ZERO:
 		return
-	# Queue the nudge+shake to fire on the next beat (rhythm-synced), with the
-	# navigation-error sound, then settle back to the middle.
-	_pending_action = _shake_browser_cartridge.bind(dir)
+	# Queue the selection change to fire on the next beat (rhythm-synced).
+	_pending_action = _select_browser_slot.bind(dir)
 
 
-func _shake_browser_cartridge(dir: Vector2) -> void:
-	"""Move the cartridge opposite the pressed direction (W pushes it down,
-	A pushes it right, etc.), shake it to show there's nothing to navigate to,
-	then settle it back to the middle and stop. Plays the navigation-error
-	blip at a random pitch each time."""
-	if not is_instance_valid(_browser_cartridge):
+func _select_browser_slot(dir: Vector2) -> void:
+	"""Move the selection to the next cartridge in the given direction and pan
+	the camera so the newly selected cartridge slides to center. Only moves to a
+	real cartridge: at the end of the row it does NOT wrap — it plays the
+	navigation-error sound instead of going somewhere that doesn't exist."""
+	if _browser_cartridges.is_empty():
 		return
-	_play_console_sfx(CONSOLE_ERROR, 0.8, 1.25)
-	_cart_shaking = true
-	var base: Vector2 = _browser_cartridge.position
-	var nudge: Vector2 = -dir * 16.0          # opposite the key you pressed
-	var axis: Vector2 = nudge.normalized()
-	var tw := create_tween()
-	# 1) push it that way and stop.
-	tw.tween_property(_browser_cartridge, "position", base + nudge, 0.12)
-	# 2) shake in place — decaying back-and-forth along the same axis.
-	for i in 4:
-		var amp: float = 6.0 * (1.0 - float(i) / 5.0)
-		var sgn := 1.0 if i % 2 == 0 else -1.0
-		tw.tween_property(_browser_cartridge, "position",
-			base + nudge + axis * (sgn * amp), 0.05)
-	# 3) glide back to the middle and stop.
-	tw.tween_property(_browser_cartridge, "position", base, 0.16)
-	tw.tween_callback(func() -> void: _cart_shaking = false)
+	var n: int = _browser_cartridges.size()
+	var step := 0
+	if dir.x != 0.0:
+		step = -1 if dir.x < 0.0 else 1
+	else:
+		step = -1 if dir.y < 0.0 else 1
+	var new_idx: int = _browser_index + step
+	if new_idx < 0 or new_idx >= n:
+		# No cartridge exists that way — refuse and play the navigation error.
+		_play_console_sfx(CONSOLE_ERROR, 0.8, 1.25)
+		return
+	if new_idx == _browser_index:
+		return
+	_browser_index = new_idx
+	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
+	_center_browser(true)
+
+
+func _center_browser(animate: bool) -> void:
+	"""Pan the camera (the row container) so the selected cartridge is centered
+	on screen. When animate is true this tweens smoothly; otherwise it snaps."""
+	if _browser_row == null or _browser_cartridges.is_empty():
+		return
+	var idx: int = clampi(_browser_index, 0, _browser_cartridges.size() - 1)
+	var cart: Control = _browser_cartridges[idx]
+	var target_x: float = ROOM_W / 2.0 - (cart.position.x + cart.size.x / 2.0)
+	if animate and is_instance_valid(_browser_row):
+		var tw := create_tween()
+		tw.tween_property(_browser_row, "position:x", target_x, 0.18) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	else:
+		_browser_row.position.x = target_x
+	_place_browser_highlight()
+
+
+func _place_browser_highlight() -> void:
+	"""Position the gold selection frame over the currently selected cartridge
+	inside the panning row."""
+	if not is_instance_valid(_browser_highlight) or _browser_cartridges.is_empty():
+		return
+	var idx: int = clampi(_browser_index, 0, _browser_cartridges.size() - 1)
+	var cart: Control = _browser_cartridges[idx]
+	_browser_highlight.position = cart.position - Vector2(6, 6)
 
 
 func _launch_tetrino() -> void:
@@ -878,6 +988,10 @@ func _clear_browser() -> void:
 	for child: Node in _ui.get_children():
 		child.queue_free()
 	_browser_cartridge = null
+	_browser_cartridges = []
+	_browser_entries = []
+	_browser_row = null
+	_browser_highlight = null
 	_cart_shaking = false
 	# A minigame was chosen: keep the console music playing in the background
 	# but muted (it resumes audible when we come back to the browser).

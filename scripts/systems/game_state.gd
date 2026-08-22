@@ -51,6 +51,9 @@ var tetrino_last_coin_time: int = 0
 var tetrino_gambled: bool = false
 var tetrino_time_penalty_until: int = 0
 var tetrino_last_seen_time: int = 0
+## tetrino_coins_spent: coins the player has spent on paid cartridges (so the
+## spendable "Grass coin" balance = tetrino_coins_earned - tetrino_coins_spent)
+var tetrino_coins_spent: int = 0
 
 ## Rings (Killer chance) tracking per player
 var player_rings: Dictionary = {}

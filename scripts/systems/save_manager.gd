@@ -162,7 +162,8 @@ static func autosave(username: String) -> bool:
 		"tetrino_last_coin_time": GameState.tetrino_last_coin_time,
 		"tetrino_gambled": GameState.tetrino_gambled,
 		"tetrino_time_penalty_until": GameState.tetrino_time_penalty_until,
-		"tetrino_last_seen_time": GameState.tetrino_last_seen_time
+		"tetrino_last_seen_time": GameState.tetrino_last_seen_time,
+		"tetrino_coins_spent": GameState.tetrino_coins_spent
 	}
 	# Also include audio bus volumes
 	for bus_name in ["Master", "Music", "SFX"]:
@@ -209,6 +210,8 @@ static func autoload(username: String) -> bool:
 		GameState.tetrino_time_penalty_until = data.tetrino_time_penalty_until
 	if data.has("tetrino_last_seen_time"):
 		GameState.tetrino_last_seen_time = data.tetrino_last_seen_time
+	if data.has("tetrino_coins_spent"):
+		GameState.tetrino_coins_spent = data.tetrino_coins_spent
 	
 	# Restore audio bus volumes
 	for bus_name in ["Master", "Music", "SFX"]:
