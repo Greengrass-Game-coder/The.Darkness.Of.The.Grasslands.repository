@@ -457,7 +457,7 @@ func _physics_process(delta: float) -> void:
 		_tetris_pulse(delta)
 		return
 
-	if _boot_active or _menu_active:
+	if _boot_active or _browser_active or _menu_active:
 		_player.velocity = Vector2.ZERO
 		if is_instance_valid(_sprite):
 			_sprite.animation = _idle_anim
