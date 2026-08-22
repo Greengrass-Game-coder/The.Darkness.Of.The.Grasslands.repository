@@ -16,6 +16,9 @@ const CONSOLE_MUSIC: String = "res://The Darkness Of The Grasslands assets/Music
 const CONSOLE_CONFIRM: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Console-confirm-sound.wav"
 const CONSOLE_ERROR: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Navigation-error-cant-navigate.wav"
 const TETRINO_CHOICE: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/tetrino-minigame-choice.wav"
+# Subtle old-console CRT post-process overlay (pixelation, faint scanlines,
+# gentle curvature, static only while loading).
+const CONSOLE_CRT_SHADER: String = "res://shaders/console_crt.gdshader"
 const TETRINO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
 # 140 BPM → one beat every 60/140 seconds (pulse the game to the music).
 const BEAT_SECONDS: float = 60.0 / 140.0
@@ -124,6 +127,11 @@ var _console_music: AudioStreamPlayer = null  # background music while console i
 var _last_beat_index: int = -1                # last detected beat (for edge detection)
 var _pending_action: Callable = Callable()    # action fired on the next detected beat
 var _esc_lock_until: float = 0.0              # debounce ESC so it can't spam/glitch
+
+# ── Console CRT overlay state ──
+var _crt_layer: CanvasLayer = null     # top canvas layer holding the CRT overlay
+var _crt_rect: ColorRect = null        # full-screen ColorRect with the CRT shader
+var _crt_mat: ShaderMaterial = null    # the CRT shader material (noise/scanline) 
 
 # ── Tetris game state ──
 var _board: Array = []             # 2D grid: "" or piece key for settled cells (single source of truth)
@@ -577,6 +585,10 @@ func _start_boot_sequence() -> void:
 		return
 	_boot_active = true
 	_machine_prompt.visible = false
+	# The console is turning on: add the subtle CRT overlay and bring up static
+	# noise, which will disappear the moment loading finishes.
+	_create_crt_overlay()
+	_set_crt_noise(0.5)
 	_run_boot()
 
 
@@ -595,9 +607,11 @@ func _run_boot() -> void:
 	var t_end := Time.get_ticks_msec() + int(FLICKER_DURATION * 1000.0)
 	while Time.get_ticks_msec() < t_end:
 		flick.color = Color(0, 0, 0, randf_range(0.85, 1.0))
+		_set_crt_noise(randf_range(0.4, 0.6))  # live static while turning on
 		await get_tree().create_timer(randf_range(0.02, 0.06)).timeout
 	flick.color = Color(0, 0, 0, 1)
 	await get_tree().create_timer(0.1).timeout
+	_set_crt_noise(0.42)  # static persists through the boot text + loading bar
 
 	# 2) Boot text (monospace-style, centered).
 	var boot_lbl := Label.new()
@@ -668,6 +682,9 @@ func _show_minigame_browser() -> void:
 	if _browser_active:
 		return
 	_browser_active = true
+	# Loading is finished — the static disappears completely; only the subtle
+	# pixelation + scanlines remain.
+	_set_crt_noise(0.0)
 	# Music is NOT played here — tetrino.wav only plays inside the Tetris game.
 
 	var p := _palette()
@@ -1077,6 +1094,46 @@ func _play_console_sfx(path: String, min_pitch: float, max_pitch: float) -> void
 	add_child(p)
 	p.play()
 	p.finished.connect(p.queue_free)
+
+
+# ── Console CRT / old-prototype overlay ──
+
+func _create_crt_overlay() -> void:
+	"""Add a full-screen post-process overlay (pixelation, faint scanlines,
+	gentle curvature) on a canvas layer above the console UI. The static noise
+	uniform starts off and is only raised while the console is loading."""
+	if _crt_layer != null:
+		return
+	_crt_layer = CanvasLayer.new()
+	_crt_layer.name = "ConsoleCRT"
+	_crt_layer.layer = 51  # above _ui (layer 50)
+	add_child(_crt_layer)
+	_crt_rect = ColorRect.new()
+	_crt_rect.name = "CRTOverlay"
+	_crt_rect.position = Vector2(0, 0)
+	_crt_rect.size = Vector2(ROOM_W, ROOM_H)
+	_crt_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crt_mat = ShaderMaterial.new()
+	_crt_mat.shader = load(CONSOLE_CRT_SHADER)
+	_crt_rect.material = _crt_mat
+	_crt_layer.add_child(_crt_rect)
+	_set_crt_noise(0.0)
+
+
+func _remove_crt_overlay() -> void:
+	"""Remove the CRT overlay (console powered off)."""
+	if is_instance_valid(_crt_layer):
+		_crt_layer.queue_free()
+	_crt_layer = null
+	_crt_rect = null
+	_crt_mat = null
+
+
+func _set_crt_noise(v: float) -> void:
+	"""Raise/lower the static noise shown on the CRT overlay. Only > 0 while the
+	console is loading; it must drop back to 0 the moment loading finishes."""
+	if _crt_mat != null:
+		_crt_mat.set_shader_parameter("noise_amount", clampf(v, 0.0, 1.0))
 
 
 func _start_tetrino_intro() -> void:
@@ -1949,6 +2006,7 @@ func _turn_off_console() -> void:
 	for child: Node in _ui.get_children():
 		child.queue_free()
 	_stop_console_music()
+	_remove_crt_overlay()
 
 	# White screen that collapses vertically to the middle (power-off).
 	var white := ColorRect.new()

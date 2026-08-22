@@ -370,3 +370,21 @@ Added a playable arcade room to the lobby.
 ### Decisions
 - D-S10-1: A burst of ESC presses while entering Tetrino should only back out
   of the intro (return to the title menu), never continue walking back further.
+
+## Session 11 (Subtle old-console / prototype CRT aesthetic)
+### Changes
+- Added a full-screen CRT post-process overlay (`shaders/console_crt.gdshader`)
+  on a canvas layer (51) above the console UI (layer 50), active for the whole
+  console session (boot, browser, menu, game):
+  - Slight pixelation (blocky sample ~2px).
+  - Faint scanlines (alternating rows ~10%).
+  - Barely-visible barrel curvature + subtle vignette.
+  - Static noise controlled by a `noise_amount` uniform.
+- Static appears ONLY while the console is loading (set in `_start_boot_sequence`
+  and flickered through the boot/loading bar), and is set back to 0 the moment
+  loading finishes (`_show_minigame_browser`).
+- Overlay is removed on console power-off (`_turn_off_console`).
+### Decisions
+- D-S11-1: Effects kept deliberately subtle so text stays readable; no glitchy
+  distortion or constant screen shaking. Static is intentionally stronger
+  during the brief boot/loading phase, then fully gone.
