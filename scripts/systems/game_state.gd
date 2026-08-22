@@ -54,6 +54,9 @@ var tetrino_last_seen_time: int = 0
 ## tetrino_coins_spent: coins the player has spent on paid cartridges (so the
 ## spendable "Grass coin" balance = tetrino_coins_earned - tetrino_coins_spent)
 var tetrino_coins_spent: int = 0
+## tetrino_owns_paid: permanent ownership of the paid "TETRINO 2" cartridge.
+## Once bought (spending coins through the game profile) it stays owned forever.
+var tetrino_owns_paid: bool = false
 
 ## Rings (Killer chance) tracking per player
 var player_rings: Dictionary = {}

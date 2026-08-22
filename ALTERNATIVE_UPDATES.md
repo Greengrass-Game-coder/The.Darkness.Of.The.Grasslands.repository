@@ -445,3 +445,27 @@ Added a playable arcade room to the lobby.
 - Navigation is now strictly one of two outcomes per key press: move to the
   cartridge in that direction (confirm + pan), or nav-error (shake + rebound +
   error sound) — never any ambiguous/in-between behavior.
+
+## Session 16 (Tetrino objective change, retry fix, gamble, permanent purchase)
+### Changes
+- Tetrino win/earn objective: reaching 1000 score NO LONGER earns a coin or wins.
+  The objective is now purely clearing 10 lineups (WIN_LINES=10).
+- Fixed "try again": pressing ENTER on the game-over/win screen did nothing
+  because _start_tetrino_game() bailed when the title menu wasn't active. It now
+  accepts a retry from a running-but-ended game (game over or win), which also
+  makes the gamble (hard) mode fully playable end-to-end (win → 3 coins, lose →
+  drop to 1, then retry works for both).
+- TETRINO 2 is now a PERMANENT, profile-linked purchase:
+  - Selecting it opens a PURCHASE CONFIRMATION screen that requires your game
+    profile (shows PROFILE: <name>) before spending.
+  - ENTER confirms (spend 2 coins once, unlock forever, persisted); ESC cancels
+    back to the browser.
+  - Once owned, the cartridge shows "OWNED" and costs 0 to play (no re-buy).
+  - Spending gates on balance (error + "NOT ENOUGH COINS" if you can't afford).
+  - New persistent GameState/save field: tetrino_owns_paid.
+- ESC now also cancels a queued (beat-synced) action so a quick ESC backs out
+  cleanly instead of racing a launch and turning the console off.
+### Decisions
+- D-S16-1: Win condition = 10 line clears only (score removed as a coin objective).
+- D-S16-2: Paid cartridge = one-time permanent unlock tied to the profile, shown
+  as OWNED afterward, rather than a per-launch spend.

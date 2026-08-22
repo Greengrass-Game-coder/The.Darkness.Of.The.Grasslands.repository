@@ -120,6 +120,7 @@ var _browser_cartridges: Array = []         # built cartridge Control nodes
 var _browser_row: Control = null            # row container that pans like a camera
 var _browser_highlight: ColorRect = null    # gold selection frame around the chosen cartridge
 var _cant_afford_label: Label = null        # transient "not enough coins" note
+var _purchase_confirm: bool = false         # purchase confirmation overlay open
 var _cart_shaking: bool = false          # true while the cartridge shake plays
 var _music: AudioStreamPlayer = null
 var _idle_anim: String = "idle_down"
@@ -516,6 +517,9 @@ func _on_e_pressed() -> void:
 
 
 func _on_enter_pressed() -> void:
+	if _purchase_confirm:
+		_confirm_purchase()
+		return
 	if _game_active and (_game_over or _won):
 		# Game over / win screen: Enter retries (normal mode).
 		_hard_mode = false
@@ -535,26 +539,123 @@ func _on_enter_pressed() -> void:
 
 
 func _confirm_launch_tetrino() -> void:
-	"""Play the console confirm sound, then either spend the highlighted
-	cartridge's cost and launch it, or refuse with an error if the player can't
-	afford it. Called on a beat so the blip and the transition land on rhythm."""
+	"""Play the console confirm sound, then launch the highlighted cartridge.
+	For a paid cartridge that isn't owned yet, this first opens the purchase
+	screen (which requires your game profile) — once bought it's a permanent,
+	profile-linked unlock. Called on a beat so the blip/transition land on
+	rhythm."""
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
 	var cost: int = _selected_cartridge_cost()
+	if cost <= 0:
+		# Free, or already owned — launch straight away.
+		_play_console_sfx(TETRINO_CHOICE, 1.0, 1.0)
+		_launch_tetrino()
+		return
+	# A purchase that isn't owned yet: you must be on your game profile first.
+	if AuthManager.current_username.is_empty():
+		_play_console_sfx(CONSOLE_ERROR, 0.8, 1.25)
+		_show_browser_notice("ACCESS YOUR GAME PROFILE FIRST TO PURCHASE", Color(1.0, 0.5, 0.3))
+		return
+	_show_purchase_overlay(cost)
+
+
+func _show_purchase_overlay(cost: int) -> void:
+	"""Show the profile/purchase confirmation over the browser. Enter confirms a
+	permanent, profile-linked purchase; ESC cancels back to the browser."""
+	if _purchase_confirm:
+		return
+	_purchase_confirm = true
+	var p := _palette()
+	var ov := ColorRect.new()
+	ov.name = "PurchaseOverlay"
+	ov.color = Color(0, 0, 0, 0.82)
+	ov.position = Vector2(0, 0)
+	ov.size = Vector2(ROOM_W, ROOM_H)
+	ov.mouse_filter = Control.MOUSE_FILTER_STOP
+	_ui.add_child(ov)
+	var lbl := Label.new()
+	lbl.text = "PURCHASE CONFIRMATION\n\n" \
+		+ "TETRINO 2  —  %d Grass coins\n\n" % cost \
+		+ "PROFILE: " + AuthManager.current_username + "\n\n" \
+		+ "This purchase is PERMANENT and linked to your profile.\n" \
+		+ "You will own TETRINO 2 forever.\n\n" \
+		+ "[ENTER] confirm    [ESC] cancel"
+	lbl.position = Vector2(0, 240)
+	lbl.size = Vector2(ROOM_W, 300)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_color_override("font_color", p["accent"])
+	lbl.add_theme_font_size_override("font_size", 26)
+	_ui.add_child(lbl)
+
+
+func _confirm_purchase() -> void:
+	"""Enter on the purchase screen: spend the coins, unlock TETRINO 2
+	permanently on this profile, then launch it."""
+	if not _purchase_confirm:
+		return
+	var cost: int = _selected_cartridge_cost()
+	if cost <= 0:
+		_cancel_purchase()
+		return
 	if cost > _coin_balance():
+		_cancel_purchase()
 		_play_console_sfx(CONSOLE_ERROR, 0.8, 1.25)
 		_show_cant_afford(cost)
 		return
-	if cost > 0:
-		_spend_coins(cost)
+	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
+	_spend_coins(cost)
+	GameState.tetrino_owns_paid = true
+	_save_tetrino_state()
+	_purchase_confirm = false
+	for child: Node in _ui.get_children():
+		child.queue_free()
 	_play_console_sfx(TETRINO_CHOICE, 1.0, 1.0)
 	_launch_tetrino()
 
 
+func _cancel_purchase() -> void:
+	"""ESC on the purchase screen: back to the browser without buying."""
+	if not _purchase_confirm:
+		return
+	_purchase_confirm = false
+	_browser_active = false  # allow the browser to rebuild below
+	var keep: int = _browser_index
+	for child: Node in _ui.get_children():
+		child.queue_free()
+	_show_minigame_browser()
+	# Return to the same cartridge the player was looking at before buying.
+	_browser_index = keep
+	_center_browser(false)
+
+
+func _show_browser_notice(text: String, color: Color) -> void:
+	"""A transient one-line notice at the bottom of the browser screen."""
+	if _cant_afford_label != null and is_instance_valid(_cant_afford_label):
+		_cant_afford_label.queue_free()
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.position = Vector2(0, ROOM_H - 190)
+	lbl.size = Vector2(ROOM_W, 30)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_color_override("font_color", color)
+	lbl.add_theme_font_size_override("font_size", 22)
+	_ui.add_child(lbl)
+	_cant_afford_label = lbl
+	await get_tree().create_timer(1.6).timeout
+	if is_instance_valid(lbl):
+		lbl.queue_free()
+
+
 func _selected_cartridge_cost() -> int:
+	"""Cost to launch the selected cartridge right now: 0 for free games and for
+	a paid cartridge you already own, otherwise its listed coin price."""
 	if _browser_entries.is_empty():
 		return 0
 	var idx: int = clampi(_browser_index, 0, _browser_entries.size() - 1)
-	return int(_browser_entries[idx]["cost"])
+	var entry: Dictionary = _browser_entries[idx]
+	if bool(entry.get("paid", false)) and GameState.tetrino_owns_paid:
+		return 0  # already bought — play for free from now on
+	return int(entry["cost"])
 
 
 func _coin_balance() -> int:
@@ -600,6 +701,15 @@ func _on_esc_pressed() -> void:
 		_esc_lock_until = now + 1.2
 		return
 	_esc_lock_until = now + 0.5
+	if _purchase_confirm:
+		_cancel_purchase()
+		return
+	if _pending_action.is_valid():
+		# A beat-synced action is queued but hasn't fired yet (e.g. a launch that
+		# would open the purchase screen). Back out cleanly instead of racing it,
+		# so a quick ESC doesn't fall through to turning the console off.
+		_pending_action = Callable()
+		return
 	if _game_active:
 		_exit_tetrino_game()
 	elif _menu_active:
@@ -747,6 +857,7 @@ func _show_minigame_browser() -> void:
 	if _browser_active:
 		return
 	_browser_active = true
+	_purchase_confirm = false
 	# Loading is finished — the static disappears completely; only the subtle
 	# pixelation + scanlines remain.
 	_set_crt_noise(0.0)
@@ -794,8 +905,8 @@ func _show_minigame_browser() -> void:
 	# Tetrino; the second is a paid copy costing 2 Grass coins (to test
 	# navigation and the coin-spending currency).
 	_browser_entries = [
-		{"name": "TETRINO", "thumb": TETRINO_THUMB, "cost": 0},
-		{"name": "TETRINO 2", "thumb": TETRINO_THUMB, "cost": 2},
+		{"name": "TETRINO", "thumb": TETRINO_THUMB, "cost": 0, "paid": false},
+		{"name": "TETRINO 2", "thumb": TETRINO_THUMB, "cost": 2, "paid": true},
 	]
 	_browser_index = 0
 	_browser_cartridges = []
@@ -853,13 +964,19 @@ func _show_minigame_browser() -> void:
 		card_name.add_theme_font_size_override("font_size", 40)
 		cartridge.add_child(card_name)
 
+		var is_paid: bool = bool(entry.get("paid", false))
+		var owned: bool = is_paid and GameState.tetrino_owns_paid
+		var cost_text: String = "FREE"
+		var cost_color: Color = p["accent"]
+		if is_paid:
+			cost_text = "OWNED" if owned else "%d COINS" % entry["cost"]
+			cost_color = Color(0.5, 1.0, 0.5) if owned else Color(1.0, 0.8, 0.2, 1)
 		var cost_lbl := Label.new()
-		cost_lbl.text = "FREE" if entry["cost"] == 0 else "%d COINS" % entry["cost"]
+		cost_lbl.text = cost_text
 		cost_lbl.position = Vector2(0, 246)
 		cost_lbl.size = Vector2(card_w, 30)
 		cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		cost_lbl.add_theme_color_override("font_color",
-			p["accent"] if entry["cost"] == 0 else Color(1.0, 0.8, 0.2, 1))
+		cost_lbl.add_theme_color_override("font_color", cost_color)
 		cost_lbl.add_theme_font_size_override("font_size", 22)
 		cartridge.add_child(cost_lbl)
 
@@ -1014,6 +1131,7 @@ func _clear_browser() -> void:
 	_browser_row = null
 	_browser_highlight = null
 	_cart_shaking = false
+	_purchase_confirm = false
 	# A minigame was chosen: keep the console music playing in the background
 	# but muted (it resumes audible when we come back to the browser).
 	_mute_console_music()
@@ -1372,10 +1490,15 @@ func _on_cart_finished() -> void:
 func _start_tetrino_game() -> void:
 	"""Player pressed ENTER on the title screen — the actual Tetris minigame
 	now begins, which is when the music starts. Also used to retry after a
-	game over."""
-	if not _menu_active:
+	game over or a win."""
+	# Allowed either from the title menu (fresh start) or as a retry from the
+	# game-over / win screen (a running game that has already ended). Without
+	# this, pressing Enter on the game-over/win screen did nothing because the
+	# title menu isn't active during a run.
+	var retrying: bool = _game_active and (_game_over or _won)
+	if not _menu_active and not retrying:
 		return
-	if _game_active and not _game_over:
+	if _game_active and not _game_over and not _won:
 		return
 	_game_active = true
 	_game_over = false
@@ -1680,7 +1803,9 @@ func _lock_piece() -> void:
 
 func _after_lock() -> void:
 	"""Common tail of _lock_piece: check the win condition, else spawn the next."""
-	if _score >= WIN_SCORE or _lines_cleared >= WIN_LINES:
+	# Win condition is now purely line-clear based (10 lineups). Reaching a high
+	# score no longer earns a coin — the objective is clearing 10 lines.
+	if _lines_cleared >= WIN_LINES:
 		_show_win()
 		return
 	_render_board()
