@@ -15,6 +15,7 @@ const CARTRIDGE_START: String = "res://The Darkness Of The Grasslands assets/Sou
 const CONSOLE_MUSIC: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/Console-navigation-music.wav"
 const CONSOLE_CONFIRM: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Console-confirm-sound.wav"
 const CONSOLE_ERROR: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Navigation-error-cant-navigate.wav"
+const TETRINO_CHOICE: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/tetrino-minigame-choice.wav"
 const TETRINO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
 # 140 BPM → one beat every 60/140 seconds (pulse the game to the music).
 const BEAT_SECONDS: float = 60.0 / 140.0
@@ -519,8 +520,10 @@ func _on_enter_pressed() -> void:
 
 func _confirm_launch_tetrino() -> void:
 	"""Play the console confirm sound then launch the highlighted minigame.
-	Called on a beat so the blip and the transition land on the rhythm."""
+	Called on a beat so the blip and the transition land on the rhythm. When
+	Tetris is the chosen game, its selection jingle plays too."""
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
+	_play_console_sfx(TETRINO_CHOICE, 1.0, 1.0)
 	_launch_tetrino()
 
 
@@ -839,7 +842,9 @@ func _clear_browser() -> void:
 		child.queue_free()
 	_browser_cartridge = null
 	_cart_shaking = false
-	_stop_console_music()
+	# A minigame was chosen: keep the console music playing in the background
+	# but muted (it resumes audible when we come back to the browser).
+	_mute_console_music()
 
 
 func _rebuild_browser() -> void:
@@ -1003,8 +1008,19 @@ func _start_console_music() -> void:
 	if not _console_music.playing:
 		_console_music.volume_db = -6.0
 		_console_music.play()
-	# Align the beat clock to where the music actually is right now.
+	# Always bring the volume back up (in case it was muted while a minigame
+	# was chosen) and align the beat clock to where the music is right now.
+	_console_music.volume_db = -6.0
 	_last_beat_index = _beat_index()
+
+
+func _mute_console_music() -> void:
+	"""Keep the console music playing in the background but muted, so the chosen
+	minigame's own audio is what you hear. Beat clock + queued actions pause."""
+	if is_instance_valid(_console_music):
+		_console_music.volume_db = -80.0
+	_last_beat_index = -1
+	_pending_action = Callable()
 
 
 func _on_console_music_finished() -> void:

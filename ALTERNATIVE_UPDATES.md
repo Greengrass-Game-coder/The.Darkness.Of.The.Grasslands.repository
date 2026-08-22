@@ -344,3 +344,18 @@ Added a playable arcade room to the lobby.
   music plays). The Tetrino gameplay loop keeps its own timing.
 - D-S8-2: ESC is debounced but intentionally NOT beat-latched so it always
   feels responsive when backing out.
+
+## Session 9 (Console music muted in background + Tetris choice jingle)
+### Changes
+- Choosing a minigame no longer STOPS the console music — it now MUTES it
+  (keeps playing in the background at -80 dB) so the minigame's own audio is
+  what you hear. Returning to the browser unmutes it and it continues from the
+  same playhead.
+- The console music also keeps playing (no restart/gap) when the player changes
+  the display/theme: the music node lives on the room, not the cleared UI, and
+  _start_console_music resumes from where it left off.
+- Playing Tetris now also fires the one-shot `tetrino-minigame-choice.wav`
+  selection jingle on launch.
+### Decisions
+- D-S9-1: Launch mutes (not stops) the console music; only powering the console
+  off fully stops it.
