@@ -939,14 +939,35 @@ func _select_browser_slot(dir: Vector2) -> void:
 		step = -1 if dir.y < 0.0 else 1
 	var new_idx: int = _browser_index + step
 	if new_idx < 0 or new_idx >= n:
-		# No cartridge exists that way — refuse and play the navigation error.
+		# No cartridge exists that way — nav error: error sound + shake/rebound.
 		_play_console_sfx(CONSOLE_ERROR, 0.8, 1.25)
+		_shake_browser_row(dir)
 		return
 	if new_idx == _browser_index:
 		return
 	_browser_index = new_idx
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
 	_center_browser(true)
+
+
+func _shake_browser_row(dir: Vector2) -> void:
+	"""Shake the camera (the row) opposite the pressed direction, then rebound it
+	back to center — the navigation-error shake at the end of the row."""
+	if _browser_row == null or not is_instance_valid(_browser_row):
+		return
+	var base_x: float = _browser_row.position.x
+	var nudge := 0.0
+	if dir.x != 0.0:
+		nudge = -dir.x * 16.0
+	else:
+		nudge = -dir.y * 16.0
+	var tw := create_tween()
+	tw.tween_property(_browser_row, "position:x", base_x + nudge, 0.12)
+	for i in 4:
+		var amp: float = 6.0 * (1.0 - float(i) / 5.0)
+		var sgn := 1.0 if i % 2 == 0 else -1.0
+		tw.tween_property(_browser_row, "position:x", base_x + nudge + sgn * amp, 0.05)
+	tw.tween_property(_browser_row, "position:x", base_x, 0.16)
 
 
 func _center_browser(animate: bool) -> void:

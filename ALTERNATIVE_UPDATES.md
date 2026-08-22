@@ -436,3 +436,12 @@ Added a playable arcade room to the lobby.
   in the Tetrino coin domain, displayed in the badge and persisted via SaveManager.
 - D-S14-2: Browser navigation is camera-pan (not wrap-around); at the row ends it
   refuses with the navigation-error sound.
+
+## Session 15 (Nav-error shake + rebound restored)
+### Changes
+- Re-added the navigation-error shake + rebound: pressing a nav key toward a
+  direction with no cartridge plays the error sound and shakes the camera (row)
+  opposite the pressed key, then rebounds it back to center.
+- Navigation is now strictly one of two outcomes per key press: move to the
+  cartridge in that direction (confirm + pan), or nav-error (shake + rebound +
+  error sound) — never any ambiguous/in-between behavior.
