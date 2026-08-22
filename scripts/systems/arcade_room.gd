@@ -10,6 +10,11 @@ extends Node2D
 const ARCADE_MACHINE_TEX: String = "res://The Darkness Of The Grasslands assets/objects/arcade machine.png"
 const TETRINO_MUSIC: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/tetrino.wav"
 const CARTRIDGE_START: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Cartridge_START_140BPM.wav"
+# Console background music (plays while the console navigator is on) + its
+# navigation feedback sounds.
+const CONSOLE_MUSIC: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/Console-navigation-music.wav"
+const CONSOLE_CONFIRM: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Console-confirm-sound.wav"
+const CONSOLE_ERROR: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Navigation-error-cant-navigate.wav"
 const TETRINO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
 # 140 BPM → one beat every 60/140 seconds (pulse the game to the music).
 const BEAT_SECONDS: float = 60.0 / 140.0
@@ -112,6 +117,12 @@ var _enter_was_down: bool = false
 var _nav_was_down: bool = false
 var _t_was_down: bool = false
 var _theme_label: Label = null
+
+# ── Console rhythm / beat-sync state ──
+var _console_music: AudioStreamPlayer = null  # background music while console is on
+var _last_beat_index: int = -1                # last detected beat (for edge detection)
+var _pending_action: Callable = Callable()    # action fired on the next detected beat
+var _esc_lock_until: float = 0.0              # debounce ESC so it can't spam/glitch
 
 # ── Tetris game state ──
 var _board: Array = []             # 2D grid: "" or piece key for settled cells (single source of truth)
@@ -395,6 +406,8 @@ func _physics_process(delta: float) -> void:
 	_enter_was_down = enter_down
 
 	if _browser_active and not _menu_active and not _boot_active:
+		# Sync navigation/confirm actions to the console music's 140 BPM beat.
+		_update_beat_clock()
 		var nav_down := (
 			Input.is_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_W)
 			or Input.is_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_A)
@@ -494,7 +507,9 @@ func _on_enter_pressed() -> void:
 	if _intro_active:
 		return
 	if _browser_active and not _menu_active and not _boot_active:
-		_launch_tetrino()
+		# Launching a minigame is beat-synced: play the console confirm blip and
+		# actually enter on the next detected beat.
+		_pending_action = _confirm_launch_tetrino
 	elif _menu_active and not _game_active:
 		# On the Tetrino title screen, Enter plays the cartridge-start sound,
 		# zooms into the game, and then begins the actual minigame (which is
@@ -502,7 +517,21 @@ func _on_enter_pressed() -> void:
 		_start_tetrino_intro()
 
 
+func _confirm_launch_tetrino() -> void:
+	"""Play the console confirm sound then launch the highlighted minigame.
+	Called on a beat so the blip and the transition land on the rhythm."""
+	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
+	_launch_tetrino()
+
+
 func _on_esc_pressed() -> void:
+	# Debounce: ignore ESC for a short window after the last accepted press so
+	# mashing it doesn't cascade through several states (glitch / pitched-down
+	# audio from cancelling the cartridge intro repeatedly).
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _esc_lock_until:
+		return
+	_esc_lock_until = now + 0.35
 	if _intro_active:
 		# ESC during the cartridge-start intro cancels the entering (pitches the
 		# sound down, purple flash, back to the title menu) instead of exiting.
@@ -741,6 +770,10 @@ func _show_minigame_browser() -> void:
 	hint.add_theme_font_size_override("font_size", 18)
 	_ui.add_child(hint)
 
+	# The console is now on: start the 140 BPM navigation music and sync actions
+	# to its beats.
+	_start_console_music()
+
 
 func _on_browser_navigate() -> void:
 	"""WASD in the browser: there's only Tetrino, so pressing any direction
@@ -762,15 +795,19 @@ func _on_browser_navigate() -> void:
 	dir = dir.normalized()
 	if dir == Vector2.ZERO:
 		return
-	_shake_browser_cartridge(dir)
+	# Queue the nudge+shake to fire on the next beat (rhythm-synced), with the
+	# navigation-error sound, then settle back to the middle.
+	_pending_action = _shake_browser_cartridge.bind(dir)
 
 
 func _shake_browser_cartridge(dir: Vector2) -> void:
 	"""Move the cartridge opposite the pressed direction (W pushes it down,
 	A pushes it right, etc.), shake it to show there's nothing to navigate to,
-	then settle it back to the middle and stop."""
+	then settle it back to the middle and stop. Plays the navigation-error
+	blip at a random pitch each time."""
 	if not is_instance_valid(_browser_cartridge):
 		return
+	_play_console_sfx(CONSOLE_ERROR, 0.8, 1.25)
 	_cart_shaking = true
 	var base: Vector2 = _browser_cartridge.position
 	var nudge: Vector2 = -dir * 16.0          # opposite the key you pressed
@@ -802,6 +839,7 @@ func _clear_browser() -> void:
 		child.queue_free()
 	_browser_cartridge = null
 	_cart_shaking = false
+	_stop_console_music()
 
 
 func _rebuild_browser() -> void:
@@ -938,6 +976,88 @@ func _on_music_finished() -> void:
 	stream-level looping isn't available)."""
 	if is_instance_valid(_music):
 		_music.play()
+
+
+# ── Console background music + beat-sync clock ──
+
+func _start_console_music() -> void:
+	"""Start the console navigation music (140 BPM) that plays while the
+	console navigator is on. Loops seamlessly like tetrino.wav. Resets the
+	beat clock so the next beat boundary is detected fresh."""
+	if _console_music == null:
+		_console_music = AudioStreamPlayer.new()
+		_console_music.stream = load(CONSOLE_MUSIC)
+		_console_music.bus = "Music"
+		add_child(_console_music)
+		var wav: AudioStreamWAV = _console_music.stream as AudioStreamWAV
+		if wav:
+			if wav.format == AudioStreamWAV.FORMAT_16_BITS:
+				wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+				wav.loop_begin = 0
+				var bpf: int = 2 * (2 if wav.stereo else 1)
+				if bpf > 0:
+					wav.loop_end = int(wav.data.size() / bpf)
+			else:
+				wav.loop_mode = AudioStreamWAV.LOOP_DISABLED
+				_console_music.finished.connect(_on_console_music_finished)
+	if not _console_music.playing:
+		_console_music.volume_db = -6.0
+		_console_music.play()
+	# Align the beat clock to where the music actually is right now.
+	_last_beat_index = _beat_index()
+
+
+func _on_console_music_finished() -> void:
+	"""Restart the looped console track (only used if the import is compressed)."""
+	if is_instance_valid(_console_music):
+		_console_music.play()
+
+
+func _stop_console_music() -> void:
+	"""Stop the console background music and clear any queued beat action."""
+	if is_instance_valid(_console_music):
+		_console_music.stop()
+	_last_beat_index = -1
+	_pending_action = Callable()
+
+
+func _beat_index() -> int:
+	"""Which 140 BPM beat the console music playhead is currently on, or -1."""
+	if is_instance_valid(_console_music) and _console_music.playing:
+		return int(_console_music.get_playback_position() / BEAT_SECONDS)
+	return -1
+
+
+func _update_beat_clock() -> void:
+	"""Detect a beat boundary in the console music and fire the queued action."""
+	if not is_instance_valid(_console_music) or not _console_music.playing:
+		return
+	var bi := _beat_index()
+	if bi >= 0 and bi != _last_beat_index:
+		_last_beat_index = bi
+		_on_beat()
+
+
+func _on_beat() -> void:
+	"""A beat was detected — execute the action the player queued."""
+	if _pending_action.is_valid():
+		var a: Callable = _pending_action
+		_pending_action = Callable()
+		a.call()
+
+
+# ── One-shot console SFX ──
+
+func _play_console_sfx(path: String, min_pitch: float, max_pitch: float) -> void:
+	"""Play a short one-shot sound on the SFX bus, freeing itself on finish.
+	Used for navigation error / confirm blips."""
+	var p := AudioStreamPlayer.new()
+	p.stream = load(path)
+	p.bus = "SFX"
+	p.pitch_scale = randf_range(min_pitch, max_pitch)
+	add_child(p)
+	p.play()
+	p.finished.connect(p.queue_free)
 
 
 func _start_tetrino_intro() -> void:
@@ -1809,6 +1929,7 @@ func _turn_off_console() -> void:
 	# Clear any on-screen console UI (browser / menu / overlays).
 	for child: Node in _ui.get_children():
 		child.queue_free()
+	_stop_console_music()
 
 	# White screen that collapses vertically to the middle (power-off).
 	var white := ColorRect.new()

@@ -322,3 +322,25 @@ Added a playable arcade room to the lobby.
   intended "nothing to navigate to" feedback.
 - D-S7-2: Direction is opposite the pressed key (per user's spec: W->down,
   A->right, etc.).
+
+## Session 8 (Console rhythm-sync + new audio)
+### Changes
+- ESC debounce: after any ESC is accepted, further ESC presses are ignored for
+  0.35s so mashing it can't cascade across states (which caused glitches and
+  repeated pitched-down cartridge-eject audio).
+- Console background music: `Console-navigation-music.wav` now plays on the
+  Music bus while the console navigator (minigame browser) is on — started on
+  boot/console-on, stopped on launch / power-off. Loops seamlessly like
+  tetrino.wav.
+- Beat-sync: the browser runs a 140 BPM beat clock driven by the console
+  music's playback position. Navigation (WASD) and confirm (ENTER) are QUEUED
+  and fire on the next detected beat, so all console actions land on the beat.
+- Navigation error: `Navigation-error-cant-navigate.wav` plays (random pitch
+  0.8–1.25) each time the cartridge shakes.
+- Confirm: `Console-confirm-sound.wav` plays (beat-synced) when launching a
+  minigame with ENTER.
+### Decisions
+- D-S8-1: Beat-sync applies to the console navigator (where the background
+  music plays). The Tetrino gameplay loop keeps its own timing.
+- D-S8-2: ESC is debounced but intentionally NOT beat-latched so it always
+  feels responsive when backing out.
