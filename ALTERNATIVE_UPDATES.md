@@ -359,3 +359,14 @@ Added a playable arcade room to the lobby.
 ### Decisions
 - D-S9-1: Launch mutes (not stops) the console music; only powering the console
   off fully stops it.
+
+## Session 10 (ESC-mash during Tetrino intro fix)
+### Changes
+- Mashing ESC during the cartridge-start zoom-in intro no longer cascades
+  through multiple states (cancel intro → close menu → turn off console → leave
+  room). Cancelling the intro now locks out ESC for 1.2s so the rest of a rapid
+  mash is absorbed and only the cancel happens; general ESC debounce raised to
+  0.5s.
+### Decisions
+- D-S10-1: A burst of ESC presses while entering Tetrino should only back out
+  of the intro (return to the title menu), never continue walking back further.

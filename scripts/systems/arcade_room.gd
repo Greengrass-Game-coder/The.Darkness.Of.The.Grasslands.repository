@@ -529,17 +529,20 @@ func _confirm_launch_tetrino() -> void:
 
 func _on_esc_pressed() -> void:
 	# Debounce: ignore ESC for a short window after the last accepted press so
-	# mashing it doesn't cascade through several states (glitch / pitched-down
-	# audio from cancelling the cartridge intro repeatedly).
+	# MASHING it doesn't cascade through several states (cancel intro → close
+	# menu → turn off console → leave room), which caused glitches and repeated
+	# pitched-down cartridge-eject audio.
 	var now := Time.get_ticks_msec() / 1000.0
 	if now < _esc_lock_until:
 		return
-	_esc_lock_until = now + 0.35
 	if _intro_active:
-		# ESC during the cartridge-start intro cancels the entering (pitches the
-		# sound down, purple flash, back to the title menu) instead of exiting.
 		_cancel_tetrino_intro()
-	elif _game_active:
+		# Absorb the rest of a rapid ESC mash: cancelling the intro is the only
+		# thing this burst should do, so lock out ESC for a longer window.
+		_esc_lock_until = now + 1.2
+		return
+	_esc_lock_until = now + 0.5
+	if _game_active:
 		_exit_tetrino_game()
 	elif _menu_active:
 		_close_tetrino()
