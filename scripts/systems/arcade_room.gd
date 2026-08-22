@@ -24,6 +24,7 @@ const CONSOLE_CRT_SHADER: String = "res://shaders/console_crt.gdshader"
 const TETRINO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
 # 140 BPM → one beat every 60/140 seconds (pulse the game to the music).
 const BEAT_SECONDS: float = 60.0 / 140.0
+const SOFT_DROP_INTERVAL: float = 0.06  # rows/second pace while holding Down (fast fall)
 # Solid fill colors taken from each piece sprite (the sprites are flat-color
 # blocks with a black outline), so the game blocks match the artwork exactly.
 const PIECE_COLORS: Dictionary = {
@@ -155,6 +156,7 @@ var _score: int = 0
 var _level: int = 1
 var _drop_accum: float = 0.0
 var _drop_interval: float = 1.0
+var _soft_drop: bool = false              # holding Down → fast fall (real-Tetris soft drop)
 var _board_origin: Vector2 = Vector2.ZERO
 var _board_layer: Control = null
 var _board_texs: Array = []        # TextureRects currently shown on the board
@@ -669,6 +671,44 @@ func _spend_coins(n: int) -> void:
 	_save_tetrino_state()
 
 
+func _is_softlocked() -> bool:
+	"""True when the player harvested Grass coins but wasted them all and is now
+	stuck with 0 spendable coins and no way to earn more (soft-locked)."""
+	if _coin_balance() > 0:
+		return false
+	# Must have harvested coins at some point — otherwise it's just a fresh
+	# player who hasn't earned anything yet, not a soft-lock.
+	if GameState.tetrino_coins_earned <= 0:
+		return false
+	# Only "stuck" if they can't earn any more right now.
+	var now := _now_sec()
+	if not _daily_available(now):
+		return true
+	if GameState.tetrino_gambled:
+		return true
+	# Normal earning caps at 2 coins; at the cap they can't harvest more.
+	if GameState.tetrino_coins_earned >= 2:
+		return true
+	return false
+
+
+func _auto_gift_if_softlocked() -> void:
+	"""Anti-softlock: if the player is stuck with 0 Grass coins (harvested then
+	wasted them and can't earn more), gift them 2 Grass coins + 1,000 gold once
+	as an apology so they're never permanently locked out. Persisted per profile."""
+	if AuthManager.current_username.is_empty():
+		return
+	if GameState.tetrino_gift_given:
+		return
+	if not _is_softlocked():
+		return
+	GameState.tetrino_gift_given = true
+	GameState.tetrino_coins_earned += 2
+	GameState.add_money(1000)
+	_save_tetrino_state()
+	_show_browser_notice("SORRY! You were stuck at 0 coins — here's a gift:  +2 Grass coins,  +1,000 gold", Color(0.4, 1.0, 0.6))
+
+
 func _show_cant_afford(cost: int) -> void:
 	"""Briefly flash a 'not enough coins' note on the browser screen."""
 	if _cant_afford_label != null and is_instance_valid(_cant_afford_label):
@@ -983,6 +1023,10 @@ func _show_minigame_browser() -> void:
 
 	# Snap to cartridge 0 (no pan) on first show.
 	_center_browser(false)
+
+	# Anti-softlock apology gift, granted BEFORE the coin badge is drawn so the
+	# badge shows the new balance (see _auto_gift_if_softlocked).
+	_auto_gift_if_softlocked()
 
 	# Shiny Grassconatication coin + pixelated spendable balance (earned - spent).
 	# expand/size set BEFORE the texture so it stays tiny (16x16).
@@ -1542,6 +1586,7 @@ func _start_tetrino_game() -> void:
 	# Hard mode ("gamble") starts faster for a tougher challenge.
 	_drop_interval = 0.5 if _hard_mode else 1.0
 	_drop_accum = 0.0
+	_soft_drop = false
 	_space_was_down = false
 	_left_was_down = false
 	_right_was_down = false
@@ -1823,9 +1868,9 @@ func _lock_piece() -> void:
 	if cleared > 0:
 		_lines_cleared += cleared
 		_score += [0, 100, 300, 500, 800][min(cleared, 4)]
-		# Speed up as the level rises.
+		# Speed up as the level rises (real-Tetris-style gravity acceleration).
 		_level = 1 + int(_score / 500.0)
-		_drop_interval = max(0.15, 1.0 - (0.05 * (_level - 1)))
+		_drop_interval = max(0.05, 1.0 - (0.09 * (_level - 1)))
 		_update_score()
 
 	_clearing = false
@@ -1982,8 +2027,13 @@ func _tetris_step(delta: float) -> void:
 		return
 	if _game_over or _won or _clearing:
 		return
+	# Real-Tetris gravity: base pace is _drop_interval (level-based); while
+	# holding Down the piece falls at the fixed fast soft-drop rate instead.
+	var interval := _drop_interval
+	if _soft_drop:
+		interval = minf(interval, SOFT_DROP_INTERVAL)
 	_drop_accum += delta
-	if _drop_accum >= _drop_interval:
+	if _drop_accum >= interval:
 		_drop_accum = 0.0
 		if not _collides(_cur_type, _cur_rot, _cur_row + 1, _cur_col):
 			_cur_row += 1
@@ -2007,9 +2057,9 @@ func _tetris_handle_input() -> void:
 		_try_move(0, 1)
 	if up and not _up_was_down:
 		_try_rotate()
-	# Hold down to keep soft-dropping at a fast rate.
-	if down:
-		_drop_accum = max(_drop_accum, _drop_interval - 0.05)
+	# Holding Down is a real soft drop: the piece falls at the fast soft-drop
+	# rate (see _tetris_step), just like classic Tetris.
+	_soft_drop = down
 	if space and not _space_was_down:
 		_hard_drop()
 

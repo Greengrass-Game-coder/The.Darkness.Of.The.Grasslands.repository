@@ -495,3 +495,25 @@ Added a playable arcade room to the lobby.
 - D-S18-1: Ownership and grass-coins are persisted per-profile via the existing
   save (already saved on win/purchase/spend); the missing piece was loading them
   on the session-restore login path.
+
+## Session 19 (anti-softlock gift + real Tetris gravity)
+### Changes
+- Anti-softlock apology gift: if the player harvested Grass coins but spent them
+  all and is stuck at 0 (and can't earn more — daily limit reached, already
+  gambled, or at the 2-coin cap), the console auto-gifts them 2 Grass coins +
+  1,000 gold once per profile, showing a "SORRY!" notice. Persisted via
+  tetrino_gift_given so it only happens once. Grant happens before the balance
+  badge is drawn so the badge shows the new coins.
+- Tetrino now respects gravity like real Tetris:
+  - Fixed the soft drop, which was broken (it reset the gravity accumulator
+    every frame so holding Down barely did anything). Holding Down now drops the
+    piece at a fast fixed soft-drop rate (~16 rows/sec), independent of level.
+  - Gravity accelerates with level more aggressively (1.0s/row at level 1, down
+    to 0.05s/row), like classic Tetris.
+  - Hard drop (Space) and rotations unchanged.
+### Decisions
+- D-S19-1: The gift is one-time per profile and only for a genuine soft-lock
+  (coins harvested then wasted, with no way to earn more) — not a new-player
+  handout.
+- D-S19-2: Soft drop is a fixed fast rate while holding Down (real-Tetris
+  behavior), separate from level-based base gravity.
