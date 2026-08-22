@@ -13,6 +13,8 @@ const CARTRIDGE_START: String = "res://The Darkness Of The Grasslands assets/Sou
 # Console background music (plays while the console navigator is on) + its
 # navigation feedback sounds.
 const CONSOLE_MUSIC: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/Console-navigation-music.wav"
+# Boot-up sound played while the console turns on, before the navigator music.
+const CONSOLE_BOOTUP: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Console-bootup.wav"
 const CONSOLE_CONFIRM: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Console-confirm-sound.wav"
 const CONSOLE_ERROR: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Navigation-error-cant-navigate.wav"
 const TETRINO_CHOICE: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/tetrino-minigame-choice.wav"
@@ -647,7 +649,17 @@ func _run_boot() -> void:
 	pct_lbl.add_theme_font_size_override("font_size", 20)
 	_ui.add_child(pct_lbl)
 
-	# Jump 10% → 78% → 100% over the load duration.
+	# Play the boot-up sound now, and drive the loading bar so it reaches 100%
+	# at the exact moment the boot-up ends. Then hand straight into the
+	# navigator music for a perfectly-synced boot-up → music transition.
+	var boot_p := AudioStreamPlayer.new()
+	boot_p.stream = load(CONSOLE_BOOTUP)
+	boot_p.bus = "SFX"
+	add_child(boot_p)
+	boot_p.play()
+	var boot_len: float = boot_p.stream.get_length()
+
+	# Jump 10% → 78% → 100% over the boot-up's duration.
 	var marks: Array[Vector2] = [
 		Vector2(0.0, 0.10),
 		Vector2(0.35, 0.78),
@@ -655,18 +667,23 @@ func _run_boot() -> void:
 	]
 	for m in marks:
 		var tween := create_tween()
-		tween.tween_property(bar_fill, "size:x", 400.0 * m.y, LOAD_DURATION * 0.35)
+		tween.tween_property(bar_fill, "size:x", 400.0 * m.y, boot_len / marks.size())
 		tween.parallel().tween_property(pct_lbl, "text", "%d%%" % int(m.y * 100.0), 0.01)
 		await tween.finished
 	bar_fill.size.x = 400.0
 	pct_lbl.text = "100%"
-	await get_tree().create_timer(0.2).timeout
+
+	# Let the boot-up fully finish (right as the bar hits 100%), then free it.
+	while boot_p.playing:
+		await get_tree().process_frame
+	boot_p.queue_free()
 
 	bar_bg.queue_free()
 	bar_fill.queue_free()
 	pct_lbl.queue_free()
 
-	# Boot is done — lift the black overlay and reveal the console navigator.
+	# Boot is done — lift the black overlay and reveal the console navigator,
+	# which starts the 140 BPM music exactly as the boot-up ends.
 	flick.queue_free()
 
 	_boot_active = false

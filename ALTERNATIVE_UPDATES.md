@@ -400,3 +400,16 @@ Added a playable arcade room to the lobby.
 ### Decisions
 - D-S12-1: Multi-line clears earn their impact with a longer freeze (1s) so the
   score feels earned; single lines stay snappy.
+
+## Session 13 (Synced console boot-up → navigator music)
+### Changes
+- The console boot-up sound (`Console-bootup.wav`, 1.714s) now plays at the
+  loading-bar phase instead of the very start of boot.
+- The loading bar is now driven to run for exactly as long as the boot-up sound,
+  so it reaches 100% at the same moment the boot-up ends.
+- The 140 BPM navigator music starts the instant the boot-up finishes
+  (`while boot_p.playing` handoff), giving a perfectly-synced boot-up → music
+  transition with no gap.
+### Decisions
+- D-S13-1: Loading duration is derived from the actual boot-up clip length at
+  runtime, so the handoff stays in sync even if the audio file changes.
