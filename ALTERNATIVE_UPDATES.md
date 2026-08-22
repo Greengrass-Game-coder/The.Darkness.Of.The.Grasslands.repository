@@ -482,3 +482,16 @@ Added a playable arcade room to the lobby.
 - D-S17-1: Console input blips are beat-aligned to the console music; blips fired
   from an on-beat action play immediately (no double-defer) and all others wait
   for the next beat.
+
+## Session 18 (persistent cartridge ownership + grass coins)
+### Changes
+- Fixed persistence across restarts: on auto-login (session restore), the saved
+  GameState was never loaded, so grass coins and cartridge ownership reset to
+  defaults every launch. AuthManager._auto_login_from_session() now calls
+  SaveManager.autoload(username) just like a manual login does.
+- Verified live: with a saved state, the browser shows TETRINO 2 as OWNED and
+  the correct spendable coin balance after a fresh session-restore launch.
+### Decisions
+- D-S18-1: Ownership and grass-coins are persisted per-profile via the existing
+  save (already saved on win/purchase/spend); the missing piece was loading them
+  on the session-restore login path.

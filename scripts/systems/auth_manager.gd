@@ -18,6 +18,7 @@ const ENCRYPTION_KEY: String = "TDotG_2024_S3cur3_K3y!"  # XOR obfuscation key
 # Reserved usernames — case-insensitive, cannot be registered by other players
 # These users get a limited (non-destructive) admin panel
 const RESERVED_USERNAMES: Array[String] = ["Prograss", "Orange guy", "Juangoat", "Charon", "TheAcTualDummy"]
+const SaveManagerScript = preload("res://scripts/systems/save_manager.gd")
 
 var current_username: String = ""
 var is_admin: bool = false
@@ -149,6 +150,9 @@ func _auto_login_from_session() -> bool:
 		GameState.is_admin = true
 		GameState.is_limited_admin = true
 	GameState.logged_in_username = username
+	# Load the player's persisted GameState (grass coins, cartridge ownership,
+	# etc.) from their save — same as a manual login would.
+	SaveManagerScript.autoload(username)
 	print("AuthManager: Session restored for: ", username)
 	return true
 
