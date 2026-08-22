@@ -469,3 +469,16 @@ Added a playable arcade room to the lobby.
 - D-S16-1: Win condition = 10 line clears only (score removed as a coin objective).
 - D-S16-2: Paid cartridge = one-time permanent unlock tied to the profile, shown
   as OWNED afterward, rather than a per-launch spend.
+
+## Session 17 (console sounds beat-synced to 140 BPM)
+### Changes
+- Every one-shot console blip now plays in rhythm with the console's 140 BPM
+  background music. _play_console_sfx aligns each sound to the next beat of the
+  music (confirm, error, choice, and cartridge-start jingle all land on the
+  beat), while sounds that already fire from a detected beat stay immediate.
+  Previously the purchase-confirmation sounds (and the cartridge-start jingle)
+  played instantly mid-beat instead of in rhythm.
+### Decisions
+- D-S17-1: Console input blips are beat-aligned to the console music; blips fired
+  from an on-beat action play immediately (no double-defer) and all others wait
+  for the next beat.

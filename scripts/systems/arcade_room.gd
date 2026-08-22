@@ -135,6 +135,7 @@ var _theme_label: Label = null
 var _console_music: AudioStreamPlayer = null  # background music while console is on
 var _last_beat_index: int = -1                # last detected beat (for edge detection)
 var _pending_action: Callable = Callable()    # action fired on the next detected beat
+var _last_beat_time_msec: int = 0             # when _on_beat last fired (for SFX beat-sync)
 var _esc_lock_until: float = 0.0              # debounce ESC so it can't spam/glitch
 
 # ── Console CRT overlay state ──
@@ -1346,6 +1347,7 @@ func _update_beat_clock() -> void:
 
 func _on_beat() -> void:
 	"""A beat was detected — execute the action the player queued."""
+	_last_beat_time_msec = Time.get_ticks_msec()
 	if _pending_action.is_valid():
 		var a: Callable = _pending_action
 		_pending_action = Callable()
@@ -1354,15 +1356,36 @@ func _on_beat() -> void:
 
 # ── One-shot console SFX ──
 
+func _beat_align_delay() -> float:
+	"""Seconds until the next beat of the 140 BPM console music, so a sound can
+	be started exactly in rhythm. Returns 0.0 if the music isn't playing (in
+	which case the caller should just play immediately)."""
+	if not is_instance_valid(_console_music) or not _console_music.playing:
+		return 0.0
+	var pos: float = _console_music.get_playback_position()
+	var next_beat: float = (floori(pos / BEAT_SECONDS) + 1) * BEAT_SECONDS
+	return maxf(next_beat - pos, 0.0)
+
+
 func _play_console_sfx(path: String, min_pitch: float, max_pitch: float) -> void:
-	"""Play a short one-shot sound on the SFX bus, freeing itself on finish.
-	Used for navigation error / confirm blips."""
+	"""Play a short one-shot sound on the SFX bus, aligned to the console
+	music's 140 BPM beat so every console blip lands in rhythm. If the music
+	isn't playing, or the call happens right on a beat (an action fired from
+	_on_beat), it plays immediately; otherwise it waits for the next beat."""
 	var p := AudioStreamPlayer.new()
 	p.stream = load(path)
 	p.bus = "SFX"
 	p.pitch_scale = randf_range(min_pitch, max_pitch)
 	add_child(p)
-	p.play()
+	var wait: float = _beat_align_delay()
+	var on_beat_now: bool = Time.get_ticks_msec() - _last_beat_time_msec <= 80
+	if wait > 0.03 and not on_beat_now:
+		get_tree().create_timer(wait).timeout.connect(func() -> void:
+			if is_instance_valid(p):
+				p.play()
+		)
+	else:
+		p.play()
 	p.finished.connect(p.queue_free)
 
 
@@ -1413,13 +1436,21 @@ func _start_tetrino_intro() -> void:
 		return
 	_intro_active = true
 
-	# Play the cartridge-start jingle on the SFX bus.
+	# Play the cartridge-start jingle on the SFX bus, aligned to the console
+	# music's 140 BPM beat so the transition lands on rhythm.
 	_cart = AudioStreamPlayer.new()
 	_cart.stream = load(CARTRIDGE_START)
 	_cart.bus = "SFX"
 	add_child(_cart)
 	_cart.finished.connect(_on_cart_finished)
-	_cart.play()
+	var cart_wait: float = _beat_align_delay()
+	if cart_wait > 0.03:
+		get_tree().create_timer(cart_wait).timeout.connect(func() -> void:
+			if is_instance_valid(_cart):
+				_cart.play()
+		)
+	else:
+		_cart.play()
 
 	# Zoom into the title art to "enter" the game.
 	if is_instance_valid(_title_thumb):
