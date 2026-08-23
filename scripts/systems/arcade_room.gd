@@ -1253,8 +1253,13 @@ func _clear_browser() -> void:
 
 
 func _rebuild_browser() -> void:
+	# Preserve which cartridge is selected so toggling the display (T) doesn't
+	# send the player back to the first minigame — they keep their spot.
+	var keep: int = _browser_index
 	_clear_browser()
 	_show_minigame_browser()
+	_browser_index = keep
+	_center_browser(false)
 
 
 # ═══════════════ TETRINO TITLE / MENU ═══════════════

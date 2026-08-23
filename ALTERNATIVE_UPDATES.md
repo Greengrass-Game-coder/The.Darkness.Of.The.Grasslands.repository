@@ -588,3 +588,16 @@ Added a playable arcade room to the lobby.
   than synthesizing a new melody (the user's music was to be kept).
 - D-S22-2: 22050 Hz + 9-bit crush + gentle lowpass = "slightly pixelated,
   subtle retro-console" while staying warm and not harsh.
+
+## Session 23 (display toggle keeps your spot in the browser)
+### Changes
+- Pressing T (display/theme) while in the minigame browser no longer resets
+  you back to the first cartridge. _rebuild_browser now preserves the selected
+  cartridge index across the theme rebuild and re-centers the camera on it, so
+  players keep their place even when there are many minigames.
+- Verified headlessly: navigating to TETRINO 2 then toggling the theme keeps
+  index 1 selected and pans the row back onto TETRINO 2.
+### Decisions
+- D-S23-1: Targeted the fix at _rebuild_browser (the display-toggle path) so
+  re-entering the browser after a minigame keeps its existing reset-to-first
+  behavior; only the display toggle preserves selection.
