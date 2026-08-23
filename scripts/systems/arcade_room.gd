@@ -1396,7 +1396,9 @@ func _start_console_music() -> void:
 	beat clock so the next beat boundary is detected fresh."""
 	if _console_music == null:
 		_console_music = AudioStreamPlayer.new()
-		_console_music.stream = load(CONSOLE_MUSIC)
+		# Load the 140 BPM navigation chiptune directly from the WAV (avoids
+		# depending on the import cache, so a freshly generated file plays).
+		_console_music.stream = AudioStreamWAV.load_from_file(CONSOLE_MUSIC)
 		_console_music.bus = "Music"
 		add_child(_console_music)
 		var wav: AudioStreamWAV = _console_music.stream as AudioStreamWAV

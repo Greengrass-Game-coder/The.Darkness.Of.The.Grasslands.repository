@@ -561,3 +561,27 @@ Added a playable arcade room to the lobby.
   the focused cartridge is centered and the others remain fully visible on
   screen (no clipping), so the "follow" reads as a smooth camera slide rather
   than a disorienting jump.
+
+## Session 22 (new console navigation chiptune)
+### Changes
+- The console navigation music file (Console-navigation-music.wav) was missing
+  from the project (the constant referenced it but it didn't exist — so the
+  navigator was silent). Generated a brand-new 140 BPM chiptune loop to spec:
+  - Slightly pixelated / digital: lo-fi 22050 Hz, square + triangle waveforms.
+  - Subtle retro-console character: gentle soft-square lead, triangle bass.
+  - Clear original melody: an original I-vi-IV-V arpeggio lead line (C - Am -
+    F - G), bass on every beat, quiet arpeggio pad underneath.
+  - Not harsh or noisy: soft envelopes (no clicks), moderate volume, no
+    percussion/noise, rounded (few-harmonic) square so it stays warm.
+  - Suitable for TME's human-era aesthetic: warm, gentle, analog-friendly.
+- It is 16-bit PCM mono, exactly 140 BPM, and loops seamlessly (LOOP_FORWARD),
+  so the console's beat-synced SFX still land on the beat.
+- _start_console_music now loads the WAV via AudioStreamWAV.load_from_file()
+  instead of the import cache, so a freshly generated file plays reliably.
+### Decisions
+- D-S22-1: Synthesized an original loop rather than editing a nonexistent file;
+  the melody is a clear, simple, consonant phrase (I-vi-IV-V) so it reads as a
+  distinct, memorable tune without harshness.
+- D-S22-2: 22050 Hz + limited-harmonic waveforms give the "pixelated digital,
+  retro-console" feel while the triangle bass + rounded square keep it warm and
+  non-fatiguing for a menu.
