@@ -345,18 +345,9 @@ func _physics_process(_delta: float) -> void:
 		_show_idle_frame()
 		return
 	
-	var input_dir: Vector2 = Vector2.ZERO
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		input_dir.y -= 1
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		input_dir.y += 1
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		input_dir.x -= 1
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		input_dir.x += 1
-	input_dir = input_dir.normalized()
+	var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var speed: float = movement_speed
-	if Input.is_key_pressed(KEY_SHIFT):
+	if InputSystem.is_pressed("sprint"):
 		speed *= sprint_multiplier
 	if input_dir != Vector2.ZERO:
 		velocity = input_dir * speed
@@ -1081,10 +1072,10 @@ func _process(delta: float) -> void:
 		_dialogue_cooldown -= delta
 		# Keep _e_pressed_last_frame true during cooldown
 		_e_pressed_last_frame = true
-		if Input.is_key_pressed(KEY_E):
+		if InputSystem.is_pressed("interact"):
 			return  # Still holding E from dialogue, skip
 	
-	if Input.is_key_pressed(KEY_E) and not _e_pressed_last_frame:
+	if InputSystem.is_pressed("interact") and not _e_pressed_last_frame:
 		_e_pressed_last_frame = true
 		if interact_prompt.visible:
 			interact_prompt.hide()
@@ -1116,7 +1107,7 @@ func _process(delta: float) -> void:
 			else:
 				_potato_dialogue_done = true
 				dialogue_ui.start_dialogue_with(evil_potato_dialogue)
-	elif not Input.is_key_pressed(KEY_E):
+	elif not InputSystem.is_pressed("interact"):
 		_e_pressed_last_frame = false
 
 

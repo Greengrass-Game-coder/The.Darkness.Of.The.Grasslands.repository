@@ -124,11 +124,11 @@ func _check_interact_input(_delta: float) -> void:
 	if area_name in solved_puzzles:
 		return
 
-	if Input.is_key_pressed(KEY_E) and not _e_was_pressed:
+	if InputSystem.is_pressed("interact") and not _e_was_pressed:
 		_e_was_pressed = true
 		puzzle_open = true
 		_open_puzzle()
-	elif not Input.is_key_pressed(KEY_E):
+	elif not InputSystem.is_pressed("interact"):
 		_e_was_pressed = false
 
 

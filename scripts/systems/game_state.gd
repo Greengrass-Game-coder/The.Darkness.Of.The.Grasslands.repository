@@ -32,6 +32,7 @@ var selected_killer: String = "Violentgrass"  # Will be set from CharacterData
 ## User settings (persisted across scenes, not yet saved to disk)
 var hide_leaderboard: bool = false
 var epilepsy_safe_mode: bool = true
+var vibration_enabled: bool = true
 
 ## Console (arcade room) theme: "system", "light", or "dark". Console-only —
 ## only changeable inside the arcade console, never in normal settings.

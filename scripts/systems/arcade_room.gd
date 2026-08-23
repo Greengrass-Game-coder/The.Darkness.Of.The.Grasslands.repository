@@ -195,6 +195,13 @@ func _ready() -> void:
 	_reveal_from_black()
 
 
+## Lets the global PauseManager know whether the console UI is on-screen, so
+## pressing Pause here opens Settings (the console pause) instead of the full
+## in-game pause menu (where ESC already means cancel/back).
+func console_ui_active() -> bool:
+	return _boot_active or _browser_active or _menu_active or _game_active
+
+
 # ═══════════════ CONSOLE THEME (console-only) ═══════════════
 
 func _load_theme() -> void:
@@ -407,11 +414,12 @@ func _physics_process(delta: float) -> void:
 	if not is_instance_valid(_player):
 		return
 
-	# Edge-detected key handling (E to interact / ESC to back out).
-	var e_down := Input.is_key_pressed(KEY_E) or Input.is_physical_key_pressed(KEY_E)
+	# Edge-detected input (interact / cancel), driven by the InputSystem so it
+	# honours rebinds and works with keyboard + gamepad.
+	var e_down := InputSystem.is_pressed("interact")
 	if e_down and not _e_was_down:
 		_on_e_pressed()
-	var esc_down := Input.is_key_pressed(KEY_ESCAPE) or Input.is_physical_key_pressed(KEY_ESCAPE)
+	var esc_down := InputSystem.is_pressed("cancel")
 	if esc_down and not _esc_was_down:
 		_on_esc_pressed()
 	_e_was_down = e_down
@@ -422,7 +430,7 @@ func _physics_process(delta: float) -> void:
 	# friendly "this is all we have" nag.
 	# Enter: in the browser it launches Tetrino; on the Tetrino title screen it
 	# starts the actual minigame (which is when the music plays).
-	var enter_down := Input.is_key_pressed(KEY_ENTER) or Input.is_physical_key_pressed(KEY_ENTER)
+	var enter_down := InputSystem.is_pressed("confirm")
 	if enter_down and not _enter_was_down:
 		_on_enter_pressed()
 	_enter_was_down = enter_down
@@ -431,14 +439,12 @@ func _physics_process(delta: float) -> void:
 		# Sync navigation/confirm actions to the console music's 140 BPM beat.
 		_update_beat_clock()
 		var nav_down := (
-			Input.is_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_W)
-			or Input.is_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_A)
-			or Input.is_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_S)
-			or Input.is_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_D)
+			InputSystem.is_pressed("move_up") or InputSystem.is_pressed("move_down")
+			or InputSystem.is_pressed("move_left") or InputSystem.is_pressed("move_right")
 		)
 		if nav_down and not _nav_was_down:
 			_on_browser_navigate()
-		var t_down := Input.is_key_pressed(KEY_T) or Input.is_physical_key_pressed(KEY_T)
+		var t_down := InputSystem.is_pressed("display_toggle")
 		if t_down and not _t_was_down:
 			_cycle_theme()
 		_nav_was_down = nav_down
@@ -467,18 +473,9 @@ func _physics_process(delta: float) -> void:
 			_sprite.animation = _idle_anim
 		return
 
-	var input_dir := Vector2.ZERO
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		input_dir.y -= 1
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		input_dir.y += 1
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		input_dir.x -= 1
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		input_dir.x += 1
-	input_dir = input_dir.normalized()
+	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var speed := 160.0
-	if Input.is_key_pressed(KEY_SHIFT):
+	if InputSystem.is_pressed("sprint"):
 		speed = 250.0
 	if input_dir != Vector2.ZERO:
 		_player.velocity = input_dir * speed
@@ -1095,15 +1092,7 @@ func _on_browser_navigate() -> void:
 	(left/right, with up/down as a fallback)."""
 	if not _browser_active or _menu_active or _boot_active:
 		return
-	var dir := Vector2.ZERO
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		dir.y -= 1
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		dir.y += 1
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		dir.x -= 1
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		dir.x += 1
+	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	dir = dir.normalized()
 	if dir == Vector2.ZERO:
 		return
@@ -2122,11 +2111,11 @@ func _tetris_step(delta: float) -> void:
 func _tetris_handle_input() -> void:
 	if _game_lost or _game_over or _won or _clearing:
 		return
-	var left := Input.is_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_LEFT)
-	var right := Input.is_key_pressed(KEY_RIGHT) or Input.is_physical_key_pressed(KEY_RIGHT)
-	var up := Input.is_key_pressed(KEY_UP) or Input.is_physical_key_pressed(KEY_UP)
-	var down := Input.is_key_pressed(KEY_DOWN) or Input.is_physical_key_pressed(KEY_DOWN)
-	var space := Input.is_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_SPACE)
+	var left := InputSystem.is_pressed("tetris_left")
+	var right := InputSystem.is_pressed("tetris_right")
+	var up := InputSystem.is_pressed("tetris_rotate")
+	var down := InputSystem.is_pressed("tetris_down")
+	var space := InputSystem.is_pressed("tetris_harddrop")
 
 	if left and not _left_was_down:
 		_try_move(0, -1)
@@ -2385,7 +2374,7 @@ func _show_win() -> void:
 
 func _handle_win_input() -> void:
 	"""On the win screen: G starts the hard-mode gamble run (when available)."""
-	var g := Input.is_key_pressed(KEY_G) or Input.is_physical_key_pressed(KEY_G)
+	var g := InputSystem.is_pressed("gamble")
 	if g and not _g_was_down:
 		if _daily_available(_now_sec()) and GameState.tetrino_coins_earned == 1 \
 				and not GameState.tetrino_gambled:

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c0fg2rrqyipeu"]
 
-[ext_resource type="Script" uid="uid://coy5q81a0j1d4" path="res://scripts/ui/settings_layer.gd" id="1_vsguc"]
+[ext_resource type="Script" uid="uid://dxopjpe4vhmgl" path="res://scripts/ui/settings_layer.gd" id="1_vsguc"]
 [ext_resource type="Texture2D" uid="uid://on8uvcgn3tlk" path="res://The Darkness Of The Grasslands assets/UI/Lobby/Shop and inventory background UI.png" id="2_6sor0"]
 
 [node name="SettingsLayer" type="Control" unique_id=1266520127]

@@ -34,6 +34,8 @@ SaveManager="*res://scripts/systems/save_manager.gd"
 SFXManager="*res://scripts/systems/sfx_manager.gd"
 SoundManager="*res://scripts/systems/sound_manager.gd"
 P2PManager="*res://scripts/p2p/p2p_manager.gd"
+InputSystem="*res://scripts/systems/input_system.gd"
+PauseManager="*res://scripts/systems/pause_manager.gd"
 
 [display]
 

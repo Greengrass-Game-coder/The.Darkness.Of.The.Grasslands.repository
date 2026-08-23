@@ -601,3 +601,50 @@ Added a playable arcade room to the lobby.
 - D-S23-1: Targeted the fix at _rebuild_browser (the display-toggle path) so
   re-entering the browser after a minigame keeps its existing reset-to-first
   behavior; only the display toggle preserves selection.
+
+## Session 24 (controller support + full keybinding + settings + pause)
+### Changes
+- New InputSystem autoload — a central input system for the whole game:
+  - Owns every rebindable action with default keyboard AND gamepad bindings.
+  - Applies saved keybindings at startup (persisted to user://keybinds.cfg).
+  - Rebinding a keyboard key never wipes the gamepad binding (and vice versa).
+  - Detects the active input device ("keyboard" / "gamepad") and exposes
+    is_pressed() / just_pressed() helpers for game code.
+  - Binds the left analog stick to movement for smooth controller movement.
+  - Adds gamepad bindings to Godot's built-in ui_* actions, so every menu is
+    navigable with a controller (D-pad/stick + A select + B back) with no
+    per-menu code.
+- Console (arcade room) is now fully controller-compatible and rebindable:
+  arcade_room.gd polling of raw keys was replaced with InputSystem actions
+  (interact, cancel, confirm, move_* for browser navigation, display_toggle,
+  tetris_left/right/down/rotate/harddrop, gamble). Gamepad D-pad drives the
+  browser and Tetris; gamepad A/Start/Y map to confirm/rotate/gamble.
+- Full keybinding in the settings menu: every action now has a dedicated Key
+  button AND a gamepad button for rebinding independently (keyboard + gamepad),
+  covering movement, interact/cancel/confirm/pause, abilities, display, gamble,
+  and all Tetris controls.
+- Expanded settings: added a CONTROLLER section (Controller Vibration toggle,
+  backed by a new GameState.vibration_enabled). Existing audio/video/gameplay/
+  accessibility settings kept.
+- New PauseManager autoload: a controller-friendly Pause menu (Resume /
+  Settings / Quit to Main Menu) opened with Pause (Esc/Start).
+  - In normal gameplay it opens the full pause menu (tree paused, overlay
+    always processes).
+  - While the arcade console UI is on-screen, Pressing the gamepad Start opens
+    Settings directly (the console pause); Esc in the console still means
+    cancel/back.
+  - Pure menu scenes (login / start menu) are skipped so their own Esc handling
+    is unaffected.
+  - Settings are opened via the existing settings_layer scene (also reachable
+    from the start menu's SETTINGS button).
+- Core gameplay scripts (lobby, game_map, match_manager) now use InputSystem
+  actions for movement/sprint/interact instead of raw keys, so controller +
+  rebinds work across the game.
+### Decisions
+- D-S24-1: Removed class_name from InputSystem (it's an autoload singleton);
+  a class_name would shadow the autoload and break calls like
+  InputSystem.is_pressed().
+- D-S24-2: Rebinding only touches the target device's events, so switching
+  inputs never discards the other device's mapping.
+- D-S24-3: Esc double-duty resolved cleanly — Esc is cancel/back in the console
+  and pause elsewhere; the console's settings access is the gamepad Start button.
