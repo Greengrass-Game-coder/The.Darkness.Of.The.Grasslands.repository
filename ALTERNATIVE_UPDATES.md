@@ -562,26 +562,29 @@ Added a playable arcade room to the lobby.
   screen (no clipping), so the "follow" reads as a smooth camera slide rather
   than a disorienting jump.
 
-## Session 22 (new console navigation chiptune)
+## Session 22 (console navigation music — retro effects on Soft-AnalogKeys)
 ### Changes
-- The console navigation music file (Console-navigation-music.wav) was missing
-  from the project (the constant referenced it but it didn't exist — so the
-  navigator was silent). Generated a brand-new 140 BPM chiptune loop to spec:
-  - Slightly pixelated / digital: lo-fi 22050 Hz, square + triangle waveforms.
-  - Subtle retro-console character: gentle soft-square lead, triangle bass.
-  - Clear original melody: an original I-vi-IV-V arpeggio lead line (C - Am -
-    F - G), bass on every beat, quiet arpeggio pad underneath.
-  - Not harsh or noisy: soft envelopes (no clicks), moderate volume, no
-    percussion/noise, rounded (few-harmonic) square so it stays warm.
-  - Suitable for TME's human-era aesthetic: warm, gentle, analog-friendly.
-- It is 16-bit PCM mono, exactly 140 BPM, and loops seamlessly (LOOP_FORWARD),
-  so the console's beat-synced SFX still land on the beat.
-- _start_console_music now loads the WAV via AudioStreamWAV.load_from_file()
-  instead of the import cache, so a freshly generated file plays reliably.
+- The console navigation music is the existing "Soft-AnalogKeys" analog-keys
+  track, renamed to Console-navigation-music.wav (the code name the game uses).
+  Kept that track and ADDED subtle retro-console effects to it instead of
+  replacing the melody:
+  - Slightly pixelated / digital: gentle sample-rate drop to 22050 Hz with a
+    clean anti-alias lowpass (soft, warm lo-fi character).
+  - Subtle retro-console: mild 9-bit bit-crush for a faint digital "pixel"
+    crunch.
+  - Clear original melody preserved: the analog melody is untouched in pitch
+    and timing, only given the retro texture.
+  - Not harsh or noisy: the anti-alias + a gentle warm lowpass smooth the
+    crunch, so it stays soft and non-fatiguing.
+  - Suitable for TME's human-era aesthetic: keeps the original warm analog feel
+    with just a hint of old-console character.
+- Output is 16-bit PCM stereo, 22050 Hz, ~137s, and loops seamlessly
+  (LOOP_FORWARD), so the console's beat-synced SFX still work (beat clock is
+  position-based and independent of the track's tempo).
+- _start_console_music loads the WAV via AudioStreamWAV.load_from_file() so it
+  plays reliably without depending on the import cache.
 ### Decisions
-- D-S22-1: Synthesized an original loop rather than editing a nonexistent file;
-  the melody is a clear, simple, consonant phrase (I-vi-IV-V) so it reads as a
-  distinct, memorable tune without harshness.
-- D-S22-2: 22050 Hz + limited-harmonic waveforms give the "pixelated digital,
-  retro-console" feel while the triangle bass + rounded square keep it warm and
-  non-fatiguing for a menu.
+- D-S22-1: Applied effects to the user's existing Soft-AnalogKeys track rather
+  than synthesizing a new melody (the user's music was to be kept).
+- D-S22-2: 22050 Hz + 9-bit crush + gentle lowpass = "slightly pixelated,
+  subtle retro-console" while staying warm and not harsh.
