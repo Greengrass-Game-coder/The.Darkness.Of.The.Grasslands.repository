@@ -165,6 +165,7 @@ static func autosave(username: String) -> bool:
 		"tetrino_last_seen_time": GameState.tetrino_last_seen_time,
 		"tetrino_coins_spent": GameState.tetrino_coins_spent,
 		"tetrino_owns_paid": GameState.tetrino_owns_paid,
+		"tetrino_owns_paid3": GameState.tetrino_owns_paid3,
 		"tetrino_gift_given": GameState.tetrino_gift_given
 	}
 	# Also include audio bus volumes
@@ -216,6 +217,8 @@ static func autoload(username: String) -> bool:
 		GameState.tetrino_coins_spent = data.tetrino_coins_spent
 	if data.has("tetrino_owns_paid"):
 		GameState.tetrino_owns_paid = data.tetrino_owns_paid
+	if data.has("tetrino_owns_paid3"):
+		GameState.tetrino_owns_paid3 = data.tetrino_owns_paid3
 	if data.has("tetrino_gift_given"):
 		GameState.tetrino_gift_given = data.tetrino_gift_given
 	

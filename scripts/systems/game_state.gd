@@ -57,6 +57,9 @@ var tetrino_coins_spent: int = 0
 ## tetrino_owns_paid: permanent ownership of the paid "TETRINO 2" cartridge.
 ## Once bought (spending coins through the game profile) it stays owned forever.
 var tetrino_owns_paid: bool = false
+## tetrino_owns_paid3: permanent ownership of the paid "TETRINO 3" cartridge
+## (the 3-coin copy). Once bought it stays owned forever, like TETRINO 2.
+var tetrino_owns_paid3: bool = false
 ## tetrino_gift_given: whether the one-time anti-softlock apology gift (2 Grass
 ## coins + 1,000 gold) has already been granted to this profile.
 var tetrino_gift_given: bool = false

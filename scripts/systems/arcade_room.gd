@@ -118,6 +118,7 @@ var _browser_cartridge: Control = null  # the Tetrino cartridge (nudged/shaken o
 var _browser_index: int = 0                 # which browser cartridge is selected
 var _browser_entries: Array = []            # each: {name, thumb, cost} in Grass coins
 var _browser_cartridges: Array = []         # built cartridge Control nodes
+var _browser_grid: Array = []               # grid coords (Vector2) per cartridge, for 2D nav + scaling
 var _browser_row: Control = null            # row container that pans like a camera
 var _browser_highlight: ColorRect = null    # gold selection frame around the chosen cartridge
 var _cant_afford_label: Label = null        # transient "not enough coins" note
@@ -569,6 +570,7 @@ func _show_purchase_overlay(cost: int) -> void:
 		return
 	_purchase_confirm = true
 	var p := _palette()
+	var entry: Dictionary = _browser_entries[clampi(_browser_index, 0, _browser_entries.size() - 1)]
 	var ov := ColorRect.new()
 	ov.name = "PurchaseOverlay"
 	ov.color = Color(0, 0, 0, 0.82)
@@ -578,10 +580,10 @@ func _show_purchase_overlay(cost: int) -> void:
 	_ui.add_child(ov)
 	var lbl := Label.new()
 	lbl.text = "PURCHASE CONFIRMATION\n\n" \
-		+ "TETRINO 2  —  %d Grass coins\n\n" % cost \
+		+ "%s  —  %d Grass coins\n\n" % [entry["name"], cost] \
 		+ "PROFILE: " + AuthManager.current_username + "\n\n" \
 		+ "This purchase is PERMANENT and linked to your profile.\n" \
-		+ "You will own TETRINO 2 forever.\n\n" \
+		+ "You will own %s forever.\n\n" % entry["name"] \
 		+ "[ENTER] confirm    [ESC] cancel"
 	lbl.position = Vector2(0, 240)
 	lbl.size = Vector2(ROOM_W, 300)
@@ -607,7 +609,9 @@ func _confirm_purchase() -> void:
 		return
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
 	_spend_coins(cost)
-	GameState.tetrino_owns_paid = true
+	var entry: Dictionary = _browser_entries[clampi(_browser_index, 0, _browser_entries.size() - 1)]
+	var owned_key: String = entry.get("owned_key", "tetrino_owns_paid")
+	GameState.set(owned_key, true)
 	_save_tetrino_state()
 	_purchase_confirm = false
 	for child: Node in _ui.get_children():
@@ -649,6 +653,17 @@ func _show_browser_notice(text: String, color: Color) -> void:
 		lbl.queue_free()
 
 
+func _cartridge_owned(entry: Dictionary) -> bool:
+	"""Whether a paid cartridge has already been bought (permanent, profile-linked
+	unlock). Free cartridges are never 'owned' — they're always free."""
+	if not bool(entry.get("paid", false)):
+		return false
+	var key: String = entry.get("owned_key", "")
+	if key == "":
+		return false
+	return bool(GameState.get(key))
+
+
 func _selected_cartridge_cost() -> int:
 	"""Cost to launch the selected cartridge right now: 0 for free games and for
 	a paid cartridge you already own, otherwise its listed coin price."""
@@ -656,7 +671,7 @@ func _selected_cartridge_cost() -> int:
 		return 0
 	var idx: int = clampi(_browser_index, 0, _browser_entries.size() - 1)
 	var entry: Dictionary = _browser_entries[idx]
-	if bool(entry.get("paid", false)) and GameState.tetrino_owns_paid:
+	if _cartridge_owned(entry):
 		return 0  # already bought — play for free from now on
 	return int(entry["cost"])
 
@@ -940,24 +955,30 @@ func _show_minigame_browser() -> void:
 	title.add_theme_font_size_override("font_size", 40)
 	_ui.add_child(title)
 
-	# Cartridges sit in a horizontal row and the "camera" (the row container)
-	# pans so the selected cartridge is always centered on screen — exactly the
-	# old single-cartridge look, but with more to navigate to. First is the free
-	# Tetrino; the second is a paid copy costing 2 Grass coins (to test
-	# navigation and the coin-spending currency).
+	# The cartridges live in a 2D grid laid out like a smart-watch app launcher.
+	# TETRINO (free) and TETRINO 2 (2 coins) sit side by side; the TETRINO 3
+	# copy (3 coins) sits ABOVE them and is reached ONLY by pressing Up/Down —
+	# never Left/Right. The focused cartridge is full size and every other one
+	# shrinks the farther its grid-distance is from the focused one (a subtle
+	# depth effect, so far-away cartridges look smaller).
 	_browser_entries = [
 		{"name": "TETRINO", "thumb": TETRINO_THUMB, "cost": 0, "paid": false},
-		{"name": "TETRINO 2", "thumb": TETRINO_THUMB, "cost": 2, "paid": true},
+		{"name": "TETRINO 2", "thumb": TETRINO_THUMB, "cost": 2, "paid": true, "owned_key": "tetrino_owns_paid"},
+		{"name": "TETRINO 3", "thumb": TETRINO_THUMB, "cost": 3, "paid": true, "owned_key": "tetrino_owns_paid3"},
 	]
+	# Grid coordinates: (0,0) = TETRINO, (1,0) = TETRINO 2, (0,-1) = TETRINO 3.
+	_browser_grid = [Vector2(0, 0), Vector2(1, 0), Vector2(0, -1)]
 	_browser_index = 0
 	_browser_cartridges = []
 
-	var card_w := 420.0
-	var card_h := 300.0
-	var gap := 80.0
+	var card_w := 360.0
+	var card_h := 220.0
+	var cell_x := 400.0
+	var cell_y := 230.0
+	var grid_center := Vector2(ROOM_W / 2.0, 480.0)
 	var row := Control.new()
 	row.name = "BrowserRow"
-	row.position = Vector2(0, 150)
+	row.position = Vector2(0, 0)
 	_ui.add_child(row)
 	_browser_row = row
 
@@ -973,7 +994,10 @@ func _show_minigame_browser() -> void:
 		var entry: Dictionary = _browser_entries[i]
 		var cartridge := Control.new()
 		cartridge.name = "Cartridge%d" % i
-		cartridge.position = Vector2(i * (card_w + gap), 0)
+		cartridge.pivot_offset = Vector2(card_w, card_h) / 2.0
+		var g: Vector2 = _browser_grid[i]
+		var center: Vector2 = grid_center + Vector2(g.x * cell_x, g.y * cell_y)
+		cartridge.position = center - Vector2(card_w, card_h) / 2.0
 		cartridge.size = Vector2(card_w, card_h)
 		row.add_child(cartridge)
 		_browser_cartridges.append(cartridge)
@@ -986,27 +1010,27 @@ func _show_minigame_browser() -> void:
 
 		var thumb := TextureRect.new()
 		thumb.texture = load(entry["thumb"])
-		thumb.position = Vector2(40, 40)
-		thumb.size = Vector2(338, 220)
+		thumb.position = Vector2(40, 22)
+		thumb.size = Vector2(280, 150)
 		thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		cartridge.add_child(thumb)
 
 		# Glossy screen reflection on top of the thumbnail.
 		var gloss := _make_glossy_screen(thumb.size)
-		gloss.position = Vector2(40, 40)
+		gloss.position = Vector2(40, 22)
 		cartridge.add_child(gloss)
 
 		var card_name := Label.new()
 		card_name.text = entry["name"]
-		card_name.position = Vector2(0, 200)
-		card_name.size = Vector2(card_w, 40)
+		card_name.position = Vector2(0, 178)
+		card_name.size = Vector2(card_w, 34)
 		card_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		card_name.add_theme_color_override("font_color", p["accent"])
-		card_name.add_theme_font_size_override("font_size", 40)
+		card_name.add_theme_font_size_override("font_size", 34)
 		cartridge.add_child(card_name)
 
 		var is_paid: bool = bool(entry.get("paid", false))
-		var owned: bool = is_paid and GameState.tetrino_owns_paid
+		var owned: bool = _cartridge_owned(entry)
 		var cost_text: String = "FREE"
 		var cost_color: Color = p["accent"]
 		if is_paid:
@@ -1014,11 +1038,11 @@ func _show_minigame_browser() -> void:
 			cost_color = Color(0.5, 1.0, 0.5) if owned else Color(1.0, 0.8, 0.2, 1)
 		var cost_lbl := Label.new()
 		cost_lbl.text = cost_text
-		cost_lbl.position = Vector2(0, 246)
-		cost_lbl.size = Vector2(card_w, 30)
+		cost_lbl.position = Vector2(0, 190)
+		cost_lbl.size = Vector2(card_w, 26)
 		cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cost_lbl.add_theme_color_override("font_color", cost_color)
-		cost_lbl.add_theme_font_size_override("font_size", 22)
+		cost_lbl.add_theme_font_size_override("font_size", 20)
 		cartridge.add_child(cost_lbl)
 
 	# Snap to cartridge 0 (no pan) on first show.
@@ -1087,65 +1111,98 @@ func _on_browser_navigate() -> void:
 
 
 func _select_browser_slot(dir: Vector2) -> void:
-	"""Move the selection to the next cartridge in the given direction and pan
-	the camera so the newly selected cartridge slides to center. Only moves to a
-	real cartridge: at the end of the row it does NOT wrap — it plays the
-	navigation-error sound instead of going somewhere that doesn't exist."""
+	"""Move the selection to the nearest cartridge in the given direction and
+	re-scale the grid so the newly selected one pops to full size while the
+	others shrink by grid-distance. Only moves to a real cartridge: if nothing
+	exists that way it does NOT wrap — it plays the navigation-error sound and
+	shakes the grid instead of going somewhere that doesn't exist."""
 	if _browser_cartridges.is_empty():
 		return
-	var n: int = _browser_cartridges.size()
-	var step := 0
-	if dir.x != 0.0:
-		step = -1 if dir.x < 0.0 else 1
-	else:
-		step = -1 if dir.y < 0.0 else 1
-	var new_idx: int = _browser_index + step
-	if new_idx < 0 or new_idx >= n:
+	var new_idx: int = _neighbor_in_direction(_browser_index, dir)
+	if new_idx < 0 or new_idx == _browser_index:
 		# No cartridge exists that way — nav error: error sound + shake/rebound.
 		_play_console_sfx(CONSOLE_ERROR, 0.8, 1.25)
 		_shake_browser_row(dir)
-		return
-	if new_idx == _browser_index:
 		return
 	_browser_index = new_idx
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
 	_center_browser(true)
 
 
+func _neighbor_in_direction(idx: int, dir: Vector2) -> int:
+	"""Smart-watch-app style: among the other cartridges, return the one most in
+	the pressed direction, or -1 if none exists that way. Up/Down grabs whatever
+	is generally above/below (so the TETRINO 3 copy is reached by Up from either
+	bottom cartridge), while Left/Right requires a clean horizontal neighbor so
+	the copy is never reached by pressing Left or Right."""
+	if _browser_grid.is_empty():
+		return -1
+	var from: Vector2 = _browser_grid[idx]
+	var best := -1
+	var best_score := -INF
+	for j in _browser_entries.size():
+		if j == idx:
+			continue
+		var offset: Vector2 = _browser_grid[j] - from
+		var proj: float = offset.dot(dir)
+		if proj <= 0.001:
+			continue
+		var perp: float = absf(offset.x * dir.y - offset.y * dir.x)
+		if absf(dir.x) > absf(dir.y):
+			# Horizontal press: the neighbor must be mostly horizontal.
+			if proj <= perp:
+				continue
+		var score: float = proj - perp * 0.4
+		if score > best_score:
+			best_score = score
+			best = j
+	return best
+
+
+func _browser_grid_dist(a: int, b: int) -> float:
+	"""Euclidean grid distance between two cartridges (drives the shrink scale)."""
+	if _browser_grid.is_empty():
+		return 0.0
+	return _browser_grid[a].distance_to(_browser_grid[b])
+
+
 func _shake_browser_row(dir: Vector2) -> void:
-	"""Shake the camera (the row) opposite the pressed direction, then rebound it
-	back to center — the navigation-error shake at the end of the row."""
+	"""Shake the whole grid opposite the pressed direction, then rebound it back
+	to center — the navigation-error shake when nothing exists that way."""
 	if _browser_row == null or not is_instance_valid(_browser_row):
 		return
-	var base_x: float = _browser_row.position.x
-	var nudge := 0.0
-	if dir.x != 0.0:
-		nudge = -dir.x * 16.0
-	else:
-		nudge = -dir.y * 16.0
+	var base: Vector2 = _browser_row.position
+	var nudge: Vector2 = -dir * 16.0
+	if dir == Vector2.ZERO:
+		nudge = Vector2(16, 0)
 	var tw := create_tween()
-	tw.tween_property(_browser_row, "position:x", base_x + nudge, 0.12)
+	tw.tween_property(_browser_row, "position", base + nudge, 0.12)
 	for i in 4:
 		var amp: float = 6.0 * (1.0 - float(i) / 5.0)
 		var sgn := 1.0 if i % 2 == 0 else -1.0
-		tw.tween_property(_browser_row, "position:x", base_x + nudge + sgn * amp, 0.05)
-	tw.tween_property(_browser_row, "position:x", base_x, 0.16)
+		tw.tween_property(_browser_row, "position", base + nudge + sgn * amp * dir.abs(), 0.05)
+	tw.tween_property(_browser_row, "position", base, 0.16)
 
 
 func _center_browser(animate: bool) -> void:
-	"""Pan the camera (the row container) so the selected cartridge is centered
-	on screen. When animate is true this tweens smoothly; otherwise it snaps."""
+	"""No camera pan needed — every cartridge stays on screen. The focused one is
+	full size and each other cartridge is scaled down by its grid-distance from
+	the focused one (so the farther you navigate away, the smaller it looks).
+	When animate is true the resize tweens smoothly."""
 	if _browser_row == null or _browser_cartridges.is_empty():
 		return
-	var idx: int = clampi(_browser_index, 0, _browser_cartridges.size() - 1)
-	var cart: Control = _browser_cartridges[idx]
-	var target_x: float = ROOM_W / 2.0 - (cart.position.x + cart.size.x / 2.0)
-	if animate and is_instance_valid(_browser_row):
-		var tw := create_tween()
-		tw.tween_property(_browser_row, "position:x", target_x, 0.18) \
-			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	else:
-		_browser_row.position.x = target_x
+	for i in _browser_cartridges.size():
+		var cart: Control = _browser_cartridges[i]
+		if not is_instance_valid(cart):
+			continue
+		var dist: float = _browser_grid_dist(_browser_index, i)
+		var target: float = 1.0 / (1.0 + 0.6 * dist)
+		if animate and is_instance_valid(cart):
+			var tw := create_tween()
+			tw.tween_property(cart, "scale", Vector2(target, target), 0.16) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		else:
+			cart.scale = Vector2(target, target)
 	_place_browser_highlight()
 
 
@@ -1173,6 +1230,7 @@ func _clear_browser() -> void:
 	_browser_cartridge = null
 	_browser_cartridges = []
 	_browser_entries = []
+	_browser_grid = []
 	_browser_row = null
 	_browser_highlight = null
 	_cart_shaking = false

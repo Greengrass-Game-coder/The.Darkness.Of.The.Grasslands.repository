@@ -517,3 +517,31 @@ Added a playable arcade room to the lobby.
   handout.
 - D-S19-2: Soft drop is a fixed fast rate while holding Down (real-Tetris
   behavior), separate from level-based base gravity.
+
+## Session 20 (2D smart-watch browser grid + TETRINO 3)
+### Changes
+- The cartridge browser is no longer a left/right-only horizontal row. It is now
+  a 2D grid laid out like a smart-watch app launcher, navigated with WASD
+  (Left/Right AND Up/Down).
+- Added a third cartridge, TETRINO 3, costing 3 Grass coins (permanent,
+  profile-linked purchase like TETRINO 2, shown as OWNED afterward).
+- Grid layout:
+      [TETRINO 3]        <- reached ONLY by pressing Up/Down (costs 3 coins)
+  [TETRINO] [TETRINO 2]  <- reached by Left/Right
+- Navigation is "smart-watch style": Up/Down grabs whatever is generally
+  above/below (so TETRINO 3 is reached by Up from either bottom cartridge),
+  while Left/Right only moves to a clean horizontal neighbor — so the TETRINO 3
+  copy is NEVER reachable by pressing Left/Right (pressing Left/Right while on
+  it plays the nav error + shake instead).
+- Focused cartridge is full size; every other cartridge shrinks by its
+  grid-distance from the focused one (the farther you navigate away, the smaller
+  it looks) — a subtle depth effect.
+- Purchase overlay/confirm logic generalized to any paid cartridge (uses the
+  cartridge's own name and ownership key), so TETRINO 2 and TETRINO 3 both work.
+- New persisted flag tetrino_owns_paid3 (save/load).
+### Decisions
+- D-S20-1: Grid-neighbor navigation: vertical presses are generous (grab the
+  copy diagonally), horizontal presses are strict (copy is isolated). This keeps
+  navigation simple while enforcing "the copy is only up or down".
+- D-S20-2: No camera pan — all three cartridges fit on screen, so focus is shown
+  by full-size + gold highlight, and distance by scaling.
