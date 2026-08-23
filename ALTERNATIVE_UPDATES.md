@@ -545,3 +545,19 @@ Added a playable arcade room to the lobby.
   navigation simple while enforcing "the copy is only up or down".
 - D-S20-2: No camera pan — all three cartridges fit on screen, so focus is shown
   by full-size + gold highlight, and distance by scaling.
+
+## Session 21 (camera follows the chosen cartridge)
+### Changes
+- The browser camera now FOLLOWS the player to the minigame they're about to
+  choose: as you navigate with WASD, the whole grid pans in 2D so the focused
+  cartridge slides to the center of the screen (full size + gold highlight),
+  while the other cartridges shrink by grid-distance behind/around it.
+- Previously the grid stayed fixed; now the focused cartridge is always centered
+  on screen for clarity.
+- Compacted the cartridge cards slightly and moved the Grass-coin balance badge
+  to the top-right corner so it never sits underneath a centered cartridge.
+### Decisions
+- D-S21-1: The pan target is the screen center; the grid is compact enough that
+  the focused cartridge is centered and the others remain fully visible on
+  screen (no clipping), so the "follow" reads as a smooth camera slide rather
+  than a disorienting jump.

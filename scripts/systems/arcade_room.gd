@@ -971,11 +971,11 @@ func _show_minigame_browser() -> void:
 	_browser_index = 0
 	_browser_cartridges = []
 
-	var card_w := 360.0
-	var card_h := 220.0
-	var cell_x := 400.0
-	var cell_y := 230.0
-	var grid_center := Vector2(ROOM_W / 2.0, 480.0)
+	var card_w := 340.0
+	var card_h := 180.0
+	var cell_x := 380.0
+	var cell_y := 160.0
+	var grid_center := Vector2(ROOM_W / 2.0, 400.0)
 	var row := Control.new()
 	row.name = "BrowserRow"
 	row.position = Vector2(0, 0)
@@ -1010,23 +1010,23 @@ func _show_minigame_browser() -> void:
 
 		var thumb := TextureRect.new()
 		thumb.texture = load(entry["thumb"])
-		thumb.position = Vector2(40, 22)
-		thumb.size = Vector2(280, 150)
+		thumb.position = Vector2(45, 8)
+		thumb.size = Vector2(250, 115)
 		thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		cartridge.add_child(thumb)
 
 		# Glossy screen reflection on top of the thumbnail.
 		var gloss := _make_glossy_screen(thumb.size)
-		gloss.position = Vector2(40, 22)
+		gloss.position = Vector2(45, 8)
 		cartridge.add_child(gloss)
 
 		var card_name := Label.new()
 		card_name.text = entry["name"]
-		card_name.position = Vector2(0, 178)
-		card_name.size = Vector2(card_w, 34)
+		card_name.position = Vector2(0, 126)
+		card_name.size = Vector2(card_w, 28)
 		card_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		card_name.add_theme_color_override("font_color", p["accent"])
-		card_name.add_theme_font_size_override("font_size", 34)
+		card_name.add_theme_font_size_override("font_size", 26)
 		cartridge.add_child(card_name)
 
 		var is_paid: bool = bool(entry.get("paid", false))
@@ -1038,11 +1038,11 @@ func _show_minigame_browser() -> void:
 			cost_color = Color(0.5, 1.0, 0.5) if owned else Color(1.0, 0.8, 0.2, 1)
 		var cost_lbl := Label.new()
 		cost_lbl.text = cost_text
-		cost_lbl.position = Vector2(0, 190)
-		cost_lbl.size = Vector2(card_w, 26)
+		cost_lbl.position = Vector2(0, 152)
+		cost_lbl.size = Vector2(card_w, 22)
 		cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cost_lbl.add_theme_color_override("font_color", cost_color)
-		cost_lbl.add_theme_font_size_override("font_size", 20)
+		cost_lbl.add_theme_font_size_override("font_size", 18)
 		cartridge.add_child(cost_lbl)
 
 	# Snap to cartridge 0 (no pan) on first show.
@@ -1053,17 +1053,18 @@ func _show_minigame_browser() -> void:
 	_auto_gift_if_softlocked()
 
 	# Shiny Grassconatication coin + pixelated spendable balance (earned - spent).
-	# expand/size set BEFORE the texture so it stays tiny (16x16).
+	# expand/size set BEFORE the texture so it stays tiny (16x16). Kept in the
+	# top-right corner so it never sits under a centered cartridge.
 	var coin_badge := TextureRect.new()
 	coin_badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	coin_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	coin_badge.position = Vector2(ROOM_W / 2.0 - 224, ROOM_H - 160)
+	coin_badge.position = Vector2(ROOM_W - 220, 150)
 	coin_badge.size = Vector2(44, 44)
 	coin_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	coin_badge.texture = load(COIN_TEX)
 	_ui.add_child(coin_badge)
 	_add_pixel_text(_ui, "x" + str(_coin_balance()),
-		Vector2(ROOM_W / 2.0 - 172, ROOM_H - 140), 2.0, p["accent"])
+		Vector2(ROOM_W - 172, 170), 2.0, p["accent"])
 
 	# Theme indicator (console-only setting).
 	_theme_label = Label.new()
@@ -1185,24 +1186,35 @@ func _shake_browser_row(dir: Vector2) -> void:
 
 
 func _center_browser(animate: bool) -> void:
-	"""No camera pan needed — every cartridge stays on screen. The focused one is
-	full size and each other cartridge is scaled down by its grid-distance from
-	the focused one (so the farther you navigate away, the smaller it looks).
-	When animate is true the resize tweens smoothly."""
+	"""The camera (the row) pans in 2D so the cartridge the player is about to
+	choose is centered on screen, while every other cartridge is scaled down by
+	its grid-distance from the focused one (so the farther you navigate away, the
+	smaller it looks). When animate is true the pan + resize tween smoothly."""
 	if _browser_row == null or _browser_cartridges.is_empty():
 		return
+	var idx: int = clampi(_browser_index, 0, _browser_cartridges.size() - 1)
+	var cart: Control = _browser_cartridges[idx]
+	# Center the focused cartridge on screen (its pivot is at its center, so its
+	# visual center stays at position + size/2 regardless of scale).
+	var target: Vector2 = Vector2(ROOM_W / 2.0, 400.0) - (cart.position + cart.size / 2.0)
+	if animate and is_instance_valid(_browser_row):
+		var tw := create_tween()
+		tw.tween_property(_browser_row, "position", target, 0.2) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	else:
+		_browser_row.position = target
 	for i in _browser_cartridges.size():
-		var cart: Control = _browser_cartridges[i]
-		if not is_instance_valid(cart):
+		var c: Control = _browser_cartridges[i]
+		if not is_instance_valid(c):
 			continue
 		var dist: float = _browser_grid_dist(_browser_index, i)
-		var target: float = 1.0 / (1.0 + 0.6 * dist)
-		if animate and is_instance_valid(cart):
-			var tw := create_tween()
-			tw.tween_property(cart, "scale", Vector2(target, target), 0.16) \
+		var target_scale: float = 1.0 / (1.0 + 0.6 * dist)
+		if animate and is_instance_valid(c):
+			var tw2 := create_tween()
+			tw2.tween_property(c, "scale", Vector2(target_scale, target_scale), 0.16) \
 				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		else:
-			cart.scale = Vector2(target, target)
+			c.scale = Vector2(target_scale, target_scale)
 	_place_browser_highlight()
 
 
