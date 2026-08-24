@@ -343,6 +343,7 @@ shape = SubResource("RectangleShape2D_gg")
 
 [node name="StateTimer" type="Timer" parent="." unique_id=1390959033]
 one_shot = true
+process_mode = 3
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=5643798]
 position = Vector2(-12, 1)

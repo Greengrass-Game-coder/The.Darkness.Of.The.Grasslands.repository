@@ -24,7 +24,10 @@ var running: bool = false
 
 
 func _ready() -> void:
-	process_mode = Node.PROCESS_MODE_PAUSABLE
+	# PROCESS_MODE_ALWAYS so the countdown keeps running while the pause menu is
+	# open — the game is multiplayer, so the intermission (and the match it leads
+	# into) continues for everyone even if one player pauses.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	finished.connect(_on_finished)
 
 

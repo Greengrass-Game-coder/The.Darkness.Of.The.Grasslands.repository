@@ -708,3 +708,26 @@ Added a playable arcade room to the lobby.
   room (it listens to IntermissionTimer.finished); the timer only auto-transitions
   when the player is NOT in the arcade room, so the lobby keeps its original
   jump-straight-in behavior.
+
+## Session 25c (timers keep running while paused — multiplayer integrity)
+- The intermission countdown no longer pauses with the pause menu. Because the
+  game is multiplayer, the world keeps going even if one player pauses: the
+  IntermissionTimer now uses PROCESS_MODE_ALWAYS, so it keeps counting down (and
+  can finish the intermission) while the pause menu is open.
+- Applied the same "keep running while paused" treatment to every timer that
+  keeps the match intact:
+  - MatchTimer (the round/last-man-standing clock) in game_map + game_map_test.
+  - The AI StateTimers on the survivor (Greengrass) and killer (Violentgrass)
+    controllers, so bot state keeps advancing for everyone.
+  - Cosmetic/UI timers (dialogue, font-swap, bitmap HUD timer, etc.) are
+    untouched — they still pause as normal.
+- The scripted pauses during gameplay (bonus timer, round end) still work: the
+  match clock's own `.paused` flag is unaffected by process_mode.
+- Added a safety to PauseManager: if a gameplay timer ends the match (changing
+  scene) while the pause menu is open, the pause is automatically cleared so the
+  next scene isn't left stuck paused with the overlay on screen.
+### Decisions
+- D-S25c-1: Only timers that keep the multiplayer match intact were switched to
+  PROCESS_MODE_ALWAYS; UI/cosmetic timers remain pauseable.
+- D-S25c-2: PauseManager clears the pause on scene change while paused, so a
+  match that ends behind the pause menu transitions cleanly.

@@ -9,6 +9,7 @@ script = ExtResource("1_bjyhk")
 centered = false
 
 [node name="MatchTimer" type="Timer" parent="." unique_id=415837495]
+process_mode = 3
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=1254185442]
 

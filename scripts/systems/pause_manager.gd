@@ -18,10 +18,23 @@ const MENU_SCENE_FILES: Array[String] = ["login.tscn", "start_menu.tscn"]
 var _paused: bool = false
 var _overlay: Control = null
 var _settings: Node = null
+var _pause_scene: Node = null
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+# If gameplay timers keep running while paused (multiplayer integrity) and one
+# of them ends the match (which changes scene) while the pause menu is open,
+# make sure we don't leave the next scene stuck paused with the overlay up.
+func _process(_delta: float) -> void:
+	if _paused and not is_instance_valid(_pause_scene):
+		# The scene we paused in is gone (a scene change happened while paused).
+		_resume()
+		return
+	if _paused and is_instance_valid(_pause_scene) and get_tree().current_scene != _pause_scene:
+		_resume()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -67,6 +80,7 @@ func _pause() -> void:
 	if _paused:
 		return
 	_paused = true
+	_pause_scene = get_tree().current_scene
 	_build_overlay()
 	get_tree().paused = true
 
