@@ -45,9 +45,6 @@ func _ready() -> void:
 		status_label.text = "Welcome back, %s!" % am.current_username
 		status_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3, 1))
 		loading_indicator.show()
-		# Connect to server
-		if is_instance_valid(nm) and not nm.connected:
-			nm.connect_to_server()
 		await get_tree().create_timer(0.6).timeout
 		_on_login_successful()
 		return
@@ -118,6 +115,9 @@ func _on_password_submitted(_text: String) -> void:
 
 
 func _attempt_login() -> void:
+	# Fully offline/local login — no server required (temporary until a
+	# dedicated Oracle Cloud server is set up). AuthManager handles local
+	# accounts, the admin account, reserved users, and auto-registration.
 	var username: String = username_input.text.strip_edges()
 	var password: String = password_input.text.strip_edges()
 	
@@ -126,44 +126,42 @@ func _attempt_login() -> void:
 		status_label.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
 		return
 	
-	# Save the server URL before connecting (if user changed it)
-	_save_server_url()
-	
-	status_label.text = "Connecting to server..."
+	status_label.text = "Logging in (offline mode)..."
 	status_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
 	login_button.disabled = true
 	loading_indicator.show()
 	
-	# Connect to server first if not connected
-	var nm3 = get_node("/root/NetworkManager")
-	if is_instance_valid(nm3):
-		# Apply custom server URL if entered
-		nm3.apply_custom_url(server_url_input.text.strip_edges())
-		
-		if not nm3.connected:
-			nm3.connect_to_server()
-			# Wait briefly for connection
-			await get_tree().create_timer(0.5).timeout
-		
-		if not nm3.connected:
-			status_label.text = "Could not reach server. Using offline mode."
-			status_label.add_theme_color_override("font_color", Color(1, 0.7, 0, 1))
-			# Fall back to local auth
-			var am4 = get_node("/root/AuthManager")
-			if is_instance_valid(am4) and am4.has_method("login"):
-				am4.login(username, password)
-			return
-		
-		# Send login to server
-		nm3.login(username, password)
-		# Wait for auth result
-		var result: Array = await nm3.auth_result
-		_on_auth_result(result[0], result[1], result[2])
-	else:
-		# No NetworkManager — local auth only
-		var am4 = get_node("/root/AuthManager")
-		if is_instance_valid(am4) and am4.has_method("login"):
-			am4.login(username, password)
+	var am = get_node("/root/AuthManager")
+	if not is_instance_valid(am):
+		status_label.text = "Auth system unavailable."
+		status_label.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
+		login_button.disabled = false
+		loading_indicator.hide()
+		return
+	
+	if not am.login_succeeded.is_connected(_on_local_login_success):
+		am.login_succeeded.connect(_on_local_login_success)
+	if not am.login_failed.is_connected(_on_local_login_fail):
+		am.login_failed.connect(_on_local_login_fail)
+	am.login(username, password)
+
+
+func _on_local_login_success(username: String, _is_admin: bool) -> void:
+	status_label.text = "Welcome, %s!" % username
+	status_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3, 1))
+	# Load saved data (grass coins, cartridge ownership, etc.)
+	var sm := get_node_or_null("/root/SaveManager")
+	if is_instance_valid(sm) and sm.has_method("autoload"):
+		sm.autoload(username)
+	await get_tree().create_timer(0.6).timeout
+	_on_login_successful()
+
+
+func _on_local_login_fail(reason: String) -> void:
+	status_label.text = reason
+	status_label.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))
+	login_button.disabled = false
+	loading_indicator.hide()
 
 
 func _on_auth_result(success: bool, username: String, error_msg: String) -> void:

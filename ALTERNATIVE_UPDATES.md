@@ -835,3 +835,15 @@ Re-exported and signed the Android APK with the new controls.
 - Re-exported + manually signed the APK with all fixes.
 - D-S27-1: INTERNET permission is mandatory for online login; it was silently off.
 - D-S27-2: `keep` aspect + centered UI gives a clean letterboxed phone experience.
+
+## Session 28 — Fully offline/local login (temporary until Oracle Cloud server)
+- Dropped pinggy. Login is now **100% local/offline**: no server connection attempt,
+  no tunnel dependency. `AuthManager` handles local accounts, the admin account
+  (Greengrass), reserved users, and auto-registration directly on the device.
+- The login screen no longer waits on or fails due to a server — it just uses local
+  auth and loads the player's saved data (coins, cartridge ownership, gifts).
+- Online/multiplayer code is left intact (guarded by `if not connected`), so the game
+  stays playable solo and the online path can be re-enabled when the Oracle Cloud
+  server is ready.
+- Rebuilt + signed the Android APK with offline login.
+- D-S28-1: Local auth is primary; no server round-trip for login.
