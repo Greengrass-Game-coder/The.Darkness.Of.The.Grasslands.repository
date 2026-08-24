@@ -34,6 +34,8 @@ var player_info: Dictionary = {"name": "Player"}
 
 ## Roster: peer_id -> player_info dictionary.
 var players: Dictionary = {}
+## Display name of this server (hosts only). Stored alongside the roster.
+var server_display_name: String = ""
 
 ## The reachable "ip:port" address other peers use to join this host. Populated
 ## automatically by host()/host_auto(); never shown to the user.
@@ -65,6 +67,7 @@ func host(port: int = DEFAULT_PORT, max_players: int = 0, server_name: String = 
 		max_players = MAX_PLAYERS
 	if not server_name.is_empty():
 		player_info["name"] = server_name
+	self.server_display_name = server_name
 	var peer: ENetMultiplayerPeer = ENetMultiplayerPeer.new()
 	var err: Error = peer.create_server(port, max_players)
 	if err != OK:
@@ -88,6 +91,7 @@ func host_auto(max_players: int = 0, server_name: String = "") -> Error:
 		max_players = MAX_PLAYERS
 	if not server_name.is_empty():
 		player_info["name"] = server_name
+	self.server_display_name = server_name
 	for port: int in range(DEFAULT_PORT, DEFAULT_PORT + 24):
 		var peer: ENetMultiplayerPeer = ENetMultiplayerPeer.new()
 		var err: Error = peer.create_server(port, max_players)
@@ -242,6 +246,18 @@ func _on_connected_to_server() -> void:
 func _on_peer_disconnected(peer_id: int) -> void:
 	players.erase(peer_id)
 	peer_left.emit(peer_id)
+
+
+## Host: forcibly disconnect a peer and drop them from the roster. Used by the
+## private server panel. Ignored on clients or for the host's own id.
+func kick_player(peer_id: int) -> void:
+	if not is_host or peer_id == unique_id:
+		return
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+	players.erase(peer_id)
+	peer_left.emit(peer_id)
+	print("P2PManager: Kicked peer %d" % peer_id)
 
 
 func _on_connection_failed() -> void:

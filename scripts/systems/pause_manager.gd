@@ -11,6 +11,7 @@ extends Node
 
 const SETTINGS_SCENE := "res://scenes/settings_layer.tscn"
 const START_MENU_SCENE := "res://scenes/start_menu.tscn"
+const SERVER_PANEL_SCENE := "res://scenes/server_panel.tscn"
 
 # Pure menu scenes handle their own Esc/cancel, so the global pause ignores them.
 const MENU_SCENE_FILES: Array[String] = ["login.tscn", "start_menu.tscn"]
@@ -18,6 +19,7 @@ const MENU_SCENE_FILES: Array[String] = ["login.tscn", "start_menu.tscn"]
 var _paused: bool = false
 var _overlay: Control = null
 var _settings: Node = null
+var _server_panel: Control = null
 var _pause_scene: Node = null
 
 
@@ -94,6 +96,16 @@ func _resume() -> void:
 	if _settings:
 		_settings.queue_free()
 		_settings = null
+	if _server_panel:
+		_server_panel.queue_free()
+		_server_panel = null
+
+
+## Public: unpause if we're currently paused. Used e.g. by the server panel's
+## "Restart Round" so the reload doesn't start a fresh match while still paused.
+func resume() -> void:
+	if _paused:
+		_resume()
 
 
 func _build_overlay() -> void:
@@ -126,6 +138,8 @@ func _build_overlay() -> void:
 
 	_add_menu_button(menu, "Resume", _resume)
 	_add_menu_button(menu, "Settings", _open_settings)
+	if _can_use_server_panel():
+		_add_menu_button(menu, "Server Panel", _open_server_panel)
 	_add_menu_button(menu, "Quit to Main Menu", _quit_to_menu)
 
 	# Focus the first button so a gamepad can navigate the menu immediately.
@@ -150,6 +164,23 @@ func _open_settings() -> void:
 		_settings.process_mode = Node.PROCESS_MODE_ALWAYS
 		get_tree().root.add_child(_settings)
 	_settings.open()
+
+
+## The private server panel is available to the host of an active multiplayer
+## session, and to a solo player (no active session = owner of their own game).
+func _can_use_server_panel() -> bool:
+	var p2p: Node = get_node_or_null("/root/P2PManager")
+	if p2p != null and p2p.get("is_active"):
+		return bool(p2p.get("is_host"))
+	return true
+
+
+func _open_server_panel() -> void:
+	if _server_panel == null:
+		var packed: PackedScene = load(SERVER_PANEL_SCENE)
+		_server_panel = packed.instantiate()
+		_server_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+		get_tree().root.add_child(_server_panel)
 
 
 func _quit_to_menu() -> void:

@@ -731,3 +731,28 @@ Added a playable arcade room to the lobby.
   PROCESS_MODE_ALWAYS; UI/cosmetic timers remain pauseable.
 - D-S25c-2: PauseManager clears the pause on scene change while paused, so a
   match that ends behind the pause menu transitions cleanly.
+
+## Session 25d (AI freezes on local pause; private server panel)
+- The killer/survivor AI StateTimers were reverted from "always" back to
+  "pausable": when you open the pause menu the AI now fully freezes (its state
+  timers AND its physics). During normal/multiplayer play the AI still ticks as
+  usual — the freeze only happens while the pause menu has the tree paused.
+  (The match clock and intermission stay "always" per the multiplayer-integrity
+  requests.)
+- Added a PRIVATE SERVER PANEL (host / solo only). It's a button in the pause
+  menu ("Server Panel") and opens a tabbed panel with:
+  - Match: read/set the round clock (+/- 30s, set exact time), end the round,
+    restart the round.
+  - Players: live list of connected peers with Kick buttons (host only).
+  - AI: killer difficulty floor slider + spawn killer/survivor bots.
+  - Server: set the server name, broadcast a message to all players.
+  - Values: live tweaks (money, player rings, match time).
+- Added P2PManager.kick_player() (host only) and server_display_name.
+- Cosmetic/UI timers are untouched; the pause overlay UI overlap seen on screen
+  is pre-existing and unrelated.
+### Decisions
+- D-S25d-1: The AI freeze is scoped to the local pause menu only; the match
+  clock and intermission remain PROCESS_MODE_ALWAYS for multiplayer integrity.
+- D-S25d-2: The server panel is host-or-solo gated (active session requires the
+  host; no session = solo owner). The Tetrino coin/unlock economy is local
+  per-profile and anti-cheat gated, so it is intentionally NOT in the panel.

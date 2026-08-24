@@ -197,7 +197,6 @@ shape = SubResource("RectangleShape2D_vg")
 
 [node name="StateTimer" type="Timer" parent="." unique_id=2046478376]
 one_shot = true
-process_mode = 3
 
 [node name="AbilityVFX" type="AnimatedSprite2D" parent="." unique_id=545769201]
 z_index = 100
