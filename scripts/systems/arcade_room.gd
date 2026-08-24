@@ -837,23 +837,9 @@ func _spend_coins(n: int) -> void:
 
 
 func _is_softlocked() -> bool:
-	"""True when the player harvested Grass coins but wasted them all and is now
-	stuck with 0 spendable coins and no way to earn more (soft-locked)."""
-	if _coin_balance() > 0:
-		return false
-	# Must have harvested coins at some point — otherwise it's just a fresh
-	# player who hasn't earned anything yet, not a soft-lock.
-	if GameState.tetrino_coins_earned <= 0:
-		return false
-	# Only "stuck" if they can't earn any more right now.
-	var now := _now_sec()
-	if not _daily_available(now):
-		return true
-	if GameState.tetrino_gambled:
-		return true
-	# Normal earning caps at 2 coins; at the cap they can't harvest more.
-	if GameState.tetrino_coins_earned >= 2:
-		return true
+	"""Coins are farmable (every win earns one, no lifetime cap), so a player can
+	always earn more by playing — there is no soft-lock. Kept as a method for
+	compatibility with the anti-softlock gift call site."""
 	return false
 
 
@@ -2340,8 +2326,9 @@ func _detect_time_tamper(now: int) -> void:
 
 
 func _daily_available(now: int) -> bool:
-	"""Can this player earn a coin from Tetrino right now? Admins are unlimited;
-	everyone else gets one coin-earning opportunity per calendar day."""
+	"""Is the daily hard-mode gamble available right now? Admins are unlimited;
+	everyone else gets one gamble opportunity per calendar day. (Normal win
+	farming is NOT gated by this — it's always available.)"""
 	if GameState.is_admin:
 		return true
 	if GameState.tetrino_time_penalty_until > 0 and now < GameState.tetrino_time_penalty_until:
@@ -2359,27 +2346,27 @@ func _save_tetrino_state() -> void:
 
 
 func _resolve_win_reward() -> int:
-	"""Apply the confirmed coin rules on a win and return how many coins were
-	awarded this run (0..3). Updates GameState and persists."""
+	"""Farmable coin rules. Every win (objective met) earns 1 Grass coin — no
+	lifetime cap and no daily gate, so coins are genuinely farmable. The daily
+	hard-mode gamble is a bonus that pays a 2nd coin for that run. Returns coins
+	awarded this run (1 or 2). Updates GameState and persists."""
 	var now := _now_sec()
 	_detect_time_tamper(now)
+	# Each new day resets the daily gamble so it's available once per day.
+	if _daily_available(now):
+		GameState.tetrino_gambled = false
 	var awarded := 0
-	if _daily_available(now) and not GameState.tetrino_gambled:
-		var coins: int = GameState.tetrino_coins_earned
-		if _hard_mode:
-			# Gamble: a hard-mode win guarantees 3 coins total.
-			if coins < 3:
-				awarded = 3 - coins
-				GameState.tetrino_coins_earned = 3
-			GameState.tetrino_gambled = true
-			GameState.tetrino_last_coin_time = now
-		elif coins < 2:
-			# Normal: 1st win → 1 coin, 2nd win → 2 (cap at 2).
-			awarded = 1
-			GameState.tetrino_coins_earned = coins + 1
-			GameState.tetrino_last_coin_time = now
-	elif _hard_mode:
+	if _hard_mode and not GameState.tetrino_gambled:
+		# Gamble: hard-mode win pays the base coin + a bonus = 2 coins this run.
+		awarded = 2
+		GameState.tetrino_coins_earned += 2
 		GameState.tetrino_gambled = true
+		GameState.tetrino_last_coin_time = now
+	else:
+		# Normal farm: every win is 1 coin, repeatable, no cap.
+		awarded = 1
+		GameState.tetrino_coins_earned += 1
+		GameState.tetrino_last_coin_time = now
 	if awarded > 0:
 		GameState.add_money(awarded)
 		_save_tetrino_state()
@@ -2387,10 +2374,8 @@ func _resolve_win_reward() -> int:
 
 
 func _on_gamble_lost() -> void:
-	"""Lost the hard-mode gamble: drop to just the first coin and lock further
-	earning (no 2nd coin) as a fair punishment."""
-	if GameState.tetrino_coins_earned > 1:
-		GameState.tetrino_coins_earned = 1
+	"""Lost the hard-mode gamble: you keep the coins you farmed, but lose the
+	day's bonus-coin opportunity (the gamble is used up for today)."""
 	GameState.tetrino_gambled = true
 	_save_tetrino_state()
 
@@ -2453,8 +2438,7 @@ func _show_win() -> void:
 	complete.play()
 
 	var awarded := _resolve_win_reward()
-	var can_gamble: bool = _daily_available(_now_sec()) \
-		and GameState.tetrino_coins_earned == 1 and not GameState.tetrino_gambled
+	var can_gamble: bool = _daily_available(_now_sec()) and not GameState.tetrino_gambled
 	var p := _palette()
 
 	var ov := ColorRect.new()
@@ -2515,7 +2499,7 @@ func _show_win() -> void:
 	var prompt := Label.new()
 	var lines: Array = ["Press [ENTER] to play again"]
 	if can_gamble:
-		lines.append("Press [G] to GAMBLE — HARD MODE (3 coins on win)")
+		lines.append("Press [G] to GAMBLE — HARD MODE (2 coins on win)")
 	prompt.text = "\n".join(lines)
 	prompt.position = Vector2(0, 440)
 	prompt.size = Vector2(ROOM_W, 90)
@@ -2529,8 +2513,7 @@ func _handle_win_input() -> void:
 	"""On the win screen: G starts the hard-mode gamble run (when available)."""
 	var g := InputSystem.is_pressed("gamble")
 	if g and not _g_was_down:
-		if _daily_available(_now_sec()) and GameState.tetrino_coins_earned == 1 \
-				and not GameState.tetrino_gambled:
+		if _daily_available(_now_sec()) and not GameState.tetrino_gambled:
 			_hard_mode = true
 			_start_tetrino_game()
 	_g_was_down = g

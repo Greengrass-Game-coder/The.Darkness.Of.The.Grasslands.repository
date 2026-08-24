@@ -756,3 +756,25 @@ Added a playable arcade room to the lobby.
 - D-S25d-2: The server panel is host-or-solo gated (active session requires the
   host; no session = solo owner). The Tetrino coin/unlock economy is local
   per-profile and anti-cheat gated, so it is intentionally NOT in the panel.
+
+## Session 25e (Tetrino coins are now genuinely farmable)
+- Made the Tetrino Grass-coin economy farmable (removed the lifetime cap and
+  the daily gate on normal wins), so focusing on the console and winning the
+  minigame repeatedly actually earns coins.
+- New rules:
+  - Every WIN (clear 10 lines / the objective) = +1 Grass coin. Repeatable,
+    no lifetime cap, no daily limit. The "limit" is per run: you get exactly 1
+    coin per normal win.
+  - The 2nd coin comes from the daily HARD-MODE GAMBLE: on a win you're offered
+    "play again (normal)" or "G to GAMBLE (hard mode)". Winning a gamble run
+    pays 2 coins for that run. Losing the gamble keeps the coins you farmed but
+    uses up the day's gamble.
+  - The gamble resets each new calendar day (was a permanent one-time flag
+    before), so it's a daily bonus on top of normal farming.
+  - Removed the now-obsolete "earned caps at 2 / gamble sets to 3" logic and the
+    anti-softlock gift (no soft-lock exists when coins are farmable).
+### Decisions
+- D-S25e-1: "Genuinely farmable" = every win earns 1 coin with no lifetime cap.
+  "Limits also apply" = 1 coin per win, and the bonus 2nd coin is the daily
+  gamble. This matches the user's description (farm 1 from finishing a
+  minigame; 2nd coin by beating again with the objective OR the daily gamble).
