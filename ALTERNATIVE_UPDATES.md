@@ -819,3 +819,19 @@ screen size via anchors. Works on Android AND iOS (pure Godot input synthesis).
 Re-exported and signed the Android APK with the new controls.
 - D-S26-1: Overlay only shown while a touch device is active (is_touch()).
 - D-S26-2: On-screen buttons reuse existing InputSystem actions (no new logic).
+
+## Session 27 — Android compatibility + satisfaction fixes
+- **CRITICAL login fix**: the Android export had `permissions/internet=false`, so the APK had
+  NO INTERNET permission — the phone could never reach the server, which is why login failed.
+  Enabled it. Verified `android.permission.INTERNET` now in the built manifest.
+- **HD app icon**: replaced the tiny 64×64 SVG with a crisp 512×512 PNG (`icon512.png`,
+  dark theme + DG monogram). Android now generates proper adaptive launcher icons at every
+  density (hdpi/mdpi/xhdpi/...).
+- **Resolution/centering**: switched `window/stretch/aspect` from `expand` to `keep`
+  (letterboxes cleanly, no distortion on phone screens) and re-anchored the login screen
+  (title + login card) to the center so it's centered on any screen.
+- **Orientation**: forced the Android app to **landscape** so a phone held either way shows
+  the game properly instead of in a broken portrait view.
+- Re-exported + manually signed the APK with all fixes.
+- D-S27-1: INTERNET permission is mandatory for online login; it was silently off.
+- D-S27-2: `keep` aspect + centered UI gives a clean letterboxed phone experience.

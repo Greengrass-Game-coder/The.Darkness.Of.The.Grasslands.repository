@@ -20,7 +20,7 @@ privateKey="e548805c4c6a8ce6"
 config/name="The Darkness Of The Grasslands"
 run/main_scene="res://scenes/login.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
-config/icon="res://icon.svg"
+config/icon="res://icon512.png"
 
 [autoload]
 
@@ -45,7 +45,6 @@ TouchControls="*res://scripts/systems/touch_controls.gd"
 window/size/viewport_width="1280"
 window/size/viewport_height="768"
 window/stretch/mode="canvas_items"
-window/stretch/aspect="expand"
 
 [editor_plugins]
 
