@@ -605,12 +605,17 @@ func _physics_process(delta: float) -> void:
 	# G opens the gift picker from the purchase screen, and denies a gift from
 	# the inbox prompt. (Reuses the "gamble" action, which is only used on the
 	# Tetrino win screen and is otherwise free.)
+	# G also opens the gift picker straight from the browser for any PAID
+	# cartridge — so a gifter who already owns the game can still buy it for a
+	# friend.
 	var g_down := InputSystem.is_pressed("gamble")
 	if g_down and not _g_was_down:
 		if _purchase_confirm and not _gift_active:
 			_open_gift_picker()
 		elif _gift_inbox_active:
 			_deny_gift()
+		elif _browser_active and _selected_is_paid() and not _gift_active:
+			_open_gift_picker()
 	_g_was_down = g_down
 
 	# Gift recipient picker: up/down moves the highlight, Enter picks (handled
@@ -841,6 +846,14 @@ func _selected_owned_key() -> String:
 	return str(_browser_entries[clampi(_browser_index, 0, _browser_entries.size() - 1)].get("owned_key", ""))
 
 
+## True when the currently selected cartridge is a paid one — regardless of
+## whether the player already owns it. Lets an owner still gift it to a friend.
+func _selected_is_paid() -> bool:
+	if _browser_entries.is_empty():
+		return false
+	return int(_browser_entries[clampi(_browser_index, 0, _browser_entries.size() - 1)].get("cost", 0)) > 0
+
+
 ## Build the list of giftable recipients: local profiles + online peers who
 ## don't already own the selected cartridge (self excluded).
 func _build_gift_friends() -> void:
@@ -870,7 +883,7 @@ func _build_gift_friends() -> void:
 
 
 func _open_gift_picker() -> void:
-	if not _purchase_confirm or _gift_active:
+	if _gift_active:
 		return
 	_build_gift_friends()
 	if _gift_friends.is_empty():
@@ -963,8 +976,12 @@ func _confirm_gift() -> void:
 	else:
 		GiftSystem.offer_online(int(friend["peer"]), AuthManager.current_username, cart_name)
 	_gift_active = false
+	if _gift_overlay != null and is_instance_valid(_gift_overlay):
+		_gift_overlay.queue_free()
 	_gift_overlay = null
-	_cancel_purchase()  # rebuilds the browser (clears purchase + picker)
+	if _purchase_confirm:
+		_cancel_purchase()  # rebuilds the browser (clears purchase + picker)
+	# Gifting an already-owned game stays on the browser — just close the picker.
 	_show_browser_notice("GIFTED %s → %s" % [cart_name, friend["name"]], Color(0.4, 1.0, 0.6))
 
 
@@ -1500,13 +1517,15 @@ func _show_minigame_browser() -> void:
 	_update_theme_label()
 
 	var hint := Label.new()
-	hint.text = "WASD  navigate   •   T  display   •   ENTER  play   •   ESC  leave"
+	hint.name = "BrowserHint"
+	hint.text = ""
 	hint.position = Vector2(0, ROOM_H - 80)
 	hint.size = Vector2(ROOM_W, 30)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_color_override("font_color", p["text_dim"])
 	hint.add_theme_font_size_override("font_size", 18)
 	_ui.add_child(hint)
+	_refresh_browser_hint()
 
 	# The console is now on: start the 140 BPM navigation music and sync actions
 	# to its beats.
@@ -1529,6 +1548,21 @@ func _on_browser_navigate() -> void:
 	_pending_action = _select_browser_slot.bind(dir)
 
 
+## Refresh the one-line control hint at the bottom of the browser. It adds a
+## "[G] GIFT to a friend" hint whenever a PAID cartridge (owned or not) is
+## selected, so an owner knows they can still gift it.
+func _refresh_browser_hint() -> void:
+	if not _browser_active or not is_instance_valid(_ui):
+		return
+	var hint: Label = _ui.get_node_or_null("BrowserHint")
+	if hint == null:
+		return
+	var text: String = "WASD  navigate   •   T  display   •   ENTER  play   •   ESC  leave"
+	if _selected_is_paid():
+		text += "   •   G  GIFT to a friend"
+	hint.text = text
+
+
 func _select_browser_slot(dir: Vector2) -> void:
 	"""Move the selection to the nearest cartridge in the given direction and
 	re-scale the grid so the newly selected one pops to full size while the
@@ -1546,6 +1580,7 @@ func _select_browser_slot(dir: Vector2) -> void:
 	_browser_index = new_idx
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
 	_center_browser(true)
+	_refresh_browser_hint()
 
 
 func _neighbor_in_direction(idx: int, dir: Vector2) -> int:
