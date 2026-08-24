@@ -38,6 +38,7 @@ InputSystem="*res://scripts/systems/input_system.gd"
 PauseManager="*res://scripts/systems/pause_manager.gd"
 IntermissionTimer="*res://scripts/systems/intermission_timer.gd"
 GiftSystem="*res://scripts/systems/gift_system.gd"
+TouchControls="*res://scripts/systems/touch_controls.gd"
 
 [display]
 
@@ -76,6 +77,7 @@ common/physics_interpolation="true"
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
 
 [run]
 

@@ -807,3 +807,15 @@ Added a playable arcade room to the lobby.
   cases.
 - D-S25f-3: A "testbuddy" local profile was created to verify gifting. It and
   any other test data will be deleted once the user confirms testing is done.
+
+## Session 26 — Touch controls (controller + Android + iOS compatible)
+Added a `TouchControls` autoload (`scripts/systems/touch_controls.gd`) that shows
+an on-screen **virtual joystick + action buttons** whenever a touch screen is in
+use (`InputSystem.is_touch()`). The overlay feeds the exact same rebindable
+input actions as keyboard/controller (move_*, confirm, cancel, sprint, pause,
+tetris_rotate, tetris_harddrop), so phones play identically with zero gameplay
+changes. It auto-hides when a controller/keyboard is connected and adapts to any
+screen size via anchors. Works on Android AND iOS (pure Godot input synthesis).
+Re-exported and signed the Android APK with the new controls.
+- D-S26-1: Overlay only shown while a touch device is active (is_touch()).
+- D-S26-2: On-screen buttons reuse existing InputSystem actions (no new logic).
