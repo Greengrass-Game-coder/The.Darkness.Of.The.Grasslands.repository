@@ -16,6 +16,7 @@ signal ticked(seconds_left: int)
 signal finished
 
 const GAME_MAP_SCENE := "res://scenes/game_map.tscn"
+const ARCADE_ROOM_SCENE := "res://scenes/arcade_room.tscn"
 
 var duration: float = 60.0
 var time_remaining: float = 60.0
@@ -61,4 +62,10 @@ func _on_finished() -> void:
 		var sm := get_node_or_null("/root/SaveManager")
 		if is_instance_valid(sm) and sm.has_method("autosave"):
 			sm.autosave(GameState.logged_in_username)
+	# If the player is in the arcade room, don't yank them out mid-arcade: the
+	# room listens to `finished` and offers a JOIN / KEEP PLAYING choice instead
+	# of auto-transitioning.
+	var scene := get_tree().current_scene
+	if scene != null and scene.scene_file_path == ARCADE_ROOM_SCENE:
+		return
 	get_tree().change_scene_to_file(GAME_MAP_SCENE)

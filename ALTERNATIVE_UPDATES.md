@@ -685,3 +685,26 @@ Added a playable arcade room to the lobby.
 - D-S25-2: The old CountdownTimer node's autostart was disabled (both lobby and
   lobby_test scenes) so it no longer double-drives the countdown; the shared
   timer is the single source of truth.
+
+## Session 25b (intermission-end heads-up in the console)
+- When the intermission ends while the player is in the arcade room, the game no
+  longer teleports them straight into the match. Instead a small heads-up panel
+  appears: "A MATCH JUST STARTED!" with two choices — JOIN MATCH and
+  KEEP PLAYING.
+- JOIN MATCH leaves the console and goes to the game map (progress is autosaved
+  by the IntermissionTimer as before).
+- KEEP PLAYING dismisses the heads-up and leaves the player free to continue on
+  the console (the intermission countdown label hides, since the intermission
+  is over).
+- The panel is controller/keyboard friendly: JOIN is focused by default, you move
+  between the two buttons with left/right (D-pad / arrow keys) and activate with
+  Enter/A; Esc/B also means "keep playing".
+- The IntermissionTimer autoload now checks whether the current scene is the
+  arcade room before auto-transitioning — if so it lets the room offer the
+  choice instead of forcing the scene change. Lobby behavior is unchanged (still
+  transitions immediately at zero).
+### Decisions
+- D-S25b-1: The "intermission over" choice is handled entirely inside the arcade
+  room (it listens to IntermissionTimer.finished); the timer only auto-transitions
+  when the player is NOT in the arcade room, so the lobby keeps its original
+  jump-straight-in behavior.

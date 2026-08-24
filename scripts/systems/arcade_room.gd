@@ -81,6 +81,7 @@ const PIX_FONT: Dictionary = {
 	"c": [".....", ".....", ".###.", "#...#", "#....", "#...#", ".###."],
 }
 const LOBBY_SCENE: String = "res://scenes/lobby.tscn"
+const GAME_MAP_SCENE: String = "res://scenes/game_map.tscn"
 const WALK_DIR: String = "res://The Darkness Of The Grasslands assets/Sprites/Lobby person (Player(s))/Walk directions/Lobby person ---- Lobby -AKA- spectator/"
 const FRONT_DIR: String = WALK_DIR + "Front (from human prespective - DOWN)/"
 const BACK_DIR: String = WALK_DIR + "Back (from human prespective - UP)/"
@@ -111,6 +112,8 @@ var _machine_area: Area2D = null
 var _machine_prompt: Label = null
 var _ui: CanvasLayer = null
 var _intermission_label: Label = null
+var _intermission_prompt: Control = null
+var _intermission_prompt_active: bool = false
 var _boot_active: bool = false
 var _browser_active: bool = false   # Minigame browser (list of cartridges)
 var _menu_active: bool = false      # A specific minigame's title/menu is showing
@@ -428,6 +431,8 @@ func _build_intermission_notification() -> void:
 	_ui.add_child(_intermission_label)
 	if not IntermissionTimer.ticked.is_connected(_on_intermission_ticked):
 		IntermissionTimer.ticked.connect(_on_intermission_ticked)
+	if not IntermissionTimer.finished.is_connected(_on_intermission_finished):
+		IntermissionTimer.finished.connect(_on_intermission_finished)
 	_update_intermission_label()
 
 
@@ -443,10 +448,123 @@ func _on_intermission_ticked(_seconds_left: int) -> void:
 	_update_intermission_label()
 
 
+# ── Intermission-finished: JOIN / KEEP PLAYING choice ──────────────────
+#
+# When the intermission ends while the player is in the console, we don't
+# teleport them into the match. Instead we surface a little heads-up and let
+# them join the match or keep playing on the console.
+
+func _on_intermission_finished() -> void:
+	_update_intermission_label()  # countdown is over, hide the label
+	_show_intermission_prompt()
+
+
+func _show_intermission_prompt() -> void:
+	if _intermission_prompt_active:
+		return
+	_intermission_prompt_active = true
+
+	var panel := Panel.new()
+	panel.name = "IntermissionPrompt"
+	panel.size = Vector2(560, 200)
+	panel.position = Vector2((ROOM_W - 560) / 2.0, (ROOM_H - 200) / 2.0)
+	panel.add_theme_stylebox_override("panel", _prompt_panel_style())
+	_ui.add_child(panel)
+	_intermission_prompt = panel
+
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 24
+	box.offset_right = -24
+	box.offset_top = 20
+	box.offset_bottom = -20
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 14)
+	panel.add_child(box)
+
+	var title := Label.new()
+	title.text = "A MATCH JUST STARTED!"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(1.0, 1.0, 0.55))
+	box.add_child(title)
+
+	var sub := Label.new()
+	sub.text = "The intermission is over. Join the match, or keep playing on the console."
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sub.add_theme_font_size_override("font_size", 16)
+	sub.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+	box.add_child(sub)
+
+	var hbox := HBoxContainer.new()
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 24)
+	box.add_child(hbox)
+
+	var join_btn := Button.new()
+	join_btn.name = "JoinMatchButton"
+	join_btn.text = "JOIN MATCH"
+	join_btn.custom_minimum_size = Vector2(200, 46)
+	join_btn.add_theme_font_size_override("font_size", 20)
+	join_btn.pressed.connect(_join_match_from_prompt)
+	hbox.add_child(join_btn)
+
+	var keep_btn := Button.new()
+	keep_btn.name = "KeepPlayingButton"
+	keep_btn.text = "KEEP PLAYING"
+	keep_btn.custom_minimum_size = Vector2(200, 46)
+	keep_btn.add_theme_font_size_override("font_size", 20)
+	keep_btn.pressed.connect(_keep_playing_from_prompt)
+	hbox.add_child(keep_btn)
+
+	# Default to JOIN focused; left/right (D-pad / arrows) moves between the
+	# two buttons and Enter/A activates the focused one (via Godot's ui_*).
+	join_btn.grab_focus()
+
+
+func _prompt_panel_style() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.05, 0.08, 0.97)
+	sb.border_color = Color(0.35, 1.0, 1.0, 0.9)
+	sb.set_border_width_all(3)
+	sb.set_corner_radius_all(8)
+	return sb
+
+
+func _join_match_from_prompt() -> void:
+	_hide_intermission_prompt()
+	get_tree().change_scene_to_file(GAME_MAP_SCENE)
+
+
+func _keep_playing_from_prompt() -> void:
+	_hide_intermission_prompt()
+
+
+func _hide_intermission_prompt() -> void:
+	_intermission_prompt_active = false
+	if is_instance_valid(_intermission_prompt):
+		_intermission_prompt.queue_free()
+	_intermission_prompt = null
+
+
 # ═══════════════ PLAYER CONTROL ═══════════════
 
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(_player):
+		return
+
+	# While the "A match just started!" prompt is up, freeze the player and only
+	# let Esc/B mean "keep playing" (JOIN is handled by the focused button).
+	# Everything else is handled by the prompt's own buttons.
+	if _intermission_prompt_active:
+		_player.velocity = Vector2.ZERO
+		if is_instance_valid(_sprite):
+			_sprite.animation = _idle_anim
+		var esc_p := InputSystem.is_pressed("cancel")
+		if esc_p and not _esc_was_down:
+			_keep_playing_from_prompt()
+		_esc_was_down = esc_p
 		return
 
 	# Edge-detected input (interact / cancel), driven by the InputSystem so it
