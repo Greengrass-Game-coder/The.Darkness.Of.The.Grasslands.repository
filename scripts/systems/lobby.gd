@@ -102,10 +102,15 @@ const NOTIF_FOCUS_IN = NOTIFICATION_WM_WINDOW_FOCUS_IN
 
 
 func _ready() -> void:
-	_time_remaining = countdown_duration
+	# The intermission countdown lives in the IntermissionTimer autoload so it
+	# keeps ticking while the player steps into the arcade room (a scene change)
+	# instead of silently resetting. Only start it when no intermission is
+	# already running (returning from the arcade room keeps the same timer).
+	if not IntermissionTimer.running:
+		IntermissionTimer.start(countdown_duration)
+	IntermissionTimer.ticked.connect(_on_intermission_ticked)
 	_replace_labels_with_bitmap()
 	_update_label()
-	timer.start(1.0)
 	
 	# Make music loop using finished signal (works on any AudioStream type)
 	lobby_music.finished.connect(_on_music_finished)
@@ -1157,11 +1162,15 @@ func _on_countdown_timer_timeout() -> void:
 
 
 func _update_label() -> void:
-	var seconds: int = ceili(_time_remaining)
+	var seconds: int = IntermissionTimer.seconds_left()
 	var txt: String = "Intermission: %d left." % seconds
 	countdown_label.text = txt
 	if is_instance_valid(_bitmap_countdown):
 		_bitmap_countdown.label_text = txt
+
+
+func _on_intermission_ticked(_seconds_left: int) -> void:
+	_update_label()
 
 
 # ------------------ Animation ------------------

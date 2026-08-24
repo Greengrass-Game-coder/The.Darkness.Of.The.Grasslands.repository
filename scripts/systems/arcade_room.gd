@@ -110,6 +110,7 @@ var _sprite: AnimatedSprite2D = null
 var _machine_area: Area2D = null
 var _machine_prompt: Label = null
 var _ui: CanvasLayer = null
+var _intermission_label: Label = null
 var _boot_active: bool = false
 var _browser_active: bool = false   # Minigame browser (list of cartridges)
 var _menu_active: bool = false      # A specific minigame's title/menu is showing
@@ -406,6 +407,40 @@ func _build_ui() -> void:
 	_ui.name = "ArcadeUI"
 	_ui.layer = 50
 	add_child(_ui)
+	_build_intermission_notification()
+
+
+# ═══════════════ INTERMISSION NOTIFICATION ═══════════════
+#
+# A small top-left notice that mirrors the lobby's intermission countdown. It
+# reads from the IntermissionTimer autoload so it stays in sync with the lobby
+# (the timer keeps running across the scene change) instead of resetting.
+
+func _build_intermission_notification() -> void:
+	_intermission_label = Label.new()
+	_intermission_label.name = "IntermissionLabel"
+	_intermission_label.position = Vector2(24, 20)
+	_intermission_label.size = Vector2(420, 32)
+	_intermission_label.add_theme_font_size_override("font_size", 20)
+	_intermission_label.add_theme_color_override("font_color", Color(0.6, 1.0, 1.0))
+	_intermission_label.add_theme_constant_override("outline_size", 4)
+	_intermission_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_ui.add_child(_intermission_label)
+	if not IntermissionTimer.ticked.is_connected(_on_intermission_ticked):
+		IntermissionTimer.ticked.connect(_on_intermission_ticked)
+	_update_intermission_label()
+
+
+func _update_intermission_label() -> void:
+	if not is_instance_valid(_intermission_label):
+		return
+	_intermission_label.visible = IntermissionTimer.running
+	if IntermissionTimer.running:
+		_intermission_label.text = "Intermission: %d left." % IntermissionTimer.seconds_left()
+
+
+func _on_intermission_ticked(_seconds_left: int) -> void:
+	_update_intermission_label()
 
 
 # ═══════════════ PLAYER CONTROL ═══════════════

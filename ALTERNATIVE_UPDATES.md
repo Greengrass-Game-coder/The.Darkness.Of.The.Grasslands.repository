@@ -663,3 +663,25 @@ Added a playable arcade room to the lobby.
 - D-S24b-1: "running on a phone" (is_phone, a capability) is separate from
   "player touching the screen" (is_touch / current_device), so a phone with a
   gamepad connected is still detected correctly.
+
+## Session 25 (intermission timer sync + arcade notification)
+- The "intermission" countdown (lobby's "Intermission: N left.") now lives in a
+  new IntermissionTimer autoload instead of the lobby node. Because it's an
+  autoload it is never freed on scene changes, so stepping into the arcade room
+  no longer silently resets it — the timer keeps running and both scenes read
+  the same remaining time (fully synced).
+- The lobby starts the timer only when one isn't already running, so returning
+  from the arcade room keeps the same countdown (no reset).
+- When the intermission hits zero the timer autosaves and moves to the game map
+  exactly as before, from whichever scene is active (lobby or arcade room).
+- Added a top-left notification in the arcade room showing the synced
+  "Intermission: N left." countdown. It appears only while an intermission is
+  actually running and updates every second via the timer's ticked signal.
+- Process mode is PAUSABLE, so the countdown fairly pauses while the pause menu
+  is open but keeps running across scene changes.
+### Decisions
+- D-S25-1: Centralized the "intermission over" transition (autosave + game map)
+  in the IntermissionTimer autoload so lobby and arcade room behave identically.
+- D-S25-2: The old CountdownTimer node's autostart was disabled (both lobby and
+  lobby_test scenes) so it no longer double-drives the countdown; the shared
+  timer is the single source of truth.

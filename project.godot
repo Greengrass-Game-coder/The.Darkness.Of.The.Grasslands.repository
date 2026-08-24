@@ -36,6 +36,7 @@ SoundManager="*res://scripts/systems/sound_manager.gd"
 P2PManager="*res://scripts/p2p/p2p_manager.gd"
 InputSystem="*res://scripts/systems/input_system.gd"
 PauseManager="*res://scripts/systems/pause_manager.gd"
+IntermissionTimer="*res://scripts/systems/intermission_timer.gd"
 
 [display]
 

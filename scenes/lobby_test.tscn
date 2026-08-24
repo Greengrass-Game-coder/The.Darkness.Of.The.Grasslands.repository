@@ -156,7 +156,7 @@ max_distance = 4096.0
 bus = &"Music"
 
 [node name="CountdownTimer" type="Timer" parent="." unique_id=264930212]
-autostart = true
+autostart = false
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=1333913836]
 
