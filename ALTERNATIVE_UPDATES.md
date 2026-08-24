@@ -778,3 +778,32 @@ Added a playable arcade room to the lobby.
   "Limits also apply" = 1 coin per win, and the bonus 2nd coin is the daily
   gamble. This matches the user's description (farm 1 from finishing a
   minigame; 2nd coin by beating again with the objective OR the daily gamble).
+
+## Session 25f (Owner coins + gifting system)
+- Owner request: set the Greengrass profile's spendable Grass-coin balance to
+  1,000 (earned = 1005, spent = 5). This was applied to the owner's profile
+  directly (the earlier 10 coins were a test artifact and are superseded).
+- NEW GIFTING SYSTEM — buy a game for a friend instead of yourself:
+  - On a paid cartridge's purchase screen, press G to "GIFT to a friend"
+    (Enter still buys for yourself, Esc cancels).
+  - A friend picker lists local profiles + online P2P peers (self and
+    current-owners excluded). Up/Down to choose, Enter to gift, Esc to back.
+  - The gift costs the same as buying it (2 = TETRINO 2, 3 = TETRINO 3) and is
+    deducted from your coins.
+  - Delivery requires the FRIEND TO ACCEPT:
+    • Local gifts persist in user://pending_gifts.json and pop an
+      ACCEPT / DENY prompt when that profile opens the console.
+    • Online gifts travel as P2P messages (offer/accept/deny) and the friend
+      is prompted live.
+  - Accepting grants the cartridge permanently to the friend's profile.
+    Denying REFUNDS the gifter's coins.
+- New autoload: GiftSystem (scripts/systems/gift_system.gd) handles gift
+  persistence, applying unlocks, refunds, and the P2P message protocol.
+### Decisions
+- D-S25f-1: Reuses the "gamble" action (G) for gifting/denying — it's only used
+  on the Tetrino win screen, so it's free elsewhere.
+- D-S25f-2: Local gifts are delivered only when the friend opens the console;
+  online gifts are delivered live over P2P. Denial refunds the gifter in both
+  cases.
+- D-S25f-3: A "testbuddy" local profile was created to verify gifting. It and
+  any other test data will be deleted once the user confirms testing is done.

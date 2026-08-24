@@ -37,6 +37,7 @@ P2PManager="*res://scripts/p2p/p2p_manager.gd"
 InputSystem="*res://scripts/systems/input_system.gd"
 PauseManager="*res://scripts/systems/pause_manager.gd"
 IntermissionTimer="*res://scripts/systems/intermission_timer.gd"
+GiftSystem="*res://scripts/systems/gift_system.gd"
 
 [display]
 
