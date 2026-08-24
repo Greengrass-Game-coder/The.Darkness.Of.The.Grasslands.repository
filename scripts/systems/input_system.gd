@@ -6,11 +6,12 @@ extends Node
 ## prompts), and lets the player rebind keyboard keys and gamepad buttons
 ## independently — rebinding one device never wipes the other.
 ##
+## Devices detected: "keyboard", "gamepad", and "touch" (phones / tablets).
 ## Everything is persisted to user://keybinds.cfg and applied at startup, so
 ## the player's bindings survive restarts. Gameplay code should poll these
 ## actions via is_pressed()/just_pressed() instead of hard-coding raw keys.
 
-signal device_changed(device: String)  # "keyboard" or "gamepad"
+signal device_changed(device: String)  # "keyboard", "gamepad", or "touch"
 
 const CFG := "user://keybinds.cfg"
 
@@ -57,6 +58,8 @@ var current_device: String = "keyboard"
 
 
 func _ready() -> void:
+	if is_phone():
+		current_device = "touch"
 	_apply_defaults()
 	_add_ui_gamepad()
 	_load()
@@ -97,10 +100,30 @@ func just_released(action: String) -> bool:
 	return Input.is_action_just_released(action)
 
 
+## True when the game is running on a phone/tablet (Android/iOS/mobile web),
+## regardless of which input the player is using right now.
+func is_phone() -> bool:
+	return OS.has_feature("mobile") \
+		or DisplayServer.get_name() == "android" \
+		or DisplayServer.get_name() == "iOS"
+
+
+## True when the player is currently using the touchscreen.
+func is_touch() -> bool:
+	return current_device == "touch"
+
+
 func _input(event: InputEvent) -> void:
 	var dev: String = current_device
 	if event is InputEventJoypadButton or event is InputEventJoypadMotion:
 		dev = "gamepad"
+	elif event is InputEventScreenTouch or event is InputEventScreenDrag \
+			or event is InputEventMagnifyGesture or event is InputEventPanGesture \
+			or (is_phone() and (event is InputEventMouseButton or event is InputEventMouseMotion)):
+		# Touch input. On phones Godot also synthesizes mouse events from
+		# touches, so treat those as touch too, otherwise the device would
+		# flicker between "touch" and "keyboard" on every tap.
+		dev = "touch"
 	elif event is InputEventKey or event is InputEventMouseButton or event is InputEventMouseMotion:
 		dev = "keyboard"
 	if dev != current_device:

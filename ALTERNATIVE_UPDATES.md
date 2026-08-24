@@ -648,3 +648,18 @@ Added a playable arcade room to the lobby.
   inputs never discards the other device's mapping.
 - D-S24-3: Esc double-duty resolved cleanly — Esc is cancel/back in the console
   and pause elsewhere; the console's settings access is the gamepad Start button.
+
+## Session 24b (phone / touch detection)
+- InputSystem now detects a third device: "touch". A touchscreen event
+  (InputEventScreenTouch / ScreenDrag / magnify / pan) sets current_device to
+  "touch" and emits device_changed("touch").
+- On a phone, Godot also synthesizes mouse events from touches, so those are
+  classified as touch too (avoids flickering between "touch" and "keyboard").
+- New helpers: InputSystem.is_phone() (true when running on Android/iOS/mobile
+  web) and InputSystem.is_touch() (true when the touchscreen is in use).
+  Consumers can listen to device_changed or check current_device to switch
+  prompts / show on-screen controls.
+### Decisions
+- D-S24b-1: "running on a phone" (is_phone, a capability) is separate from
+  "player touching the screen" (is_touch / current_device), so a phone with a
+  gamepad connected is still detected correctly.
