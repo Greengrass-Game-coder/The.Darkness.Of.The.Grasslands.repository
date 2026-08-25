@@ -900,3 +900,27 @@ Re-exported and signed the Android APK with the new controls.
   signals) and the arcade room listens — keeps one source of truth for touch.
 - D-S31-2: Touch buttons use clear text labels + context-aware layouts so each
   screen shows only what it needs; pause is a small centred MENU in overworld.
+
+## Session 31b — LAN cross-play (laptop + phone on the same Wi-Fi)
+- Added a **LAN Party** cartridge to the arcade console: play together on the
+  local network. One device HOSTS, the other JOINS by entering the host's LAN
+  IP — no Ziva relay, no server, no subscription. Uses Godot's built-in ENet
+  local networking directly over the Wi-Fi.
+- New `scripts/lan/lan_manager.gd` autoload (`LANManager`): ENet host/join on
+  port 2456, detects the host's LAN IPs, tracks peers, exposes
+  host_started/join_started/connected/peer_joined/peer_left signals.
+- New `scenes/lan_lobby.tscn` + `lan_lobby.gd`: host/join screen with an IP
+  entry (the laptop shows its IP; the phone types it in). HOST shows the IP and
+  waits; START (enabled once the phone connects) launches both devices together.
+- New `scenes/lan_arena.tscn` + `lan_arena.gd` + `lan_player.gd`: a 2-player
+  competitive "ORB RUSH" arena. The host (peer 1) spawns both players via a
+  MultiplayerSpawner, owns the orbs and scoring; each device controls its own
+  character (position synced via MultiplayerSynchronizer); first to 10 orbs
+  wins. ESC / BACK returns to the arcade.
+- Arcade browser: added "LAN PARTY" (free) cartridge at grid slot (1,-1), routed
+  to the LAN lobby. Also fixed a stale global-class-cache entry that shadowed
+  the LANManager autoload.
+- Verified: two headless instances connect over localhost (host saw
+  peer_joined, join connected); full arena e2e — the client received both
+  spawned players (`players=2 host=false connected=true`); all scenes boot
+  clean.
