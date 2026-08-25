@@ -215,6 +215,13 @@ func _ready() -> void:
 	# Listen for online gift offers.
 	if not GiftSystem.incoming_gift_offer.is_connected(_on_gift_offer):
 		GiftSystem.incoming_gift_offer.connect(_on_gift_offer)
+	# Phone/tablet: connect the touch-controls drag/tap navigation signals and
+	# start in the room-walking layout (the browser switches it to "browser").
+	if not TouchControls.swipe.is_connected(_on_touch_swipe):
+		TouchControls.swipe.connect(_on_touch_swipe)
+	if not TouchControls.tap.is_connected(_on_touch_tap):
+		TouchControls.tap.connect(_on_touch_tap)
+	TouchControls.set_mode(TouchControls.OVERWORLD)
 
 
 ## Lets the global PauseManager know whether the console UI is on-screen, so
@@ -1382,6 +1389,7 @@ func _show_minigame_browser() -> void:
 		return
 	_browser_active = true
 	_purchase_confirm = false
+	TouchControls.set_mode(TouchControls.BROWSER)
 	# Loading is finished — the static disappears completely; only the subtle
 	# pixelation + scanlines remain.
 	_set_crt_noise(0.0)
@@ -1563,6 +1571,25 @@ func _show_minigame_browser() -> void:
 	_show_first_pending_gift()
 
 
+func _on_touch_swipe(dir: Vector2) -> void:
+	"""Touch drag in the console browser: move the selection in the drag
+	direction (beat-synced, same as WASD)."""
+	if not _browser_active or _menu_active or _boot_active \
+			or _purchase_confirm or _gift_active or _gift_inbox_active:
+		return
+	if dir == Vector2.ZERO:
+		return
+	_pending_action = _select_browser_slot.bind(dir.normalized())
+
+
+func _on_touch_tap() -> void:
+	"""Quick tap in the console browser: launch the highlighted cartridge."""
+	if not _browser_active or _menu_active or _boot_active \
+			or _purchase_confirm or _gift_active or _gift_inbox_active:
+		return
+	_on_enter_pressed()
+
+
 func _on_browser_navigate() -> void:
 	"""WASD in the browser moves the selection between the cartridges
 	(left/right, with up/down as a fallback)."""
@@ -1723,6 +1750,7 @@ func _launch_tetrino() -> void:
 
 func _clear_browser() -> void:
 	_browser_active = false
+	TouchControls.set_mode(TouchControls.OVERWORLD)
 	for child: Node in _ui.get_children():
 		child.queue_free()
 	_browser_cartridge = null
@@ -1755,6 +1783,7 @@ func _show_tetrino_menu() -> void:
 		return
 	_menu_active = true
 	_game_active = false
+	TouchControls.set_mode(TouchControls.TETRIS)
 	# Music is NOT started here — it only plays once the player actually
 	# enters the minigame (see _start_tetrino_game).
 
@@ -1887,9 +1916,11 @@ func _start_console_music() -> void:
 	beat clock so the next beat boundary is detected fresh."""
 	if _console_music == null:
 		_console_music = AudioStreamPlayer.new()
-		# Load the 140 BPM navigation chiptune directly from the WAV (avoids
-		# depending on the import cache, so a freshly generated file plays).
-		_console_music.stream = AudioStreamWAV.load_from_file(CONSOLE_MUSIC)
+		# Load the 140 BPM navigation chiptune through the resource system
+		# (pck-safe, works on Android/iOS) — the same way the boot sound and
+		# tetrino.wav load. The imported WAV keeps its raw PCM so the seamless
+		# stream-level loop below still works.
+		_console_music.stream = load(CONSOLE_MUSIC)
 		_console_music.bus = "Music"
 		add_child(_console_music)
 		var wav: AudioStreamWAV = _console_music.stream as AudioStreamWAV
@@ -2139,6 +2170,7 @@ func _start_tetrino_game() -> void:
 	if _game_active and not _game_over and not _won:
 		return
 	_game_active = true
+	TouchControls.set_mode(TouchControls.TETRIS)
 	_game_over = false
 	_game_lost = false
 	_won = false

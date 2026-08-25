@@ -39,6 +39,9 @@ var _game_over := false
 var _won := false
 var _flag_mode := false
 var _move_timer := 0.0
+# Press-and-hold state for the classic "worried face while holding a cell".
+var _press_armed := false
+var _press_cell := Vector2i(-1, -1)
 
 var _buttons: Array = []          # _buttons[r][c] = Button
 var _cursor_rect: ColorRect
@@ -50,11 +53,13 @@ var _counts: Label               # remaining mines
 
 func _ready() -> void:
 	_hard = GameState.dirtysweeper_hard
+	TouchControls.set_mode(TouchControls.MINESWEEPER)
 	_build()
 
 func _exit_tree() -> void:
 	# Save the chosen difficulty so it persists across sessions.
 	GameState.dirtysweeper_hard = _hard
+	TouchControls.set_mode(TouchControls.OVERWORLD)
 
 
 ## ── Board generation ───────────────────────────────────────────────
@@ -84,6 +89,7 @@ func _new_board(exclude: Vector2i) -> void:
 	_game_over = false
 	_won = false
 	_flag_mode = false
+	_press_armed = false
 	_cursor = exclude
 
 
@@ -190,7 +196,11 @@ func _build() -> void:
 			b.add_theme_stylebox_override("focus", _cell_style(Color(1,1,1,0), 2))
 			b.focus_mode = Control.FOCUS_NONE
 			var cell := Vector2i(r, c)
-			b.pressed.connect(_on_cell_pressed.bind(cell))
+			# Press-and-hold: show the worried face while holding, reveal/flag on
+			# release (cancelled if you slide off the cell first).
+			b.button_down.connect(_on_cell_down.bind(cell))
+			b.button_up.connect(_on_cell_up.bind(cell))
+			b.mouse_exited.connect(_on_cell_exited.bind(cell))
 			add_child(b)
 			row_arr.append(b)
 		_buttons.append(row_arr)
@@ -239,7 +249,10 @@ func _face_path() -> String:
 		return FACE_DEAD_G if _hard else FACE_DEAD
 	if _won:
 		return FACE_NEUTRAL_G if _hard else FACE_NEUTRAL
-	if _flag_mode:
+	# The worried face shows while the player holds down on a cell (classic
+	# minesweeper "am I about to die?" warning) — but only when revealing,
+	# not when placing flags.
+	if _press_armed and not _flag_mode:
 		return FACE_WARNING_G if _hard else FACE_WARNING
 	return FACE_NEUTRAL_G if _hard else FACE_NEUTRAL
 
@@ -352,11 +365,36 @@ func _flag(r: int, c: int) -> void:
 	_refresh_face()
 
 
-func _on_cell_pressed(cell: Vector2i) -> void:
+func _on_cell_down(cell: Vector2i) -> void:
+	"""Finger/key pressed on a cell: arm the reveal and show the worried face."""
+	if _game_over or _won:
+		return
+	var c: Dictionary = _board[cell.x][cell.y]
+	if c["revealed"]:
+		return
+	_press_armed = true
+	_press_cell = cell
+	_refresh_face()
+
+
+func _on_cell_up(cell: Vector2i) -> void:
+	"""Released on the same cell: do the reveal/flag and clear the worried face."""
+	var was_armed: bool = _press_armed and _press_cell == cell
+	_press_armed = false
+	_refresh_face()
+	if not was_armed:
+		return
 	if _flag_mode:
 		_flag(cell.x, cell.y)
 	else:
 		_reveal(cell.x, cell.y)
+
+
+func _on_cell_exited(cell: Vector2i) -> void:
+	"""Slid off the cell: cancel the reveal and clear the worried face."""
+	if _press_armed and _press_cell == cell:
+		_press_armed = false
+		_refresh_face()
 
 
 func _restart() -> void:
@@ -456,6 +494,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_update_all()
 			_refresh_face()
 			get_viewport().set_input_as_handled()
+	if InputSystem.just_pressed("flag"):
+		_flag_mode = not _flag_mode
+		_update_all()
+		_refresh_face()
+		get_viewport().set_input_as_handled()
 	if InputSystem.just_pressed("confirm"):
 		_reveal(_cursor.x, _cursor.y)
 		get_viewport().set_input_as_handled()

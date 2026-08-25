@@ -38,6 +38,7 @@ const ACTIONS: Dictionary = {
 	"tetris_rotate":   {"label": "Tetris Rotate",   "key": KEY_UP,       "button": JOY_BUTTON_DPAD_UP},
 	"tetris_harddrop": {"label": "Tetris Hard Drop","key": KEY_SPACE,    "button": JOY_BUTTON_A},
 	"gamble":          {"label": "Gamble (win screen)","key": KEY_G,     "button": JOY_BUTTON_Y},
+	"flag":            {"label": "Flag (Minesweeper)","key": KEY_F,      "button": JOY_BUTTON_X},
 }
 
 ## Godot's built-in UI actions get gamepad bindings so menus are fully

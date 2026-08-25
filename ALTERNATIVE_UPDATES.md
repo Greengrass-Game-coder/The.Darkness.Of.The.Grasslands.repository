@@ -870,3 +870,33 @@ Re-exported and signed the Android APK with the new controls.
   SaveManager.
 - D-S30-1: Dirtysweeper is a standalone scene launched from the browser; returns to
   the arcade room when quit.
+
+## Session 31 — Mobile focus pass: music, drag navigation, playable minigames, cleaner touch controls
+- **Fixed music on phones**: the console navigation music was loaded with
+  `AudioStreamWAV.load_from_file()` (a raw file read that is fragile in Android's
+  packed export). Switched it to the standard pck-safe `load()` used by every
+  other sound in the game — the only `load_from_file` in the whole project.
+- **Console browser: drag to navigate on touch.** New "browser" touch mode —
+  swipe left/right/up/down to move between cartridges, tap to launch, small
+  BACK button. Beat-synced like WASD.
+- **Context-aware touch controls** (`touch_controls.gd` rewritten). The overlay
+  now adapts to the current screen instead of always showing every button:
+  - overworld (walking) — joystick + OK / BACK / SPRINT / small MENU
+  - browser (arcade) — DRAG to navigate, TAP to launch, BACK
+  - tetris (Tetrino) — joystick + DROP / ROTATE / OK / BACK
+  - minesweeper (Dirtysweeper) — joystick + REVEAL / FLAG / BACK
+- **De-cluttered & clearly labelled**: buttons are now plain text pills (no
+  cryptic ⓐ/ⓧ/↻/⤓ symbols), subdued colours, low opacity, rounded. The old
+  loud top-right pause button is gone — replaced by a small centred MENU pill
+  in overworld only.
+- **Dirtysweeper fully playable on phone**: tap a cell to reveal (with the new
+  classic **press-and-hold shows the worried/warning face**, cancelled if you
+  slide off), a FLAG button (new `flag` input action), joystick moves the
+  cursor, BACK quits.
+- **Tetrino fully playable on phone**: joystick moves left/right/down, DROP +
+  ROTATE buttons edge-trigger exactly like the keyboard.
+- New InputSystem action: `flag` (default key F, gamepad X).
+- D-S31-1: Browser drag/tap lives in TouchControls (emits `swipe`/`tap`
+  signals) and the arcade room listens — keeps one source of truth for touch.
+- D-S31-2: Touch buttons use clear text labels + context-aware layouts so each
+  screen shows only what it needs; pause is a small centred MENU in overworld.
