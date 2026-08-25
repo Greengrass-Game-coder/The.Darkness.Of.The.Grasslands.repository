@@ -22,6 +22,9 @@ const TETRINO_CHOICE: String = "res://The Darkness Of The Grasslands assets/Soun
 # gentle curvature, static only while loading).
 const CONSOLE_CRT_SHADER: String = "res://shaders/console_crt.gdshader"
 const TETRINO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
+# Dirtysweeper cartridge: its own thumbnail and the standalone minigame scene.
+const DIRTSWEEPER_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_dirtysweeper.thumbnail.png"
+const DIRTSWEEPER_SCENE: String = "res://scenes/dirtysweeper.tscn"
 # 140 BPM → one beat every 60/140 seconds (pulse the game to the music).
 const BEAT_SECONDS: float = 60.0 / 140.0
 const SOFT_DROP_INTERVAL: float = 0.06  # rows/second pace while holding Down (fast fall)
@@ -1428,10 +1431,10 @@ func _show_minigame_browser() -> void:
 	# depth effect, so far-away cartridges look smaller).
 	_browser_entries = [
 		{"name": "TETRINO", "thumb": TETRINO_THUMB, "cost": 0, "paid": false},
-		{"name": "TETRINO 2", "thumb": TETRINO_THUMB, "cost": 2, "paid": true, "owned_key": "tetrino_owns_paid"},
+		{"name": "DIRTYSWEEPER", "thumb": DIRTSWEEPER_THUMB, "cost": 2, "paid": true, "owned_key": "dirtysweeper_owns_paid"},
 		{"name": "TETRINO 3", "thumb": TETRINO_THUMB, "cost": 3, "paid": true, "owned_key": "tetrino_owns_paid3"},
 	]
-	# Grid coordinates: (0,0) = TETRINO, (1,0) = TETRINO 2, (0,-1) = TETRINO 3.
+	# Grid coordinates: (0,0) = TETRINO, (1,0) = DIRTYSWEEPER, (0,-1) = TETRINO 3.
 	_browser_grid = [Vector2(0, 0), Vector2(1, 0), Vector2(0, -1)]
 	_browser_index = 0
 	_browser_cartridges = []
@@ -1708,6 +1711,11 @@ func _place_browser_highlight() -> void:
 
 func _launch_tetrino() -> void:
 	if not _browser_active or _menu_active or _boot_active:
+		return
+	# Dirtysweeper runs as its own standalone minigame scene.
+	if _selected_cartridge_name() == "DIRTYSWEEPER":
+		_clear_browser()
+		get_tree().change_scene_to_file(DIRTSWEEPER_SCENE)
 		return
 	_clear_browser()
 	_show_tetrino_menu()

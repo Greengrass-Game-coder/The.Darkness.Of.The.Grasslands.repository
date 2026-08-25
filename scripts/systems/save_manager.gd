@@ -166,7 +166,9 @@ static func autosave(username: String) -> bool:
 		"tetrino_coins_spent": GameState.tetrino_coins_spent,
 		"tetrino_owns_paid": GameState.tetrino_owns_paid,
 		"tetrino_owns_paid3": GameState.tetrino_owns_paid3,
-		"tetrino_gift_given": GameState.tetrino_gift_given
+		"tetrino_gift_given": GameState.tetrino_gift_given,
+		"dirtysweeper_owns_paid": GameState.dirtysweeper_owns_paid,
+		"dirtysweeper_hard": GameState.dirtysweeper_hard
 	}
 	# Also include audio bus volumes
 	for bus_name in ["Master", "Music", "SFX"]:
@@ -221,6 +223,10 @@ static func autoload(username: String) -> bool:
 		GameState.tetrino_owns_paid3 = data.tetrino_owns_paid3
 	if data.has("tetrino_gift_given"):
 		GameState.tetrino_gift_given = data.tetrino_gift_given
+	if data.has("dirtysweeper_owns_paid"):
+		GameState.dirtysweeper_owns_paid = data.dirtysweeper_owns_paid
+	if data.has("dirtysweeper_hard"):
+		GameState.dirtysweeper_hard = data.dirtysweeper_hard
 	
 	# Restore audio bus volumes
 	for bus_name in ["Master", "Music", "SFX"]:

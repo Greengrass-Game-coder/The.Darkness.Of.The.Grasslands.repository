@@ -853,3 +853,20 @@ Re-exported and signed the Android APK with the new controls.
   flickering up with a CRT-style shimmer, then locks on and stays on screen through
   the whole loading bar, fading out only when loading completes and the navigator
   appears.
+
+## Session 30 — Dirtysweeper (full minesweeper minigame)
+- **Removed the TETRINO 2 cartridge** from the console browser and added a brand-new
+  **DIRTYSWEEPER** cartridge (classic minesweeper) costing **2 Grass coins**
+  (permanent, profile-linked unlock like the other paid cartridges).
+- Built a **full playable minesweeper** (`scripts/dirtysweeper.gd` + `scenes/dirtysweeper.tscn`):
+  9x9 board, flood-fill reveal, number clues with classic colours, flags, a restart
+  button, and the user's **neutral / warning / dead face sprites** (with the gambling
+  variants used in Hard mode). Win = +1 coin; Hard/gamble win = +2 (daily).
+  Works with keyboard, controller (InputSystem actions), and touch/mouse.
+- **Reset recent purchases**: cleared the paid-cartridge ownership and refunded the
+  spent coins on the owner profile (Greengrass now has 1005 spendable coins, no paid
+  cartridges owned), so purchases start fresh for the new economy.
+- New GameState fields `dirtysweeper_owns_paid` / `dirtysweeper_hard`, persisted by
+  SaveManager.
+- D-S30-1: Dirtysweeper is a standalone scene launched from the browser; returns to
+  the arcade room when quit.

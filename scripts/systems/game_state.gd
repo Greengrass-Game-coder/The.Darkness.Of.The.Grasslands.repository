@@ -64,6 +64,12 @@ var tetrino_owns_paid3: bool = false
 ## tetrino_gift_given: whether the one-time anti-softlock apology gift (2 Grass
 ## coins + 1,000 gold) has already been granted to this profile.
 var tetrino_gift_given: bool = false
+## dirtysweeper_owns_paid: permanent ownership of the paid "DIRTYSWEEPER"
+## cartridge (2 coins). Once bought it stays owned forever.
+var dirtysweeper_owns_paid: bool = false
+## dirtysweeper_hard: whether the player last played Dirtysweeper in hard
+## (gamble) mode — used to keep the chosen difficulty across sessions.
+var dirtysweeper_hard: bool = false
 
 ## Rings (Killer chance) tracking per player
 var player_rings: Dictionary = {}
