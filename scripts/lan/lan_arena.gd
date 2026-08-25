@@ -11,6 +11,7 @@ const ARENA := Vector2(1200, 680)
 const WIN_SCORE := 10
 const ORB_RADIUS := 11.0
 const PICKUP_DIST := 36.0
+const LOBBY_SCENE := "res://scenes/lan_lobby.tscn"
 
 var _players: Node
 var _spawner: MultiplayerSpawner
@@ -185,7 +186,7 @@ func _sync_score(peer_id: int, score: int) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _end_game(winner_name: String) -> void:
 	_ended = true
-	_msg.text = winner_name + " WINS!  (ENTER / BACK to return)"
+	_msg.text = winner_name + " WINS!  (ENTER / BACK to return to lobby)"
 
 
 func _process(_delta: float) -> void:
@@ -227,8 +228,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _ended and (leave or InputSystem.just_pressed("confirm")):
 		leave = true
 	if leave:
-		LANManager.stop()
-		get_tree().change_scene_to_file("res://scenes/arcade_room.tscn")
+		# Go back a page — to the LAN lobby (not straight to another room).
+		# _exit_tree stops the LAN session cleanly.
+		get_tree().change_scene_to_file(LOBBY_SCENE)
 		get_viewport().set_input_as_handled()
 
 
