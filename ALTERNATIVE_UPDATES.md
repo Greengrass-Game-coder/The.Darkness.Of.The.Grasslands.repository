@@ -924,3 +924,22 @@ Re-exported and signed the Android APK with the new controls.
   peer_joined, join connected); full arena e2e — the client received both
   spawned players (`players=2 host=false connected=true`); all scenes boot
   clean.
+
+## Session 32 — Player-customizable touch controls + top safe area
+- Touch controls are now **player-repositionable**: a small "⚙" button (bottom-
+  centre) opens edit mode — drag any button (or the joystick) wherever you like,
+  then tap "✓" to save. Layout is saved per-device to user://touch_layout.cfg
+  and remembered across runs. Positions are stored as normalized screen
+  coords, so they work on any screen size/orientation.
+- **Notification/notch safe zone**: the top ~16% of the screen is reserved for
+  the phone's status bar, notch and notifications. Buttons physically can NOT be
+  dragged into that strip (position is clamped to TOP_SAFE).
+- **MENU (pause) no longer sits at center-top** where phone notifications appear.
+  Its default is now top-left just below the safe area, and the BACK buttons in
+  Tetrino/Dirtysweeper/browser also moved below the safe line. All of them are
+  now draggable anyway.
+- Cleaner, more professional style: rounded pills, subtle border, slightly
+  higher-contrast labels; in edit mode buttons highlight with a white border so
+  it's obvious which ones are movable.
+- Fixed earlier: LAN arena Back returns to the LAN lobby (a page back) rather
+  than jumping straight to the console room.
