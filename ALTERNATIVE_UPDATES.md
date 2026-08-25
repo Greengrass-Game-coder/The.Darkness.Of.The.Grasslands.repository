@@ -847,3 +847,9 @@ Re-exported and signed the Android APK with the new controls.
   server is ready.
 - Rebuilt + signed the Android APK with offline login.
 - D-S28-1: Local auth is primary; no server round-trip for login.
+
+## Session 29 — The Magic Entertainer boot icon
+- The console boot-up now shows `The-Magic-Entertainer-icon.png` (added by the user)
+  flickering up with a CRT-style shimmer, then locks on and stays on screen through
+  the whole loading bar, fading out only when loading completes and the navigator
+  appears.

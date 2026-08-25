@@ -99,6 +99,7 @@ const LEFT_EXIT_X: float = -20.0
 # ── Boot sequence timing ──
 const FLICKER_DURATION: float = 0.7
 const BOOT_TEXT: String = "COMPUTERING CONSOLE — THE MAGIC ENTERTAINER — BOOT V0.5P.R.O.T.O.T.Y.P.E."
+const MAGIC_ICON: String = "res://The Darkness Of The Grasslands assets/UI/minigames/The-Magic-Entertainer-icon.png"
 const LOAD_DURATION: float = 1.0
 
 # ── Theme persistence (console-only; never touched by normal settings) ──
@@ -1280,6 +1281,24 @@ func _run_boot() -> void:
 	_ui.add_child(boot_lbl)
 	await get_tree().create_timer(0.8).timeout
 	boot_lbl.queue_free()
+
+	# 2b) The Magic Entertainer icon flickers up, then stays until loading ends.
+	var icon := TextureRect.new()
+	icon.texture = load(MAGIC_ICON)
+	var isz := 340.0
+	icon.size = Vector2(isz, isz)
+	icon.position = Vector2((ROOM_W - isz) / 2.0, ROOM_H * 0.3 - isz / 2.0)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(icon)
+	# CRT-style flicker-up: rapid, random opacity so it shimmers into view.
+	var ft_end := Time.get_ticks_msec() + 550
+	while Time.get_ticks_msec() < ft_end:
+		icon.modulate = Color(1, 1, 1, randf_range(0.2, 1.0))
+		await get_tree().create_timer(randf_range(0.02, 0.05)).timeout
+	icon.modulate = Color(1, 1, 1, 1)  # locked on — stays through loading
+
 	# Screen stays black (flick overlay still up) through boot text + loading.
 
 	# 3) Quick fake loading bar: 10% → 78% → 100% in ~1s.
@@ -1336,8 +1355,14 @@ func _run_boot() -> void:
 	bar_fill.queue_free()
 	pct_lbl.queue_free()
 
-	# Boot is done — lift the black overlay and reveal the console navigator,
-	# which starts the 140 BPM music exactly as the boot-up ends.
+	# Loading is complete — fade the Magic Entertainer icon out, then lift the
+	# black overlay and reveal the console navigator, which starts the 140 BPM
+	# music exactly as the boot-up ends.
+	var icon_fade := create_tween()
+	icon_fade.tween_property(icon, "modulate:a", 0.0, 0.4)
+	await icon_fade.finished
+	icon.queue_free()
+
 	flick.queue_free()
 
 	_boot_active = false
