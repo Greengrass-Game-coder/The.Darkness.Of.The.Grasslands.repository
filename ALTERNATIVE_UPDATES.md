@@ -955,3 +955,23 @@ Re-exported and signed the Android APK with the new controls.
   copies of the game at once, tiled in a 3x3 grid so you can watch them all run
   and spot anything wrong. Pass a number to change the count, e.g.
   `run_parallel_instances.bat 6`. (All instances share the same save folder.)
+
+## Session 33b — Test multiplayer by yourself on one laptop (9 separate players)
+- **Goal:** let the user run the online multiplayer game 9 times on the SAME
+  laptop, each window as a DIFFERENT player, all connected to the same server,
+  so they can watch/balance how the game behaves with many players.
+- **Problem solved:** Godot 4.7 does NOT support `--user-data-dir`, and login is
+  local (`user://accounts.dat` / `session.dat`), so plain parallel instances all
+  became the SAME single player.
+- **Solution:** `test_instances/player1..9` folders — each a real dir that
+  *shares* the game files (815MB) via Windows directory junctions, but has its
+  own `project.godot` with a unique `custom_user_dir_name`
+  (`The Darkness Of The Grasslands-playerN`), so each writes to its own
+  `%APPDATA%` user folder. The launcher seeds `session.dat` = `PlayerN`, so each
+  auto-logs in as a distinct player. The server assigns each connection its own
+  `player_id`, so 9 windows = 9 players online.
+- **New launcher:** `run_multiplayer_test.bat` (double-click = 9 players, or pass
+  a count). Opens windowed copies in a 3x3 grid; close each window to stop it.
+- **Verified:** player1 boots headless + windowed with 0 errors, creates its own
+  user folder, auto-logs in as `Player1`, and connects to the server.
+- Replaced the old `run_parallel_instances.bat` (9 solo copies) with this.

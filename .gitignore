@@ -40,3 +40,4 @@ server_launcher/
 # Prebuilt compiled server binaries (edit from source, don't track)
 Server/*.pck
 Server/*.x86_64
+test_instances/
