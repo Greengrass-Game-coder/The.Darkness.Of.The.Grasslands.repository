@@ -39,7 +39,6 @@ PauseManager="*res://scripts/systems/pause_manager.gd"
 IntermissionTimer="*res://scripts/systems/intermission_timer.gd"
 GiftSystem="*res://scripts/systems/gift_system.gd"
 TouchControls="*res://scripts/systems/touch_controls.gd"
-LANManager="*res://scripts/lan/lan_manager.gd"
 
 [display]
 

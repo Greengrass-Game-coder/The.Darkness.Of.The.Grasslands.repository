@@ -25,9 +25,6 @@ const TETRINO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumb
 # Dirtysweeper cartridge: its own thumbnail and the standalone minigame scene.
 const DIRTSWEEPER_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_dirtysweeper.thumbnail.png"
 const DIRTSWEEPER_SCENE: String = "res://scenes/dirtysweeper.tscn"
-# LAN Party: local-network cross-play (laptop hosts, phone joins over Wi-Fi).
-const LAN_PARTY_THUMB: String = "res://assets/generated/lan_party_thumb_frame_0.png"
-const LAN_LOBBY_SCENE: String = "res://scenes/lan_lobby.tscn"
 # 140 BPM → one beat every 60/140 seconds (pulse the game to the music).
 const BEAT_SECONDS: float = 60.0 / 140.0
 const SOFT_DROP_INTERVAL: float = 0.06  # rows/second pace while holding Down (fast fall)
@@ -1444,11 +1441,9 @@ func _show_minigame_browser() -> void:
 		{"name": "TETRINO", "thumb": TETRINO_THUMB, "cost": 0, "paid": false},
 		{"name": "DIRTYSWEEPER", "thumb": DIRTSWEEPER_THUMB, "cost": 2, "paid": true, "owned_key": "dirtysweeper_owns_paid"},
 		{"name": "TETRINO 3", "thumb": TETRINO_THUMB, "cost": 3, "paid": true, "owned_key": "tetrino_owns_paid3"},
-		{"name": "LAN PARTY", "thumb": LAN_PARTY_THUMB, "cost": 0, "paid": false},
 	]
-	# Grid coordinates: (0,0) = TETRINO, (1,0) = DIRTYSWEEPER, (0,-1) = TETRINO 3,
-	# (1,-1) = LAN PARTY.
-	_browser_grid = [Vector2(0, 0), Vector2(1, 0), Vector2(0, -1), Vector2(1, -1)]
+	# Grid coordinates: (0,0) = TETRINO, (1,0) = DIRTYSWEEPER, (0,-1) = TETRINO 3.
+	_browser_grid = [Vector2(0, 0), Vector2(1, 0), Vector2(0, -1)]
 	_browser_index = 0
 	_browser_cartridges = []
 
@@ -1748,11 +1743,6 @@ func _launch_tetrino() -> void:
 	if _selected_cartridge_name() == "DIRTYSWEEPER":
 		_clear_browser()
 		get_tree().change_scene_to_file(DIRTSWEEPER_SCENE)
-		return
-	# LAN Party runs as its own scene too (host/join lobby).
-	if _selected_cartridge_name() == "LAN PARTY":
-		_clear_browser()
-		get_tree().change_scene_to_file(LAN_LOBBY_SCENE)
 		return
 	_clear_browser()
 	_show_tetrino_menu()

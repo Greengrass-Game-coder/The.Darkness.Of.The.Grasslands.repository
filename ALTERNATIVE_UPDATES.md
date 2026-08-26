@@ -943,3 +943,15 @@ Re-exported and signed the Android APK with the new controls.
   it's obvious which ones are movable.
 - Fixed earlier: LAN arena Back returns to the LAN lobby (a page back) rather
   than jumping straight to the console room.
+
+## Session 33 — Removed LAN Party + parallel-instance testing launcher
+- **Removed the entire LAN feature** (the user asked to delete it): the "LAN
+  PARTY" cartridge in the console browser, the LAN lobby, the LAN arena (Orb
+  Rush), the LANManager autoload, and all `scripts/lan/*` files + `lan_arena.tscn`
+  / `lan_lobby.tscn` / `lan_party_thumb_frame_0.png`. The console browser now
+  shows 3 cartridges (TETRINO, DIRTYSWEEPER, TETRINO 3). Verified no LAN
+  references remain anywhere and the built APK contains no lan files.
+- **Added `run_parallel_instances.bat`** in the project root: opens 9 windowed
+  copies of the game at once, tiled in a 3x3 grid so you can watch them all run
+  and spot anything wrong. Pass a number to change the count, e.g.
+  `run_parallel_instances.bat 6`. (All instances share the same save folder.)
