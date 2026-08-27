@@ -975,3 +975,28 @@ Re-exported and signed the Android APK with the new controls.
 - **Verified:** player1 boots headless + windowed with 0 errors, creates its own
   user folder, auto-logs in as `Player1`, and connects to the server.
 - Replaced the old `run_parallel_instances.bat` (9 solo copies) with this.
+
+## Session 33c — Play together with someone on the same Wi-Fi (host/join)
+- **Goal:** let the user play the online game together with a specific person on
+  the same internet/network (a friend or family member on the same Wi-Fi).
+- **Found + fixed the real blockers:**
+  1. The login screen's "Server URL" box was never actually used — whatever you
+     typed was ignored. It now truly applies the URL (`apply_custom_url`) and
+     saves it, so you can point the game at any server (local or online).
+  2. The main "Find a Game" queue only starts a match when MANY players join, so
+     2 friends could never get matched. Instead, same-network play uses the
+     existing Host/Join room system.
+  3. Fixed a P2P roster bug: the HOST never saw players who joined its room
+     (the joiner now announces itself to the host), so the host can see the
+     friend and start the match.
+- **New flow:** In the start menu, "Host Game" opens the P2P room screen.
+  - HOST: name your room + Create (registers it), wait for the friend to join.
+  - FRIEND: Browse, select the host's room, Join.
+  - HOST: presses the new "START GAME" button (enabled once a friend joined) and
+    BOTH players enter the match together. game_map already auto-uses P2P sync.
+- **New helper:** `start_same_wifi_server.bat` — starts the local server on one
+  PC and prints the address the friend types in the login "Server URL" box.
+  Host uses `ws://localhost:8080`, friend uses `ws://<host-LAN-IP>:8080`.
+- **Verified:** login applies the URL; local server binds port 8080; a live
+  two-process P2P host/join test shows both sides connect and the host roster =
+  2 players; all affected scenes boot with 0 errors.

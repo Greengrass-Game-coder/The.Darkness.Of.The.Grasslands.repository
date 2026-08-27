@@ -239,6 +239,9 @@ func _on_connected_to_server() -> void:
 	unique_id = multiplayer.get_unique_id()
 	players[unique_id] = player_info.duplicate()
 	peer_joined.emit(unique_id, player_info.duplicate())
+	# Tell the HOST who we are so it can add us to its roster too (the host only
+	# learns about a peer when that peer announces itself). Peer id 1 = host.
+	_register_player.rpc_id(1, player_info)
 	connected_to_host.emit()
 	print("P2PManager: Connected to host, assigned id %d" % unique_id)
 

@@ -25,6 +25,7 @@ const MAX_PLAYERS: int = 12
 
 var _hosting: bool = false
 var _connect_address: String = ""
+var _start_btn: Button = null
 
 
 func _ready() -> void:
@@ -52,6 +53,17 @@ func _ready() -> void:
 	find_match_button.pressed.connect(_on_find_match_pressed)
 
 	_log("P2P lobby ready. Host a room or click Find Match to auto-join.")
+	# "Start Game" — the HOST presses this once a friend has joined, and both
+	# players leave the room screen together and enter the match (lobby).
+	var start_btn := Button.new()
+	start_btn.name = "StartGameBtn"
+	start_btn.text = "START GAME"
+	start_btn.position = Vector2(620, 420)
+	start_btn.size = Vector2(220, 48)
+	start_btn.disabled = true
+	start_btn.pressed.connect(_on_start_game_pressed)
+	add_child(start_btn)
+	_start_btn = start_btn
 	# Try the public browser against the configured server, then fall back to a
 	# local server (ws://localhost:8080) so the full browse->join flow works on
 	# this machine without needing to edit any URL.
@@ -250,6 +262,30 @@ func _on_peer_left(peer_id: int) -> void:
 func _on_message(sender_id: int, msg_type: String, data: Dictionary) -> void:
 	if msg_type == "chat":
 		_log("P2P chat from %d: %s" % [sender_id, str(data.get("text", ""))])
+	elif msg_type == "start_game":
+		# The host pressed START GAME — everyone leaves the room screen together.
+		_log("Host started the match! Entering the game...")
+		_enter_match()
+
+
+## Host-only: start the match for everyone in the room at the same time.
+func _on_start_game_pressed() -> void:
+	var p2p: Node = get_node("/root/P2PManager")
+	if not p2p or not p2p.is_host:
+		_log("Only the host can start the game.")
+		return
+	p2p.broadcast("start_game", {})
+	_log("Starting the match for everyone...")
+	_enter_match()
+
+
+## Move into the lobby (which starts the intermission countdown into the game
+## map). The P2P session lives in the autoload, so it survives the scene change
+## and game_map auto-detects it and uses P2P sync.
+func _enter_match() -> void:
+	var err: int = get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+	if err != OK:
+		_log("Could not enter the lobby: " + error_string(err))
 
 
 func _update_peers() -> void:
@@ -258,6 +294,9 @@ func _update_peers() -> void:
 	for pid: int in p2p.players:
 		lines.append("%d: %s" % [pid, str(p2p.players[pid].get("name", "?"))])
 	peers_label.text = "Peers (%d):\n%s" % [p2p.players.size(), "\n".join(lines)]
+	# Enable "Start Game" for the host once at least one friend has joined.
+	if _start_btn:
+		_start_btn.disabled = not (p2p.is_host and p2p.players.size() >= 2)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

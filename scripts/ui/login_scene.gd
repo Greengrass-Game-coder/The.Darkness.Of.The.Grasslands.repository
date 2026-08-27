@@ -83,6 +83,24 @@ func _save_server_url() -> void:
 		f.close()
 
 
+func _apply_server_url() -> void:
+	"""Point the game at whatever server URL is typed in the box.
+
+	The whole game connects to ONE server (the NetworkManager WebSocket). Two
+	people on the same Wi-Fi can play together by running the dedicated server
+	on one PC and entering that PC's address here (the host uses
+	ws://localhost:8080, the other person uses ws://<host-LAN-IP>:8080).
+	"""
+	var url: String = server_url_input.text.strip_edges()
+	if url.is_empty():
+		return
+	_save_server_url()
+	var nm := get_node_or_null("/root/NetworkManager")
+	if nm and nm.has_method("apply_custom_url"):
+		nm.apply_custom_url(url)
+		print("LoginScene: Server URL set to %s" % url)
+
+
 func _detect_steam_and_prefill() -> void:
 	"""If Steam is running (detected via environment variable), pre-fill the username field."""
 	# Steam sets these env vars when launching a game through the client
@@ -198,6 +216,8 @@ func _on_auth_failed(reason: String) -> void:
 
 
 func _on_login_successful() -> void:
+	# Apply the typed server URL (so a local/same-Wi-Fi server can be used)
+	_apply_server_url()
 	login_completed.emit()
 	
 	# Transition to start menu instead of lobby
