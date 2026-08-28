@@ -41,3 +41,9 @@ server_launcher/
 Server/*.pck
 Server/*.x86_64
 test_instances/
+
+# Build artifacts
+*.apk
+*.apk.idsig
+*.idsig
+grasslands_build/

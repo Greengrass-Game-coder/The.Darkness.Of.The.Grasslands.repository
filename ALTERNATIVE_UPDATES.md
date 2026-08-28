@@ -1000,3 +1000,59 @@ Re-exported and signed the Android APK with the new controls.
 - **Verified:** login applies the URL; local server binds port 8080; a live
   two-process P2P host/join test shows both sides connect and the host roster =
   2 players; all affected scenes boot with 0 errors.
+
+---
+
+## Session 34 — Fully local game + smart survivor bots + release builds
+
+**Commit: `bfd47aa` (P2P removal + bot AI), plus this session's build tooling.**
+
+### 1. Removed ALL P2P — the game is now local ENTIRELY
+Following your direction to drop P2P and make the game a fully local one:
+- Deleted `scenes/p2p/` (p2p_lobby), `scripts/p2p/` (p2p_manager, p2p_game_sync,
+  p2p_lobby_ui, p2p_server_browser) and `tests/p2p_handshake_test.gd`.
+- Removed the `P2PManager` autoload from `project.godot`.
+- Stripped every `/root/P2PManager` / `P2PGameSync` reference from
+  `game_map.gd`, `game_map_test.gd`, `arcade_room.gd`, `gift_system.gd`,
+  `pause_manager.gd`, and removed the "Host Game" button from the start menu.
+- Removed online-gifting from `gift_system.gd` / `arcade_room.gd` (peer gifting
+  was tied to P2P); gifting is now local-only.
+- Deleted the obsolete multiplayer-test launchers (`run_multiplayer_test.bat`,
+  `start_same_wifi_server.bat`, `cleanup_junctions.bat`) and the `test_instances/`
+  scaffolding — no longer needed for a local game.
+- **Verified:** `start_menu`, `lobby`, and `game_map` boot headlessly with 0
+  script errors and no P2P references remain. The game plays fully offline
+  against the AI survivor bots — no server connection, no hang.
+
+### 2. Smart survivor bots (pathfinding, tracks, loop/kite the killer)
+Ported to BOTH `ai_survivor_bot_controller.gd` (main) and
+`ai_survivor_bot_controller_test.gd` (test scene):
+- `map_manager.gd` now exposes `patrol_waypoints` ("tracks of lines" the bots
+  walk along) and `loop_orbits` (4 points — N/E/S/W — just outside every wall
+  obstacle, where a bot can safely run circles around it).
+- Bots pick the nearest patrol waypoint to walk to when idle; they steer away
+  from walls along these waypoint lines (pathfinding via walkable grid).
+- NEW "LOOP THE KILLER" behaviour: when the killer is chasing and has line of
+  sight, the bot runs to the nearest obstacle's orbit group, positions itself
+  on the far side from the killer, and cycles between orbit points to kite/loop
+  the killer around the obstacle.
+- **Verified:** both bot scripts parse cleanly; an active match runs 25s with 0
+  runtime errors.
+
+### 3. Release builds (this session)
+- **Windows** `.exe` + `.pck` (external PCK, not embedded) exported successfully.
+  Root cause of the earlier failed export found & fixed: broken junctions under
+  `test_instances/` were aborting the PCK pack — removed them and the pack
+  completes (`The Darkness Of The Grasslands.pck`, ~80 MB). Also disabled
+  safe-save (`filesystem/on_save/safe_save_on_backup_then_rename=false` in
+  `editor_settings-4.7.tres`) which antivirus was blocking.
+- **Android** `.apk` exported and signed with the Godot debug keystore
+  (`%APPDATA%/Godot/keystores/debug.keystore`, alias `androiddebugkey`).
+  Signing is wired into `export_presets.cfg` (keystore/debug + keystore/release)
+  so the editor GUI signs automatically; for headless CLI exports the keystore
+  is supplied via `GODOT_ANDROID_KEYSTORE_RELEASE_*` env vars.
+- **Deliverables (zipped folders):**
+  - `grasslands_build/The Darkness Of The Grasslands Windows.zip` — exe + pck + README.
+  - `grasslands_build/The Darkness Of The Grasslands Android.zip` — signed apk + README.
+- `.gitignore` updated to exclude build artifacts (`*.apk`, `*.idsig`,
+  `grasslands_build/`).
