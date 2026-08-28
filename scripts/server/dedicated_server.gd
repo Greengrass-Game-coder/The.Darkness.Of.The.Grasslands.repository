@@ -39,7 +39,6 @@ var _phase: MatchPhase = MatchPhase.WAITING_FOR_PLAYERS
 var _phase_timer: float = 0.0
 var _queued_players: Array[int] = []  # peer_ids in queue
 var _private_rooms: Dictionary = {}  # code -> {host_peer_id, players: []}
-var _public_servers: Dictionary = {}  # code -> {host_pid, name, mode, max_players, connect_address, host_username}
 var _force_ai_killer: bool = false  # Set by "G force AI" command
 var _admin_password: String = "Moon996633"
 var _current_match_id: int = 0
@@ -135,7 +134,6 @@ func _on_peer_disconnected(pid: int) -> void:
 	_queued_players.erase(pid)
 	for code: String in _private_rooms.keys():
 		_private_rooms[code]["players"].erase(pid)
-	_unregister_peer_servers(pid)
 	_broadcast_player_list()
 	print("DedicatedServer: Peer disconnected: ", pid)
 
@@ -353,12 +351,6 @@ func _handle_client_message(pid: int, data: Dictionary) -> void:
 			_handle_create_private(pid, data.get("code", ""))
 		"join_private_server":
 			_handle_join_private(pid, data.get("code", ""))
-		"register_server":
-			_handle_register_server(pid, data)
-		"unregister_server":
-			_handle_unregister_server(pid, data.get("code", ""))
-		"browse_servers":
-			_handle_browse_servers(pid)
 		"save_data":
 			_handle_save_data(pid, data.get("data", {}))
 		"load_data":
@@ -612,90 +604,6 @@ func _handle_join_private(pid: int, code: String) -> void:
 	if _peer_info.has(pid):
 		_peer_info[pid]["room_code"] = code
 	_send_to(pid, "private_room_joined", {"code": code, "players": room["players"].size()})
-
-
-# ═══════════════ PUBLIC P2P SERVER REGISTRY / BROWSER ═══════════════
-
-func _handle_register_server(pid: int, data: Dictionary) -> void:
-	"""A host advertises its P2P room in the public browser."""
-	var code: String = data.get("code", "")
-	if code.is_empty():
-		_send_to(pid, "error", {"message": "Server code required."})
-		return
-	# Auto-create the private room if the host hasn't created it yet, so a single
-	# register_server message is enough to become publicly listed.
-	if not _private_rooms.has(code):
-		_private_rooms[code] = {"host_peer_id": pid, "players": [pid]}
-		if _peer_info.has(pid):
-			_peer_info[pid]["room_code"] = code
-	elif _private_rooms[code].get("host_peer_id", -1) != pid:
-		_send_to(pid, "error", {"message": "You are not the host of room " + code})
-		return
-	var username: String = _peer_info.get(pid, {}).get("username", "Unknown")
-	# Encrypt the advertised address so raw IP:port is never stored/shown in the
-	# public list. Clients decrypt it (AddressCrypto) only at connect time.
-	var raw_addr: String = data.get("connect_address", "")
-	var enc_addr: String = raw_addr
-	if not raw_addr.is_empty():
-		enc_addr = AddressCrypto.encrypt(raw_addr)
-	_public_servers[code] = {
-		"host_pid": pid,
-		"name": data.get("name", "P2P Server"),
-		"mode": data.get("mode", "round"),
-		"max_players": int(data.get("max_players", 12)),
-		"connect_address": enc_addr,
-		"host_username": username,
-	}
-	print("DedicatedServer: Public server registered: ", code, " (", username, ")")
-	_broadcast_server_list()
-
-
-func _handle_unregister_server(pid: int, _code: String) -> void:
-	for c: String in _public_servers.keys():
-		if _public_servers[c].get("host_pid", -1) == pid:
-			_public_servers.erase(c)
-	print("DedicatedServer: Public server unregistered by peer ", pid)
-	_broadcast_server_list()
-
-
-func _handle_browse_servers(pid: int) -> void:
-	_send_to(pid, "server_list", {"servers": _build_server_list()})
-
-
-func _unregister_peer_servers(pid: int) -> void:
-	var changed: bool = false
-	for c: String in _public_servers.keys():
-		if _public_servers[c].get("host_pid", -1) == pid:
-			_public_servers.erase(c)
-			changed = true
-	if changed:
-		_broadcast_server_list()
-
-
-func _build_server_list() -> Array:
-	var list: Array = []
-	for code: String in _public_servers:
-		var s: Dictionary = _public_servers[code]
-		var names: Array = []
-		var room: Dictionary = _private_rooms.get(code, {})
-		for p: int in room.get("players", [s.get("host_pid")]):
-			var n: String = _peer_info.get(p, {}).get("username", "Player_%d" % p)
-			names.append(n)
-		list.append({
-			"code": code,
-			"name": s.get("name", "P2P Server"),
-			"mode": s.get("mode", "round"),
-			"player_count": names.size(),
-			"max_players": s.get("max_players", 12),
-			"host_username": s.get("host_username", ""),
-			"connect_address": s.get("connect_address", ""),
-			"players": names,
-		})
-	return list
-
-
-func _broadcast_server_list() -> void:
-	_send_to_all("server_list", {"servers": _build_server_list()})
 
 
 func _rotate_killer_role() -> void:

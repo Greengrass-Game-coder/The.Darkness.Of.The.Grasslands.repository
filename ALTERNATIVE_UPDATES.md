@@ -1056,3 +1056,19 @@ Ported to BOTH `ai_survivor_bot_controller.gd` (main) and
   - `grasslands_build/The Darkness Of The Grasslands Android.zip` — signed apk + README.
 - `.gitignore` updated to exclude build artifacts (`*.apk`, `*.idsig`,
   `grasslands_build/`).
+
+### 4. Removed the dead P2P server registry (small-demo cleanup)
+- Deleted the "PUBLIC P2P SERVER REGISTRY / BROWSER" block from
+  `scripts/server/dedicated_server.gd` (`_handle_register_server`,
+  `_handle_unregister_server`, `_handle_browse_servers`, `_unregister_peer_servers`,
+  `_build_server_list`, `_broadcast_server_list`), the `_public_servers` field, the
+  three dispatch cases (`register_server`/`unregister_server`/`browse_servers`),
+  and the `_unregister_peer_servers()` call on disconnect.
+- Removed the matching client dead code in `scripts/systems/network_manager.gd`:
+  the `server_list_received` signal and its `server_list` handler (nothing else
+  used it). This also removed a dangling `AddressCrypto` reference that was
+  undefined — a latent bug.
+- The normal online matchmaking (queue, `create_private_server`,
+  `join_private_server`) is untouched. Verified: `dedicated_server.gd` passes
+  `--check-only`, and `network_manager.gd` boots cleanly (NetworkManager autoload
+  starts with no errors).

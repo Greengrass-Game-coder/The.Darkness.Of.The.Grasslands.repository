@@ -28,7 +28,6 @@ signal avatar_updated(avatar_type: String)
 signal private_room_created(code: String)
 signal private_room_joined(code: String, player_count: int)
 signal server_error(message: String)
-signal server_list_received(servers: Array)
 
 const DEFAULT_WS_URL: String = "ws://localhost:8080"
 const CONNECT_TIMEOUT: float = 10.0  # seconds before giving up
@@ -223,9 +222,6 @@ func _handle_message(text: String) -> void:
 		
 		"error":
 			server_error.emit(json.get("message", ""))
-
-		"server_list":
-			server_list_received.emit(json.get("servers", []))
 
 
 func _emit_player_list() -> void:
