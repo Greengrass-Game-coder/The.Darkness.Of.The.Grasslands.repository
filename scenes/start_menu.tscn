@@ -54,13 +54,6 @@ layout_mode = 2
 size_flags_horizontal = 4
 text = "FIND A GAME"
 
-[node name="HostGameBtn" type="Button" parent="MenuButtons" unique_id=3109876543]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(500, 60)
-layout_mode = 2
-size_flags_horizontal = 4
-text = "HOST A GAME (P2P)"
-
 [node name="SettingsBtn" type="Button" parent="MenuButtons" unique_id=2143062250]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(500, 60)

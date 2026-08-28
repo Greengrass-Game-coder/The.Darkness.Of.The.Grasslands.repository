@@ -35,6 +35,15 @@ var blueprint_image: Image = null
 var _raw_data: PackedByteArray = PackedByteArray()
 var _wall_color_int: int = 0
 
+# ---- AI waypoint data (built by build_navigation) ----
+## "Tracks of lines" the survivor bots patrol along: a coarse grid of walkable
+## points spread across the map that bots path between instead of wandering.
+var patrol_waypoints: Array[Vector2] = []
+## Orbit anchors around each wall obstacle. Each entry is an Array[Vector2] of 4
+## points (N/E/S/W just outside the obstacle) the bot cycles around to LOOP the
+## killer when chased.
+var loop_orbits: Array = []
+
 
 func load_blueprint(blueprint_name: String) -> bool:
 	"""
@@ -258,7 +267,57 @@ func build_navigation(parent_node: Node) -> void:
 	nav_region.navigation_polygon = nav_poly
 	parent_node.add_child(nav_region)
 
-	print("MapManager: Created navigation region with %d wall holes" % wall_outlines.size())
+	# Let survivor bots find this manager's waypoint data easily.
+	add_to_group("map_manager")
+
+	# ── Build "loop the killer" orbit anchors around each wall obstacle ──
+	# For every wall region, place 4 points just outside its bounding box
+	# (N/E/S/W). A chased survivor runs to the nearest one and cycles around
+	# it, keeping the obstacle between itself and the killer.
+	loop_orbits.clear()
+	const ORBIT_OFFSET: float = 34.0
+	for wpoly: Array in wall_outlines:
+		if wpoly.size() < 3:
+			continue
+		var minp: Vector2 = Vector2(wpoly[0])
+		var maxp: Vector2 = Vector2(wpoly[0])
+		for i in range(1, wpoly.size()):
+			var p: Vector2 = Vector2(wpoly[i])
+			minp.x = minf(minp.x, p.x)
+			minp.y = minf(minp.y, p.y)
+			maxp.x = maxf(maxp.x, p.x)
+			maxp.y = maxf(maxp.y, p.y)
+		var cx: float = (minp.x + maxp.x) * 0.5
+		var cy: float = (minp.y + maxp.y) * 0.5
+		var orbit: Array[Vector2] = [
+			Vector2(clampf(cx, 20.0, float(blueprint_size.x) - 20.0), clampf(minp.y - ORBIT_OFFSET, 20.0, float(blueprint_size.y) - 20.0)),
+			Vector2(clampf(maxp.x + ORBIT_OFFSET, 20.0, float(blueprint_size.x) - 20.0), clampf(cy, 20.0, float(blueprint_size.y) - 20.0)),
+			Vector2(clampf(cx, 20.0, float(blueprint_size.x) - 20.0), clampf(maxp.y + ORBIT_OFFSET, 20.0, float(blueprint_size.y) - 20.0)),
+			Vector2(clampf(minp.x - ORBIT_OFFSET, 20.0, float(blueprint_size.x) - 20.0), clampf(cy, 20.0, float(blueprint_size.y) - 20.0)),
+		]
+		loop_orbits.append(orbit)
+
+	# ── Build patrol "tracks of lines" (coarse grid of walkable points) ──
+	# Bots path between these waypoints while patrolling so they follow
+	# readable lanes instead of randomly wandering.
+	patrol_waypoints.clear()
+	const PATROL_STEP: float = 140.0
+	var px: int = int(floor(PATROL_STEP / GRID_SIZE))
+	var py: int = int(floor(PATROL_STEP / GRID_SIZE))
+	for gy in range(1, grid_h - 1):
+		for gx in range(1, grid_w - 1):
+			if gx % px != 0 or gy % py != 0:
+				continue
+			if wall_grid[gy][gx]:
+				continue
+			var wx: float = float(gx) * GRID_SIZE + GRID_SIZE * 0.5
+			var wy: float = float(gy) * GRID_SIZE + GRID_SIZE * 0.5
+			if wx < 0.0 or wy < 0.0 or wx >= blueprint_size.x or wy >= blueprint_size.y:
+				continue
+			patrol_waypoints.append(Vector2(wx, wy))
+
+	print("MapManager: Created navigation region with %d wall holes, %d loop anchors, %d patrol waypoints" \
+		% [wall_outlines.size(), loop_orbits.size(), patrol_waypoints.size()])
 
 
 func get_spawn_point(for_killer: bool = false) -> Vector2:

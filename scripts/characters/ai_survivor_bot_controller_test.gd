@@ -59,6 +59,13 @@ var _navigation_agent: NavigationAgent2D = null
 var _nav_target: Vector2 = Vector2.ZERO
 var _nav_target_set: bool = false
 
+# Cached reference to the MapManager (provides patrol "tracks" and loop anchors).
+var _map_mgr: Node = null
+# Active "loop the killer" orbit state: the chosen obstacle's orbit group and
+# which orbit point we're heading to next (cycling keeps us orbiting).
+var _loop_group: Array = []
+var _loop_index: int = 0
+
 # Anti-stuck: detects when the bot is pushing into a wall (trying to move but
 # barely progressing) and applies a perpendicular nudge + retarget to scrape off.
 var _stuck_timer: float = 0.0
@@ -388,6 +395,42 @@ func _ai_flee(delta: float) -> void:
 	if _has_los_to_killer and dist_from_killer < safe_los_distance:
 		_hide_timer = 0.0
 	
+	# ── 0.5 LOOP THE KILLER ──
+	# When the killer has a clear line of sight and is actively chasing, run to
+	# a nearby wall obstacle and orbit it. The wall stays between the bot and
+	# the killer, so the killer can't catch the bot in a straight line — the
+	# classic survivor "loop." Falls back to normal fleeing if no obstacle is
+	# handy. Only when LOS is present (killer is actually chasing).
+	if _has_los_to_killer and dist_from_killer < flee_range * 0.75:
+		var loop_dir: Vector2 = _ai_loop_killer(away_dir)
+		if loop_dir != Vector2.ZERO:
+			var move_dir2: Vector2 = _anti_stuck(delta, loop_dir)
+			move_dir2 = _avoid_walls(move_dir2.normalized())
+			var use_sprint2: bool = (not _stamina_exhausted) and (dist_from_killer < 220.0 or _has_los_to_killer)
+			var speed2: float = sprint_speed if use_sprint2 else (move_speed * 0.75)
+			if use_sprint2:
+				current_stamina -= sprint_stamina_drain * delta
+				if current_stamina <= 0.0:
+					current_stamina = 0.0
+					_stamina_exhausted = true
+					_exhaustion_timer = 3.0
+				_stamina_regen_timer = stamina_regen_delay
+			else:
+				if current_stamina < max_stamina:
+					_stamina_regen_timer -= delta
+					if _stamina_regen_timer <= 0.0:
+						current_stamina += stamina_regen * delta
+						if current_stamina > max_stamina:
+							current_stamina = max_stamina
+			velocity = move_dir2 * speed2
+			_update_direction(velocity)
+			_play_animation("walk")
+			_change_state(State.WALKING)
+			return
+	# Killer broke chase (or no obstacle to loop) — drop the active orbit so the
+	# next chase picks a fresh loop point.
+	_loop_group = []
+
 	# ── 1. Choose a flee target that BREAKS line-of-sight (runs around walls) ──
 	# The bot samples a fan of candidate directions and picks the one that both
 	# moves away from the killer AND puts a wall between them — so it disappears
@@ -527,7 +570,13 @@ func _ai_patrol(delta: float) -> void:
 			_patrol_target = _target_puzzle.global_position + Vector2(randf_range(-100, 100), randf_range(-100, 100))
 			_patrol_timer = patrol_change_interval * 2.0
 		else:
-			_patrol_target = global_position + _random_dir() * randf_range(150, 300)
+			# Follow the map's patrol 'tracks' (waypoint lanes) when no puzzle is
+			# active, so bots move along readable lines instead of wandering.
+			var wp: Vector2 = _pick_patrol_waypoint()
+			if wp != Vector2.ZERO:
+				_patrol_target = wp
+			else:
+				_patrol_target = global_position + _random_dir() * randf_range(150, 300)
 			_patrol_timer = patrol_change_interval
 	
 	# Use NavigationAgent2D to navigate to patrol target
@@ -574,6 +623,80 @@ func is_bot() -> bool:
 
 
 # ── Navigation helpers ──
+
+func _get_map_manager() -> Node:
+	"""Cache a reference to the map's MapManager (group 'map_manager'), which
+	holds the patrol 'track' waypoints and the loop-the-killer orbit anchors."""
+	if _map_mgr == null or not is_instance_valid(_map_mgr):
+		_map_mgr = get_tree().get_first_node_in_group("map_manager")
+	return _map_mgr
+
+
+func _pick_patrol_waypoint() -> Vector2:
+	"""Return a patrol waypoint (a 'track' point) to head toward. Prefers one a
+	healthy distance away so the bot actually travels the map along the lanes,
+	falling back to the nearest one. Returns Vector2.ZERO if no tracks exist."""
+	var mm: Node = _get_map_manager()
+	if mm == null or mm.patrol_waypoints.is_empty():
+		return Vector2.ZERO
+	var candidates: Array[Vector2] = []
+	for wp: Vector2 in mm.patrol_waypoints:
+		if global_position.distance_to(wp) > 160.0:
+			candidates.append(wp)
+	if not candidates.is_empty():
+		return candidates[randi() % candidates.size()]
+	var nearest: Vector2 = mm.patrol_waypoints[0]
+	var nd: float = INF
+	for wp: Vector2 in mm.patrol_waypoints:
+		var d: float = global_position.distance_to(wp)
+		if d < nd:
+			nd = d
+			nearest = wp
+	return nearest
+
+
+func _ai_loop_killer(away_dir: Vector2) -> Vector2:
+	"""Pick a direction that navigates to the nearest wall obstacle and ORBITS
+	it, keeping the wall between the bot and the killer — the classic
+	'loop the killer' escape. Returns Vector2.ZERO if no loop target is nearby."""
+	var mm: Node = _get_map_manager()
+	if mm == null or mm.loop_orbits.is_empty():
+		return Vector2.ZERO
+	if not is_instance_valid(_target_killer):
+		return Vector2.ZERO
+	# If we have no active orbit, grab the nearest obstacle's orbit group and
+	# start at the point farthest from the killer (the far side of the obstacle).
+	if _loop_group.is_empty():
+		var best_group: Array = []
+		var best_dist: float = flee_range
+		for orbit: Array in mm.loop_orbits:
+			for p: Vector2 in orbit:
+				var d: float = global_position.distance_to(p)
+				if d < best_dist:
+					best_dist = d
+					best_group = orbit
+		if best_group.is_empty():
+			return Vector2.ZERO
+		_loop_group = best_group
+		_loop_index = 0
+		var best_score: float = -INF
+		for i in range(_loop_group.size()):
+			var p: Vector2 = _loop_group[i]
+			var score: float = p.distance_to(_target_killer.global_position) - global_position.distance_to(p)
+			if score > best_score:
+				best_score = score
+				_loop_index = i
+	# Cycle to the next orbit point once we reach the current one, so we keep
+	# circling the obstacle (the killer has to run around it after us).
+	var cur: Vector2 = _loop_group[_loop_index]
+	if global_position.distance_to(cur) < 46.0:
+		_loop_index = (_loop_index + 1) % _loop_group.size()
+		cur = _loop_group[_loop_index]
+	var nav_dir: Vector2 = _navigate_to(cur)
+	if nav_dir.length_squared() < 0.01:
+		return (cur - global_position).normalized()
+	return nav_dir.normalized()
+
 
 func _navigate_to(target_pos: Vector2) -> Vector2:
 	"""

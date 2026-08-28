@@ -166,12 +166,8 @@ func _open_settings() -> void:
 	_settings.open()
 
 
-## The private server panel is available to the host of an active multiplayer
-## session, and to a solo player (no active session = owner of their own game).
+## The private server panel is always available to a solo local player.
 func _can_use_server_panel() -> bool:
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p != null and p2p.get("is_active"):
-		return bool(p2p.get("is_host"))
 	return true
 
 

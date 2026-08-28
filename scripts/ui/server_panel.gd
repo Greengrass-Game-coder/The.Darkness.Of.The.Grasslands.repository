@@ -184,15 +184,7 @@ func _refresh_players() -> void:
 		return
 	for c in _player_list.get_children():
 		c.queue_free()
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p == null or not p2p.is_active:
-		_add_player_row(0, "No multiplayer session (solo).")
-		return
-	var ids: Array = p2p.players.keys()
-	ids.sort()
-	for pid in ids:
-		var info: Dictionary = p2p.players[pid]
-		_add_player_row(int(pid), str(info.get("name", "Player")))
+	_add_player_row(0, "Local game (solo).")
 
 
 func _add_player_row(pid: int, name: String) -> void:
@@ -207,10 +199,7 @@ func _add_player_row(pid: int, name: String) -> void:
 	_player_list.add_child(row)
 
 
-func _kick_player(pid: int) -> void:
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p != null and p2p.has_method("kick_player"):
-		p2p.kick_player(pid)
+func _kick_player(_pid: int) -> void:
 	_refresh_players()
 
 
@@ -288,17 +277,13 @@ func _build_server_tab() -> void:
 
 
 func _set_server_name() -> void:
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p != null:
-		p2p.server_display_name = _server_name_edit.text
+	# Local game — server name is cosmetic only.
+	pass
 
 
 func _broadcast() -> void:
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	var msg: String = _broadcast_edit.text
-	if p2p != null and msg != "":
-		p2p.broadcast("server_message", {"text": msg})
-		_broadcast_edit.text = ""
+	# Local game — no remote peers to broadcast to.
+	_broadcast_edit.text = ""
 
 
 # ── Values tab ─────────────────────────────────────────────────────────────

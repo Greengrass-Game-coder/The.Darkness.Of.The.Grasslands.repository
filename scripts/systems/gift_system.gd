@@ -5,15 +5,12 @@ extends Node
 ## Two delivery paths, both requiring the friend to ACCEPT:
 ##   • Local:  gifts to another local profile persist in user://pending_gifts.json
 ##             and are accepted/denied when that profile plays the arcade.
-##   • Online: gifts to a connected P2P peer travel as network messages and the
-##             friend accepts/denies live. Denying refunds the gifter.
 ##
 ## All coin deductions happen in the arcade room (via _spend_coins); this module
 ## handles persistence, applying unlocks, and refunds on arbitrary profiles.
 
 signal local_gift_created(gift: Dictionary)
 signal inbox_changed()
-signal incoming_gift_offer(gift: Dictionary, peer_id: int)
 
 const GIFTS_FILE: String = "user://pending_gifts.json"
 
@@ -25,7 +22,7 @@ const CARTRIDGES: Array[Dictionary] = [
 
 
 func _ready() -> void:
-	_connect_p2p()
+	pass
 
 
 func cost_for(cartridge_name: String) -> int:
@@ -192,50 +189,4 @@ func local_owns(username: String, owned_key: String) -> bool:
 	return bool(data.get(owned_key, false))
 
 
-# ── Online gifting via P2P ─────────────────────────────────────────────────
 
-func _connect_p2p() -> void:
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p != null and not p2p.message_received.is_connected(_on_message):
-		p2p.message_received.connect(_on_message)
-
-
-## Send a gift offer to a connected peer. The gifter's coins are spent by the
-## caller; the peer's client will prompt the friend to accept or deny.
-func offer_online(peer_id: int, gifter: String, cartridge_name: String) -> void:
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p == null:
-		return
-	p2p.send_to(peer_id, "gift_offer", {
-		"gifter": gifter,
-		"cartridge": cartridge_name,
-		"cost": cost_for(cartridge_name),
-		"owned_key": owned_key_for(cartridge_name),
-	})
-
-
-func send_accept(peer_id: int, gift: Dictionary) -> void:
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p != null:
-		p2p.send_to(peer_id, "gift_accept", gift)
-
-
-func send_deny(peer_id: int, gift: Dictionary) -> void:
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p != null:
-		p2p.send_to(peer_id, "gift_deny", gift)
-
-
-func _on_message(_sender_id: int, msg_type: String, data: Dictionary) -> void:
-	match msg_type:
-		"gift_offer":
-			incoming_gift_offer.emit(data, _sender_id)
-		"gift_accept":
-			# Gift delivered; nothing more to do on the gifter's side.
-			pass
-		"gift_deny":
-			var gifter: String = str(data.get("gifter", ""))
-			var cost: int = int(data.get("cost", 0))
-			if not gifter.is_empty() and cost > 0:
-				refund(gifter, cost)
-			inbox_changed.emit()

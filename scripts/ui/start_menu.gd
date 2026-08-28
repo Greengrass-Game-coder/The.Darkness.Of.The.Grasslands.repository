@@ -34,15 +34,12 @@ func _setup_buttons() -> void:
 	if not buttons:
 		return
 	var find_btn: Button = buttons.get_node("FindGameBtn") as Button
-	var host_btn: Button = buttons.get_node("HostGameBtn") as Button
 	var settings_btn: Button = buttons.get_node("SettingsBtn") as Button
 	var account_btn: Button = buttons.get_node("AccountSettingsBtn") as Button
 	var logout_btn: Button = buttons.get_node("LogoutBtn") as Button
 	
 	if find_btn:
 		find_btn.pressed.connect(_on_find_game_pressed)
-	if host_btn:
-		host_btn.pressed.connect(_on_host_game_pressed)
 	if settings_btn:
 		settings_btn.pressed.connect(_on_settings_pressed)
 	if account_btn:
@@ -273,11 +270,6 @@ func _on_find_game_pressed() -> void:
 	map in the background so the match starts instantly. If the game map is
 	already pre-loaded (cached), the loading screen skips itself automatically."""
 	get_tree().change_scene_to_file("res://scenes/loading_screen.tscn")
-
-
-func _on_host_game_pressed() -> void:
-	"""Open the P2P host/join lobby (self-hosted public/private servers)."""
-	get_tree().change_scene_to_file("res://scenes/p2p/p2p_lobby.tscn")
 
 
 func _on_settings_pressed() -> void:

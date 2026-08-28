@@ -33,7 +33,6 @@ FriendsManager="*res://scripts/systems/friends_manager.gd"
 SaveManager="*res://scripts/systems/save_manager.gd"
 SFXManager="*res://scripts/systems/sfx_manager.gd"
 SoundManager="*res://scripts/systems/sound_manager.gd"
-P2PManager="*res://scripts/p2p/p2p_manager.gd"
 InputSystem="*res://scripts/systems/input_system.gd"
 PauseManager="*res://scripts/systems/pause_manager.gd"
 IntermissionTimer="*res://scripts/systems/intermission_timer.gd"
@@ -48,7 +47,7 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_with_u/plugin.cfg")
+enabled=PackedStringArray("res://addons/dev_suite/plugin.cfg", "res://addons/godot_with_u/plugin.cfg")
 
 [input]
 

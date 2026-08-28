@@ -139,8 +139,6 @@ var _gift_rows: Array = []                  # picker row labels
 var _gift_nav_was_down: bool = false
 var _gift_inbox_active: bool = false        # accept/deny prompt open
 var _inbox_gift: Dictionary = {}            # the gift being decided
-var _inbox_online: bool = false             # arrived via network vs local file
-var _inbox_peer: int = 0                    # peer id for online gifts
 var _inbox_overlay: Control = null          # accept/deny prompt overlay
 var _cart_shaking: bool = false          # true while the cartridge shake plays
 var _music: AudioStreamPlayer = null
@@ -212,9 +210,6 @@ func _ready() -> void:
 	_build_ui()
 	# Reveal from black (right-to-left wipe continues from the lobby).
 	_reveal_from_black()
-	# Listen for online gift offers.
-	if not GiftSystem.incoming_gift_offer.is_connected(_on_gift_offer):
-		GiftSystem.incoming_gift_offer.connect(_on_gift_offer)
 	# Phone/tablet: connect the touch-controls drag/tap navigation signals and
 	# start in the room-walking layout (the browser switches it to "browser").
 	if not TouchControls.swipe.is_connected(_on_touch_swipe):
@@ -877,20 +872,6 @@ func _build_gift_friends() -> void:
 		if not owned_key.is_empty() and GiftSystem.local_owns(name, owned_key):
 			continue
 		_gift_friends.append({"name": name, "source": "local", "peer": 0})
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	if p2p != null and p2p.get("is_active"):
-		for pid in p2p.get("players").keys():
-			var info: Dictionary = p2p.get("players")[pid]
-			var pname: String = str(info.get("name", ""))
-			if pname.to_lower() == me.to_lower():
-				continue
-			var dup: bool = false
-			for f: Dictionary in _gift_friends:
-				if str(f["name"]).to_lower() == pname.to_lower():
-					dup = true
-					break
-			if not dup:
-				_gift_friends.append({"name": pname, "source": "online", "peer": int(pid)})
 
 
 func _open_gift_picker() -> void:
@@ -982,10 +963,7 @@ func _confirm_gift() -> void:
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
 	_spend_coins(cost)
 	var cart_name: String = str(entry["name"])
-	if friend["source"] == "local":
-		GiftSystem.create_local_gift(AuthManager.current_username, str(friend["name"]), cart_name)
-	else:
-		GiftSystem.offer_online(int(friend["peer"]), AuthManager.current_username, cart_name)
+	GiftSystem.create_local_gift(AuthManager.current_username, str(friend["name"]), cart_name)
 	_gift_active = false
 	if _gift_overlay != null and is_instance_valid(_gift_overlay):
 		_gift_overlay.queue_free()
@@ -1007,13 +985,11 @@ func _cancel_gift() -> void:
 
 # ── Gift inbox (accept / deny) ────────────────────────────────────────────
 
-func _show_gift_inbox(gift: Dictionary, online: bool, peer: int) -> void:
+func _show_gift_inbox(gift: Dictionary) -> void:
 	if _gift_inbox_active:
 		return
 	_gift_inbox_active = true
 	_inbox_gift = gift
-	_inbox_online = online
-	_inbox_peer = peer
 	var p := _palette()
 	var ov := ColorRect.new()
 	ov.color = Color(0, 0, 0, 0.82)
@@ -1053,15 +1029,7 @@ func _hide_gift_inbox() -> void:
 func _accept_gift() -> void:
 	if not _gift_inbox_active:
 		return
-	if _inbox_online:
-		var gs: Node = get_node_or_null("/root/GameState")
-		var key: String = str(_inbox_gift.get("owned_key", ""))
-		if gs != null and not key.is_empty():
-			gs.set(key, true)
-			_save_tetrino_state()
-		GiftSystem.send_accept(_inbox_peer, _inbox_gift)
-	else:
-		GiftSystem.accept_gift(_inbox_gift)
+	GiftSystem.accept_gift(_inbox_gift)
 	_hide_gift_inbox()
 	_show_browser_notice("GIFT ACCEPTED!", Color(0.4, 1.0, 0.6))
 
@@ -1069,16 +1037,9 @@ func _accept_gift() -> void:
 func _deny_gift() -> void:
 	if not _gift_inbox_active:
 		return
-	if _inbox_online:
-		GiftSystem.send_deny(_inbox_peer, _inbox_gift)
-	else:
-		GiftSystem.deny_gift(_inbox_gift)
+	GiftSystem.deny_gift(_inbox_gift)
 	_hide_gift_inbox()
 	_show_browser_notice("GIFT DECLINED — GIFTED REFUNDED", Color(1.0, 0.6, 0.4))
-
-
-func _on_gift_offer(gift: Dictionary, peer: int) -> void:
-	_show_gift_inbox(gift, true, peer)
 
 
 ## Show the first undecided local gift addressed to the current profile.
@@ -1090,7 +1051,7 @@ func _show_first_pending_gift() -> void:
 		return
 	var pending: Array = GiftSystem.pending_for(me)
 	if not pending.is_empty():
-		_show_gift_inbox(pending[0], false, 0)
+		_show_gift_inbox(pending[0])
 
 
 func _show_browser_notice(text: String, color: Color) -> void:

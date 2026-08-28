@@ -4218,23 +4218,8 @@ func _cleanup_for_lobby() -> void:
 # ═══════════════ MULTIPLAYER INTEGRATION ═══════════════
 
 func _initialize_multiplayer() -> void:
-	"""Set up multiplayer sync. Prefers the P2P bridge (P2PGameSync) when a
-	self-hosted P2P session is active; otherwise falls back to the dedicated
-	server's MultiplayerGameSync if connected."""
-	var p2p: Node = get_node_or_null("/root/P2PManager")
-	var p2p_active: bool = is_instance_valid(p2p) and p2p.get("is_active") == true
-	
-	if p2p_active:
-		_multiplayer_sync = P2PGameSync.new()
-		_multiplayer_sync.name = "P2PSync"
-		add_child(_multiplayer_sync)
-		_multiplayer_sync.match_started.connect(_on_multiplayer_match_started)
-		_multiplayer_sync.player_disconnected.connect(_on_multiplayer_player_left)
-		# In P2P, the host can override the killer role; for now the local player
-		# keeps the role the scene assigned (survivor default).
-		print("GameMap: P2P multiplayer mode active")
-		return
-	
+	"""Set up multiplayer sync with the dedicated server if connected. When not
+	connected, the game runs fully locally and AI bots handle gameplay."""
 	var nm: Node = get_node_or_null("/root/NetworkManager")
 	if not nm or not nm.connected:
 		return  # Offline mode — bots handle gameplay
