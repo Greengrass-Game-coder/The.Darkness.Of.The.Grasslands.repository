@@ -39,7 +39,9 @@ const KILLER_CHASE_ENTER: Array[float] = [0.0, 0.0, 0.0, 250.0]
 const KILLER_CHASE_EXIT: Array[float]  = [0.0, 0.0, 0.0, 700.0]
 # Survivor chase: all 4 layers with build-up
 const SURVIVOR_CHASE_ENTER: Array[float] = [500.0, 300.0, 150.0, 80.0]
-const SURVIVOR_CHASE_EXIT: Array[float]  = [600.0, 400.0, 250.0, 150.0]
+# Exit is just past each enter step so the chase MUTES as soon as the killer
+# moves away (no endless lingering build-up once the threat is far).
+const SURVIVOR_CHASE_EXIT: Array[float]  = [520.0, 330.0, 180.0, 110.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
 const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
@@ -486,6 +488,7 @@ func _place_markers() -> void:
 		area.set_meta("puzzle_type", ptype)
 		area.position = adjusted_pos
 		area.collision_mask = 1  # Detect player (layer 1)
+		area.add_to_group("puzzles")  # For ability gating near puzzle/generator zones
 		var col := CollisionShape2D.new()
 		var shape := RectangleShape2D.new()
 		shape.size = Vector2(128, 128)  # Bigger catch area
@@ -3586,47 +3589,10 @@ func _show_map_admin_help() -> void:
 
 
 func _determine_killer_by_rings() -> bool:
-	"""Ring-based killer selection: highest ring count gets to be killer.
-	If multiple players tied or local player isn't top, picks based on next-in-line.
-	If nobody has rings, picks randomly."""
-	var gs = get_node("/root/GameState")
-	if gs == null:
-		return false
-	
-	# Get players sorted by rings descending
-	var sorted_players: Array[String] = gs.get_players_sorted_by_rings()
-	
-	# If no other players have ring data, check for tied/highest
-	var local_username: String = gs.logged_in_username
-	if local_username.is_empty():
-		return false
-	
-	var local_rings: int = gs.get_player_rings(local_username)
-	
-	# If this player has the most rings, they're the killer
-	if sorted_players.is_empty() or sorted_players[0] == local_username:
-		# Check if ANY other player has equal rings (tie)
-		var tied_players: Array[String] = []
-		for pname: String in sorted_players:
-			if gs.get_player_rings(pname) >= local_rings:
-				tied_players.append(pname)
-		
-		if tied_players.size() <= 1:
-			# This player is uniquely at the top
-			print("GameMap: Ring-based killer selection — %s (%d rings)" % [local_username, local_rings])
-			return true
-		else:
-			# Tie — pick next person in line
-			var my_index: int = tied_players.find(local_username)
-			if my_index >= 0 and my_index + 1 < tied_players.size():
-				# Next tied player is chosen instead
-				print("GameMap: Ring tie — %s passed to %s" % [local_username, tied_players[my_index + 1]])
-				return false
-			# Default to this player
-			return true
-	
-	# Someone else has more rings
-	print("GameMap: Ring-based killer selection — %s is not top ring holder" % local_username)
+	"""Killer selection no longer depends on rings. Earning rings in a match
+	never makes the player the killer. The local player starts as a SURVIVOR
+	(against the AI killer bot); they can switch roles with the F2 admin/role
+	switcher at any time if they want to play as the killer."""
 	return false
 
 

@@ -115,6 +115,12 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# Don't fire abilities while standing inside a puzzle/generator activation
+	# zone — they'd go off when the player doesn't want them to (e.g. while
+	# interacting with the puzzle). Bots call abilities directly, so this only
+	# affects human input.
+	if _near_puzzle_or_generator():
+		return
 	if event.is_action_pressed("ability_1"):
 		use_block()
 	elif event.is_action_pressed("ability_2"):
@@ -123,6 +129,15 @@ func _input(event: InputEvent) -> void:
 		_fire_charged_punch()
 	elif event.is_action_pressed("ability_3"):
 		use_spare_flower()
+
+
+func _near_puzzle_or_generator() -> bool:
+	"""True when this body is inside a puzzle/generator activation zone."""
+	for area in get_tree().get_nodes_in_group("puzzles"):
+		if is_instance_valid(area) and area is Area2D:
+			if (area as Area2D).get_overlapping_bodies().has(self):
+				return true
+	return false
 
 
 func _physics_process(delta: float) -> void:

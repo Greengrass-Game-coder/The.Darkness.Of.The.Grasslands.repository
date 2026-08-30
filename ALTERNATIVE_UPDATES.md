@@ -1072,3 +1072,33 @@ Ported to BOTH `ai_survivor_bot_controller.gd` (main) and
   `join_private_server`) is untouched. Verified: `dedicated_server.gd` passes
   `--check-only`, and `network_manager.gd` boots cleanly (NetworkManager autoload
   starts with no errors).
+
+### 5. Gameplay fixes requested by the player (Session 34b)
+- **Bots no longer stick to walls**: survivor collision is now a big, REGULAR
+  circle (CircleShape2D radius 32; was a stretched 67×82 rectangle) and it still
+  collides with walls ONLY (`collision_mask = 4`). Round shape slides smoothly
+  around wall corners instead of catching on them. (`greengrass.tscn`, shared by
+  the human survivor + all survivor bots.)
+- **Earning rings NEVER makes you the killer**: `_determine_killer_by_rings()`
+  now always returns false — the local player starts as a SURVIVOR against the
+  AI killer bot. Use F2 (role switch) to play as the killer if you want.
+  (`game_map.gd` + `game_map_test.gd`.)
+- **Killer hunts the NEAREST survivor**: `_ai_find_target()` no longer uses the
+  lone-wolf/injured scoring — it simply locks onto the closest alive survivor in
+  aggro range, so it "goes and finds other survivors to kill that are close."
+  (`ai_bot_controller.gd` + `_test.gd`.)
+- **Chase theme from the survivor's perspective, muted when far**: the survivor
+  chase already reflected only the human player's threat; tightened the exit
+  distances (600→520 etc.) so the chase MUTES as soon as the killer moves away.
+  Layers are unchanged. (`game_map.gd` + `_test.gd`.)
+- **Abilities disabled near a puzzle/generator**: puzzle zones are now in the
+  `"puzzles"` group, and the survivor's `_input` ignores abilities while inside
+  one — block/charge-punch/spare-flower can't fire accidentally while you're
+  interacting with a puzzle. Bots are unaffected (they call abilities directly).
+  (`game_map.gd` + `_test.gd`; `greengrass_controller.gd`.)
+- **M1 hit sound plays the instant the killer hits**: the hit sound now fires
+  before the swing animation in `use_hit()`, so it never arrives late.
+  (`violentgrass_controller.gd`, shared by human killer + killer bot.)
+- **Killer outro plays the ENDING of the LMS, not the chase theme**: verified
+  both main and test already stop every chase player and keep the LMS song's
+  final ~1:33 tail playing under the killer-win outro — no change needed.

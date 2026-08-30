@@ -706,14 +706,15 @@ func use_hit() -> void:
 	# Hit connects — apply cooldown and damage (movement continues; no state lock)
 	hit_on_cooldown = true
 	_hit_cd_timer = hit_cooldown
-	_play_animation("hit")
 	
-	# Play the hit sound ONLY when the hit actually connects. Gated by the
-	# hit cooldown (2.5s), so rapid M1 mashing can no longer restart/spam it —
-	# the sound fires once per real landed hit.
+	# Play the hit sound the INSTANT the killer hits — before the swing
+	# animation, so the M1 sound never arrives late. Gated by the hit cooldown
+	# (2.5s), so rapid M1 mashing can no longer restart/spam it — the sound
+	# fires once per real landed hit.
 	if is_instance_valid(hit_sound):
 		hit_sound.stop()
 		hit_sound.play()
+	_play_animation("hit")
 	_play_voiceline("hit")
 	
 	_ping_hit(target)

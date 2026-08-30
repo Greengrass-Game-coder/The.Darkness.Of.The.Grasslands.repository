@@ -249,41 +249,19 @@ func _ai_find_target() -> void:
 			return
 	_target_retarget_timer = TARGET_RETARGET_INTERVAL
 	
+	# Simple nearest-survivor targeting: hunt the closest alive survivor within
+	# aggro range. The killer goes find whoever is nearest (rather than using
+	# complex lone-wolf/injured scoring that can skip over nearby prey).
 	var best: Node2D = null
-	var best_score: float = INF
+	var best_dist: float = aggro_range
 	for s in survivors:
 		if not is_instance_valid(s):
 			continue
 		if _is_dead_survivor(s):
 			continue
 		var d: float = global_position.distance_to(s.global_position)
-		if d > aggro_range:
-			continue
-		# Score: punish distance, but reward a lone survivor (few allies nearby),
-		# a low-HP survivor, and one who is isolated from the pack. This makes the
-		# AI pick off split survivors instead of always hounding the same person.
-		var allies_near: int = 0
-		for t in survivors:
-			if not is_instance_valid(t) or t == s:
-				continue
-			if s.global_position.distance_to(t.global_position) < 260.0:
-				allies_near += 1
-		var hp_ratio: float = 1.0
-		if "current_hp" in s and "max_hp" in s:
-			var chp: float = s.get("current_hp")
-			hp_ratio = chp / maxf(s.get("max_hp"), 1.0)
-		var move_speed_ratio: float = 160.0
-		if "move_speed" in s:
-			move_speed_ratio = float(s.get("move_speed"))
-		var speed_ratio: float = 160.0 / maxf(move_speed_ratio, 1.0)
-		# Weighted score: distance matters, but lone-wolf + injured targets score
-		# far better than clustered healthy ones within the same area.
-		var score: float = d
-		score += allies_near * 140.0
-		score += hp_ratio * 90.0
-		score -= speed_ratio * 40.0
-		if score < best_score:
-			best_score = score
+		if d < best_dist:
+			best_dist = d
 			best = s as Node2D
 	if best != null:
 		_target = best
