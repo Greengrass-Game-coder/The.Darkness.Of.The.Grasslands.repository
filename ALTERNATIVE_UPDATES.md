@@ -1094,10 +1094,51 @@ Ported to BOTH `ai_survivor_bot_controller.gd` (main) and
 - **Abilities disabled near a puzzle/generator**: puzzle zones are now in the
   `"puzzles"` group, and the survivor's `_input` ignores abilities while inside
   one — block/charge-punch/spare-flower can't fire accidentally while you're
-  interacting with a puzzle. Bots are unaffected (they call abilities directly).
-  (`game_map.gd` + `_test.gd`; `greengrass_controller.gd`.)
-- **M1 hit sound plays the instant the killer hits**: the hit sound now fires
-  before the swing animation in `use_hit()`, so it never arrives late.
+- **Dirtysweeper warning face on bomb**: the worried face now appears only while
+  the player holds down on a BOMB cell (in reveal mode) — a classic minesweeper
+  "am I about to step on a mine?" warning. Holding a safe cell keeps the neutral
+  face. (`dirtysweeper.gd`)
+
+---
+
+## Session 35 — Dirtysweeper embedded into the arcade + Tetrino → Tetrivo rename
+
+**Commit: this session (HEAD `f6bd3d3` → next).**
+
+### 1. Dirtysweeper is now fully embedded in the arcade room (no separate scene)
+Following the "make it playable inside one scene only, like Tetrivo" request:
+- **Deleted** `scenes/dirtysweeper.tscn` and `scripts/dirtysweeper.gd` (the old
+  standalone scene + script). Nothing else referenced them.
+- **Ported** the whole minesweeper game into `arcade_room.gd` as a self-contained
+  embedded minigame, exactly like Tetrivo:
+  - `_start_dirtysweeper()` (launched from the browser cartridge) builds the board
+    UI as a full-rect Control child of `_ui`; `_close_dirtysweeper()` frees it and
+    returns to the cartridge browser.
+  - All `_dirty_*` state vars + helpers: board generation (`_dirty_new_board`,
+    `_dirty_compute_counts`), rendering (`_dirty_update_all`/`_cell`/`_cursor_rect`),
+    game logic (`_dirty_reveal`/`_flood_reveal`/`_flag`/`_win`/`_restart`), the
+    worried-face-on-bomb behaviour, and input (`_dirty_process`, `_dirty_handle_input`,
+    `_unhandled_input` for R / right-click flag).
+  - Runs while `_dirty_active`; the `_physics_process` branch freezes the player and
+    owns movement + confirm/cancel/flag input during play.
+- The DS coin economy reuses the **shared Tetrivo coin pool**
+  (`GameState.tetrivo_*`), so Dirtysweeper and Tetrivo share one farmable balance.
+
+### 2. Renamed Tetrino → Tetrivo everywhere (internal code + save keys + display)
+Full rename across `arcade_room.gd`, `game_state.gd`, `save_manager.gd`,
+`gift_system.gd`, `touch_controls.gd`, and the test file
+(`tests/tetrivo_coin_test.gd`):
+- All GameState fields, save/load keys, owned/unlock keys and `_save_tetrivo_state`
+  helper use `tetrivo_*`.
+- All function names, const names and display strings are `Tetrivo`/`TETRIVO`
+  (title, browser cartridges "TETRIVO"/"TETRIVO 3", "TETRIVO — PLAYING",
+  "YOU WIN — TETRIVO COMPLETE").
+- **Asset file names are unchanged** (`tetrino.wav`, `Minigame_TETRINO*.png`) — the
+  const path VALUES still point at those files, so audio/art load fine.
+- **Accepted trade-off:** because the save keys changed, previously-saved Tetrino
+  coin balances / ownership reset (the user accepted this).
+- Verified headless (arcade scene boots with 0 script errors) and all 7
+  `tetrivo_coin_test.gd` tests pass. never arrives late.
   (`violentgrass_controller.gd`, shared by human killer + killer bot.)
 - **Killer outro plays the ENDING of the LMS, not the chase theme**: verified
   both main and test already stop every chase player and keep the LMS song's

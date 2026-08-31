@@ -3,12 +3,12 @@ extends Node2D
 ## The Darkness Of The Grasslands — Arcade Room
 ## A pitch-black room with a single interactable arcade machine. Interacting
 ## boots it up like a retro console (VHS flicker → boot text → quick loading
-## bar) and then shows the "Tetrino" title/menu screen with its thumbnail and
+## bar) and then shows the "Tetrivo" title/menu screen with its thumbnail and
 ## a looping tetrino.wav track. Built programmatically for reliability.
 
 # ── Scene / asset paths ──
 const ARCADE_MACHINE_TEX: String = "res://The Darkness Of The Grasslands assets/objects/arcade machine.png"
-const TETRINO_MUSIC: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/tetrino.wav"
+const TETRIVO_MUSIC: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/tetrino.wav"
 const CARTRIDGE_START: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Cartridge_START_140BPM.wav"
 # Console background music (plays while the console navigator is on) + its
 # navigation feedback sounds.
@@ -17,14 +17,28 @@ const CONSOLE_MUSIC: String = "res://The Darkness Of The Grasslands assets/Music
 const CONSOLE_BOOTUP: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Console-bootup.wav"
 const CONSOLE_CONFIRM: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Console-confirm-sound.wav"
 const CONSOLE_ERROR: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/Navigation-error-cant-navigate.wav"
-const TETRINO_CHOICE: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/tetrino-minigame-choice.wav"
+const TETRIVO_CHOICE: String = "res://The Darkness Of The Grasslands assets/Sound/Minigames/tetrino-minigame-choice.wav"
 # Subtle old-console CRT post-process overlay (pixelation, faint scanlines,
 # gentle curvature, static only while loading).
 const CONSOLE_CRT_SHADER: String = "res://shaders/console_crt.gdshader"
-const TETRINO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
-# Dirtysweeper cartridge: its own thumbnail and the standalone minigame scene.
+const TETRIVO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
+# Dirtysweeper cartridge: its own thumbnail. It now plays EMBEDDED inside this
+# arcade scene (no separate scene) — exactly like Tetrivo does.
 const DIRTSWEEPER_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_dirtysweeper.thumbnail.png"
-const DIRTSWEEPER_SCENE: String = "res://scenes/dirtysweeper.tscn"
+# Dirtysweeper (minesweeper) constants + face artwork.
+const DS_CELL: float = 46.0
+const DS_GRID: int = 9
+const DS_MINES: int = 10
+const DS_MINES_HARD: int = 16
+const DS_FACE_NEUTRAL: String = "res://The Darkness Of The Grasslands assets/UI/minigames/Minigame_minesweeper_neutral_face.png"
+const DS_FACE_WARNING: String = "res://The Darkness Of The Grasslands assets/UI/minigames/Minigame_minesweeper_warning_face.png"
+const DS_FACE_DEAD: String = "res://The Darkness Of The Grasslands assets/UI/minigames/Minigame_minesweeper_dead_face.png"
+const DS_FACE_NEUTRAL_G: String = "res://The Darkness Of The Grasslands assets/UI/minigames/Minigame_minesweeper_neutral_face_gambling.png"
+const DS_FACE_WARNING_G: String = "res://The Darkness Of The Grasslands assets/UI/minigames/Minigame_minesweeper_warning_face_gambling.png"
+const DS_FACE_DEAD_G: String = "res://The Darkness Of The Grasslands assets/UI/minigames/Minigame_minesweeper_dead_face_gambling.png"
+# Classic minesweeper number colours.
+const DS_NUM_COLORS: Array = [Color.BLACK, Color(0.2,0.35,0.9), Color(0.1,0.6,0.2), Color(0.85,0.15,0.15),
+	Color(0.3,0.1,0.6), Color(0.5,0.15,0.4), Color(0.1,0.6,0.65), Color.BLACK, Color(0.4,0.4,0.4)]
 # 140 BPM → one beat every 60/140 seconds (pulse the game to the music).
 const BEAT_SECONDS: float = 60.0 / 140.0
 const SOFT_DROP_INTERVAL: float = 0.06  # rows/second pace while holding Down (fast fall)
@@ -60,7 +74,7 @@ const BASE_BLOCK_TEX: String = "res://The Darkness Of The Grasslands assets/obje
 const WIN_SCORE: int = 1000
 const WIN_LINES: int = 10
 # Win fanfare and the reward coin artwork.
-const TETRINO_COMPLETE: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/MINIGAME-COMPLETED.wav"
+const TETRIVO_COMPLETE: String = "res://The Darkness Of The Grasslands assets/Music/Minigames/MINIGAME-COMPLETED.wav"
 const SAVE_MGR_SCRIPT = preload("res://scripts/systems/save_manager.gd")
 const COIN_TEX: String = "res://The Darkness Of The Grasslands assets/UI/Lobby/Grassconatication coin.png"
 # Time-tamper punishment: if the clock is rolled back to reset the daily coin
@@ -122,7 +136,26 @@ var _boot_active: bool = false
 var _browser_active: bool = false   # Minigame browser (list of cartridges)
 var _menu_active: bool = false      # A specific minigame's title/menu is showing
 var _game_active: bool = false      # The actual Tetris minigame is running
-var _browser_cartridge: Control = null  # the Tetrino cartridge (nudged/shaken on nav)
+# ── Dirtysweeper (minesweeper) embedded minigame state ──
+var _dirty_active: bool = false        # Dirtysweeper minigame is running
+var _dirty_hard: bool = false          # hard (16-mine) gamble mode
+var _dirty_board: Array = []           # _dirty_board[r][c] = {mine, revealed, flagged, count}
+var _dirty_cursor: Vector2i = Vector2i(0, 0)
+var _dirty_game_over: bool = false
+var _dirty_won: bool = false
+var _dirty_flag_mode: bool = false
+var _dirty_move_timer: float = 0.0
+var _dirty_press_armed: bool = false   # holding a cell (worried-face state)
+var _dirty_press_cell: Vector2i = Vector2i(-1, -1)
+var _dirty_buttons: Array = []         # _dirty_buttons[r][c] = Button
+var _dirty_cursor_rect: ColorRect = null
+var _dirty_face_btn: Button = null
+var _dirty_face_tex: TextureRect = null
+var _dirty_status: Label = null
+var _dirty_counts: Label = null
+var _dirty_win_awarded: bool = false   # prevents double-award on the same win
+var _dirty_root: Control = null        # root Control holding the DS UI (child of _ui)
+var _browser_cartridge: Control = null  # the Tetrivo cartridge (nudged/shaken on nav)
 var _browser_index: int = 0                 # which browser cartridge is selected
 var _browser_entries: Array = []            # each: {name, thumb, cost} in Grass coins
 var _browser_cartridges: Array = []         # built cartridge Control nodes
@@ -248,7 +281,7 @@ func _cycle_theme() -> void:
 	_save_theme()
 	# Rebuild the current screen (browser or menu) with the new palette.
 	if _menu_active:
-		_rebuild_tetrino()
+		_rebuild_tetrivo()
 	elif _browser_active:
 		_rebuild_browser()
 	_update_theme_label()
@@ -587,6 +620,16 @@ func _physics_process(delta: float) -> void:
 		_esc_was_down = esc_p
 		return
 
+	# While the Dirtysweeper minigame is running, it owns all input (movement,
+	# confirm/cancel, flag, restart). Freeze the player and return early.
+	if _dirty_active:
+		_player.velocity = Vector2.ZERO
+		if is_instance_valid(_sprite):
+			_sprite.animation = _idle_anim
+		_dirty_process(delta)
+		_dirty_handle_input()
+		return
+
 	# Edge-detected input (interact / cancel), driven by the InputSystem so it
 	# honours rebinds and works with keyboard + gamepad.
 	var e_down := InputSystem.is_pressed("interact")
@@ -599,9 +642,9 @@ func _physics_process(delta: float) -> void:
 	_esc_was_down = esc_down
 
 	# Minigame browser: WASD tries to navigate, Enter launches the highlighted
-	# game, Esc leaves. In the demo there is only Tetrino, so WASD just shows a
+	# game, Esc leaves. In the demo there is only Tetrivo, so WASD just shows a
 	# friendly "this is all we have" nag.
-	# Enter: in the browser it launches Tetrino; on the Tetrino title screen it
+	# Enter: in the browser it launches Tetrivo; on the Tetrivo title screen it
 	# starts the actual minigame (which is when the music plays).
 	var enter_down := InputSystem.is_pressed("confirm")
 	if enter_down and not _enter_was_down:
@@ -610,7 +653,7 @@ func _physics_process(delta: float) -> void:
 
 	# G opens the gift picker from the purchase screen, and denies a gift from
 	# the inbox prompt. (Reuses the "gamble" action, which is only used on the
-	# Tetrino win screen and is otherwise free.)
+	# Tetrivo win screen and is otherwise free.)
 	# G also opens the gift picker straight from the browser for any PAID
 	# cartridge — so a gifter who already owns the game can still buy it for a
 	# friend.
@@ -729,22 +772,22 @@ func _on_enter_pressed() -> void:
 	if _game_active and (_game_over or _won):
 		# Game over / win screen: Enter retries (normal mode).
 		_hard_mode = false
-		_start_tetrino_game()
+		_start_tetrivo_game()
 		return
 	if _intro_active:
 		return
 	if _browser_active and not _menu_active and not _boot_active:
 		# Launching a minigame is beat-synced: play the console confirm blip and
 		# actually enter on the next detected beat.
-		_pending_action = _confirm_launch_tetrino
+		_pending_action = _confirm_launch_tetrivo
 	elif _menu_active and not _game_active:
-		# On the Tetrino title screen, Enter plays the cartridge-start sound,
+		# On the Tetrivo title screen, Enter plays the cartridge-start sound,
 		# zooms into the game, and then begins the actual minigame (which is
 		# when the music starts).
-		_start_tetrino_intro()
+		_start_tetrivo_intro()
 
 
-func _confirm_launch_tetrino() -> void:
+func _confirm_launch_tetrivo() -> void:
 	"""Play the console confirm sound, then launch the highlighted cartridge.
 	For a paid cartridge that isn't owned yet, this first opens the purchase
 	screen (which requires your game profile) — once bought it's a permanent,
@@ -754,8 +797,8 @@ func _confirm_launch_tetrino() -> void:
 	var cost: int = _selected_cartridge_cost()
 	if cost <= 0:
 		# Free, or already owned — launch straight away.
-		_play_console_sfx(TETRINO_CHOICE, 1.0, 1.0)
-		_launch_tetrino()
+		_play_console_sfx(TETRIVO_CHOICE, 1.0, 1.0)
+		_launch_tetrivo()
 		return
 	# A purchase that isn't owned yet: you must be on your game profile first.
 	if AuthManager.current_username.is_empty():
@@ -797,7 +840,7 @@ func _show_purchase_overlay(cost: int) -> void:
 
 
 func _confirm_purchase() -> void:
-	"""Enter on the purchase screen: spend the coins, unlock TETRINO 2
+	"""Enter on the purchase screen: spend the coins, unlock TETRIVO 2
 	permanently on this profile, then launch it."""
 	if not _purchase_confirm:
 		return
@@ -813,14 +856,14 @@ func _confirm_purchase() -> void:
 	_play_console_sfx(CONSOLE_CONFIRM, 1.0, 1.0)
 	_spend_coins(cost)
 	var entry: Dictionary = _browser_entries[clampi(_browser_index, 0, _browser_entries.size() - 1)]
-	var owned_key: String = entry.get("owned_key", "tetrino_owns_paid")
+	var owned_key: String = entry.get("owned_key", "tetrivo_owns_paid")
 	GameState.set(owned_key, true)
-	_save_tetrino_state()
+	_save_tetrivo_state()
 	_purchase_confirm = false
 	for child: Node in _ui.get_children():
 		child.queue_free()
-	_play_console_sfx(TETRINO_CHOICE, 1.0, 1.0)
-	_launch_tetrino()
+	_play_console_sfx(TETRIVO_CHOICE, 1.0, 1.0)
+	_launch_tetrivo()
 
 
 func _cancel_purchase() -> void:
@@ -1097,12 +1140,12 @@ func _selected_cartridge_cost() -> int:
 
 func _coin_balance() -> int:
 	"""Spendable Grass-coin balance = coins earned minus coins spent."""
-	return maxi(GameState.tetrino_coins_earned - GameState.tetrino_coins_spent, 0)
+	return maxi(GameState.tetrivo_coins_earned - GameState.tetrivo_coins_spent, 0)
 
 
 func _spend_coins(n: int) -> void:
-	GameState.tetrino_coins_spent += n
-	_save_tetrino_state()
+	GameState.tetrivo_coins_spent += n
+	_save_tetrivo_state()
 
 
 func _is_softlocked() -> bool:
@@ -1118,14 +1161,14 @@ func _auto_gift_if_softlocked() -> void:
 	as an apology so they're never permanently locked out. Persisted per profile."""
 	if AuthManager.current_username.is_empty():
 		return
-	if GameState.tetrino_gift_given:
+	if GameState.tetrivo_gift_given:
 		return
 	if not _is_softlocked():
 		return
-	GameState.tetrino_gift_given = true
-	GameState.tetrino_coins_earned += 2
+	GameState.tetrivo_gift_given = true
+	GameState.tetrivo_coins_earned += 2
 	GameState.add_money(1000)
-	_save_tetrino_state()
+	_save_tetrivo_state()
 	_show_browser_notice("SORRY! You were stuck at 0 coins — here's a gift:  +2 Grass coins,  +1,000 gold", Color(0.4, 1.0, 0.6))
 
 
@@ -1156,7 +1199,7 @@ func _on_esc_pressed() -> void:
 	if now < _esc_lock_until:
 		return
 	if _intro_active:
-		_cancel_tetrino_intro()
+		_cancel_tetrivo_intro()
 		# Absorb the rest of a rapid ESC mash: cancelling the intro is the only
 		# thing this burst should do, so lock out ESC for a longer window.
 		_esc_lock_until = now + 1.2
@@ -1179,9 +1222,9 @@ func _on_esc_pressed() -> void:
 		_pending_action = Callable()
 		return
 	if _game_active:
-		_exit_tetrino_game()
+		_exit_tetrivo_game()
 	elif _menu_active:
-		_close_tetrino()
+		_close_tetrivo()
 	elif _browser_active:
 		# ESC in the browser turns the console OFF (white vertical-shrink),
 		# returning you to the idle room where you can boot it up again with E.
@@ -1343,7 +1386,7 @@ func _run_boot() -> void:
 # ═══════════════ MINIGAME BROWSER ═══════════════
 
 func _show_minigame_browser() -> void:
-	"""Cartridge browser. In the demo there is only one minigame: Tetrino.
+	"""Cartridge browser. In the demo there is only one minigame: Tetrivo.
 	WASD navigation just shows a friendly 'this is all we have' nag. Themed like
 	an authentic old computer (light beige / dark CRT), with glossy screens."""
 	if _browser_active:
@@ -1354,7 +1397,7 @@ func _show_minigame_browser() -> void:
 	# Loading is finished — the static disappears completely; only the subtle
 	# pixelation + scanlines remain.
 	_set_crt_noise(0.0)
-	# Music is NOT played here — tetrino.wav only plays inside the Tetris game.
+	# Music is NOT played here — tetrino.wav only plays inside the Tetrivo game.
 
 	var p := _palette()
 
@@ -1393,17 +1436,17 @@ func _show_minigame_browser() -> void:
 	_ui.add_child(title)
 
 	# The cartridges live in a 2D grid laid out like a smart-watch app launcher.
-	# TETRINO (free) and TETRINO 2 (2 coins) sit side by side; the TETRINO 3
+	# TETRIVO (free) and TETRIVO 2 (2 coins) sit side by side; the TETRIVO 3
 	# copy (3 coins) sits ABOVE them and is reached ONLY by pressing Up/Down —
 	# never Left/Right. The focused cartridge is full size and every other one
 	# shrinks the farther its grid-distance is from the focused one (a subtle
 	# depth effect, so far-away cartridges look smaller).
 	_browser_entries = [
-		{"name": "TETRINO", "thumb": TETRINO_THUMB, "cost": 0, "paid": false},
+		{"name": "TETRIVO", "thumb": TETRIVO_THUMB, "cost": 0, "paid": false},
 		{"name": "DIRTYSWEEPER", "thumb": DIRTSWEEPER_THUMB, "cost": 2, "paid": true, "owned_key": "dirtysweeper_owns_paid"},
-		{"name": "TETRINO 3", "thumb": TETRINO_THUMB, "cost": 3, "paid": true, "owned_key": "tetrino_owns_paid3"},
+		{"name": "TETRIVO 3", "thumb": TETRIVO_THUMB, "cost": 3, "paid": true, "owned_key": "tetrivo_owns_paid3"},
 	]
-	# Grid coordinates: (0,0) = TETRINO, (1,0) = DIRTYSWEEPER, (0,-1) = TETRINO 3.
+	# Grid coordinates: (0,0) = TETRIVO, (1,0) = DIRTYSWEEPER, (0,-1) = TETRIVO 3.
 	_browser_grid = [Vector2(0, 0), Vector2(1, 0), Vector2(0, -1)]
 	_browser_index = 0
 	_browser_cartridges = []
@@ -1602,7 +1645,7 @@ func _select_browser_slot(dir: Vector2) -> void:
 func _neighbor_in_direction(idx: int, dir: Vector2) -> int:
 	"""Smart-watch-app style: among the other cartridges, return the one most in
 	the pressed direction, or -1 if none exists that way. Up/Down grabs whatever
-	is generally above/below (so the TETRINO 3 copy is reached by Up from either
+	is generally above/below (so the TETRIVO 3 copy is reached by Up from either
 	bottom cartridge), while Left/Right requires a clean horizontal neighbor so
 	the copy is never reached by pressing Left or Right."""
 	if _browser_grid.is_empty():
@@ -1697,16 +1740,16 @@ func _place_browser_highlight() -> void:
 	_browser_highlight.position = cart.position - Vector2(6, 6)
 
 
-func _launch_tetrino() -> void:
+func _launch_tetrivo() -> void:
 	if not _browser_active or _menu_active or _boot_active:
 		return
-	# Dirtysweeper runs as its own standalone minigame scene.
+	# Dirtysweeper now plays EMBEDDED inside this arcade scene (no separate
+	# scene) — exactly like Tetrivo.
 	if _selected_cartridge_name() == "DIRTYSWEEPER":
-		_clear_browser()
-		get_tree().change_scene_to_file(DIRTSWEEPER_SCENE)
+		_start_dirtysweeper()
 		return
 	_clear_browser()
-	_show_tetrino_menu()
+	_show_tetrivo_menu()
 
 
 func _clear_browser() -> void:
@@ -1737,22 +1780,22 @@ func _rebuild_browser() -> void:
 	_center_browser(false)
 
 
-# ═══════════════ TETRINO TITLE / MENU ═══════════════
+# ═══════════════ TETRIVO TITLE / MENU ═══════════════
 
-func _show_tetrino_menu() -> void:
+func _show_tetrivo_menu() -> void:
 	if _menu_active:
 		return
 	_menu_active = true
 	_game_active = false
 	TouchControls.set_mode(TouchControls.TETRIS)
 	# Music is NOT started here — it only plays once the player actually
-	# enters the minigame (see _start_tetrino_game).
+	# enters the minigame (see _start_tetrivo_game).
 
 	var p := _palette()
 
 	# Backdrop behind the menu (themed).
 	var bg := ColorRect.new()
-	bg.name = "TetrinoBG"
+	bg.name = "TetrivoBG"
 	bg.color = p["bg"]
 	bg.position = Vector2(0, 0)
 	bg.size = Vector2(ROOM_W, ROOM_H)
@@ -1761,7 +1804,7 @@ func _show_tetrino_menu() -> void:
 
 	# CRT bezel frame.
 	var bezel := ColorRect.new()
-	bezel.name = "TetrinoBezel"
+	bezel.name = "TetrivoBezel"
 	bezel.color = Color(0.12, 0.12, 0.14, 1)
 	bezel.position = Vector2(60, 40)
 	bezel.size = Vector2(ROOM_W - 120, ROOM_H - 110)
@@ -1769,7 +1812,7 @@ func _show_tetrino_menu() -> void:
 
 	# Thumbnail as the title art (glossy screen).
 	var thumb := TextureRect.new()
-	thumb.texture = load(TETRINO_THUMB)
+	thumb.texture = load(TETRIVO_THUMB)
 	thumb.position = Vector2((ROOM_W - 338) / 2.0, 70)
 	thumb.size = Vector2(338, 258)
 	thumb.pivot_offset = thumb.size / 2.0
@@ -1782,7 +1825,7 @@ func _show_tetrino_menu() -> void:
 	_ui.add_child(gloss)
 
 	var title := Label.new()
-	title.text = "TETRINO"
+	title.text = "TETRIVO"
 	title.position = Vector2(0, 340)
 	title.size = Vector2(ROOM_W, 60)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1822,11 +1865,11 @@ func _show_tetrino_menu() -> void:
 	_ui.add_child(back)
 
 
-func _rebuild_tetrino() -> void:
+func _rebuild_tetrivo() -> void:
 	_menu_active = false
 	for child: Node in _ui.get_children():
 		child.queue_free()
-	_show_tetrino_menu()
+	_show_tetrivo_menu()
 
 
 func _play_music() -> void:
@@ -1837,7 +1880,7 @@ func _play_music() -> void:
 	repeats."""
 	if _music == null:
 		_music = AudioStreamPlayer.new()
-		_music.stream = load(TETRINO_MUSIC)
+		_music.stream = load(TETRIVO_MUSIC)
 		_music.bus = "Music"
 		add_child(_music)
 		var wav: AudioStreamWAV = _music.stream as AudioStreamWAV
@@ -2028,7 +2071,7 @@ func _set_crt_noise(v: float) -> void:
 		_crt_mat.set_shader_parameter("noise_amount", clampf(v, 0.0, 1.0))
 
 
-func _start_tetrino_intro() -> void:
+func _start_tetrivo_intro() -> void:
 	"""Play the cartridge-start sound and zoom into the title art, then begin
 	the actual Tetris minigame."""
 	if _intro_active or _game_active:
@@ -2061,7 +2104,7 @@ func _start_tetrino_intro() -> void:
 	# starting (see _on_cart_finished), so the two never overlap.
 
 
-func _cancel_tetrino_intro() -> void:
+func _cancel_tetrivo_intro() -> void:
 	"""ESC during the cartridge-start intro: cancel the entering. The cartridge
 	sound pitches down like a disc being slowed/ejected, the screen flashes
 	purple and fades away over 0.5s, and the title art un-zooms back to the
@@ -2109,15 +2152,15 @@ func _cleanup_cart() -> void:
 
 func _on_cart_finished() -> void:
 	"""The cartridge-start jingle has played to the end — now begin the actual
-	game (which starts the tetrino music). Guards so a back-out during the
+	game (which starts the tetrivo music). Guards so a back-out during the
 	intro cancels it."""
 	if not _intro_active:
 		return
 	_intro_active = false
-	_start_tetrino_game()
+	_start_tetrivo_game()
 
 
-func _start_tetrino_game() -> void:
+func _start_tetrivo_game() -> void:
 	"""Player pressed ENTER on the title screen — the actual Tetris minigame
 	now begins, which is when the music starts. Also used to retry after a
 	game over or a win."""
@@ -2203,7 +2246,7 @@ func _start_tetrino_game() -> void:
 	_ui.add_child(_pulse_overlay)
 
 	var playing := Label.new()
-	playing.text = "TETRINO — PLAYING"
+	playing.text = "TETRIVO — PLAYING"
 	playing.position = Vector2(0, 64)
 	playing.size = Vector2(ROOM_W, 40)
 	playing.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2556,7 +2599,7 @@ func _add_next_tex(type: String, slot: int) -> void:
 
 
 func _tetris_pulse(delta: float) -> void:
-	"""Pulse the board once per beat (140 BPM) to the tetrino track."""
+	"""Pulse the board once per beat (140 BPM) to the tetrivo track."""
 	if _game_over or _game_lost:
 		return
 	_beat_accum += delta
@@ -2643,7 +2686,7 @@ func _show_game_over() -> void:
 	_ui.add_child(ov)
 	var title: String = "GAME OVER"
 	if _hard_mode:
-		title = "GAMBLE LOST\n(kept " + str(GameState.tetrino_coins_earned) + " coin)"
+		title = "GAMBLE LOST\n(kept " + str(GameState.tetrivo_coins_earned) + " coin)"
 	var lbl := Label.new()
 	lbl.text = title + "\nScore: " + str(_score) + "\nPress [ENTER] to retry"
 	lbl.position = Vector2(0, 260)
@@ -2669,11 +2712,11 @@ func _same_day(a: int, b: int) -> bool:
 func _detect_time_tamper(now: int) -> void:
 	"""Best-effort anti-farming: if the wall clock has been rolled back since we
 	last recorded a time (the classic daily-limit bypass), add a +5h penalty."""
-	if GameState.tetrino_last_seen_time > 0 and now < GameState.tetrino_last_seen_time:
-		GameState.tetrino_time_penalty_until = max(GameState.tetrino_time_penalty_until, now + TAMPER_PENALTY_SECONDS)
-	if GameState.tetrino_last_coin_time > 0 and now < GameState.tetrino_last_coin_time:
-		GameState.tetrino_time_penalty_until = max(GameState.tetrino_time_penalty_until, now + TAMPER_PENALTY_SECONDS)
-	GameState.tetrino_last_seen_time = max(GameState.tetrino_last_seen_time, now)
+	if GameState.tetrivo_last_seen_time > 0 and now < GameState.tetrivo_last_seen_time:
+		GameState.tetrivo_time_penalty_until = max(GameState.tetrivo_time_penalty_until, now + TAMPER_PENALTY_SECONDS)
+	if GameState.tetrivo_last_coin_time > 0 and now < GameState.tetrivo_last_coin_time:
+		GameState.tetrivo_time_penalty_until = max(GameState.tetrivo_time_penalty_until, now + TAMPER_PENALTY_SECONDS)
+	GameState.tetrivo_last_seen_time = max(GameState.tetrivo_last_seen_time, now)
 
 
 func _daily_available(now: int) -> bool:
@@ -2682,14 +2725,14 @@ func _daily_available(now: int) -> bool:
 	farming is NOT gated by this — it's always available.)"""
 	if GameState.is_admin:
 		return true
-	if GameState.tetrino_time_penalty_until > 0 and now < GameState.tetrino_time_penalty_until:
+	if GameState.tetrivo_time_penalty_until > 0 and now < GameState.tetrivo_time_penalty_until:
 		return false
-	if GameState.tetrino_last_coin_time <= 0:
+	if GameState.tetrivo_last_coin_time <= 0:
 		return true
-	return not _same_day(GameState.tetrino_last_coin_time, now)
+	return not _same_day(GameState.tetrivo_last_coin_time, now)
 
 
-func _save_tetrino_state() -> void:
+func _save_tetrivo_state() -> void:
 	var uname: String = AuthManager.current_username
 	if uname.is_empty():
 		return
@@ -2705,30 +2748,30 @@ func _resolve_win_reward() -> int:
 	_detect_time_tamper(now)
 	# Each new day resets the daily gamble so it's available once per day.
 	if _daily_available(now):
-		GameState.tetrino_gambled = false
+		GameState.tetrivo_gambled = false
 	var awarded := 0
-	if _hard_mode and not GameState.tetrino_gambled:
+	if _hard_mode and not GameState.tetrivo_gambled:
 		# Gamble: hard-mode win pays the base coin + a bonus = 2 coins this run.
 		awarded = 2
-		GameState.tetrino_coins_earned += 2
-		GameState.tetrino_gambled = true
-		GameState.tetrino_last_coin_time = now
+		GameState.tetrivo_coins_earned += 2
+		GameState.tetrivo_gambled = true
+		GameState.tetrivo_last_coin_time = now
 	else:
 		# Normal farm: every win is 1 coin, repeatable, no cap.
 		awarded = 1
-		GameState.tetrino_coins_earned += 1
-		GameState.tetrino_last_coin_time = now
+		GameState.tetrivo_coins_earned += 1
+		GameState.tetrivo_last_coin_time = now
 	if awarded > 0:
 		GameState.add_money(awarded)
-		_save_tetrino_state()
+		_save_tetrivo_state()
 	return awarded
 
 
 func _on_gamble_lost() -> void:
 	"""Lost the hard-mode gamble: you keep the coins you farmed, but lose the
 	day's bonus-coin opportunity (the gamble is used up for today)."""
-	GameState.tetrino_gambled = true
-	_save_tetrino_state()
+	GameState.tetrivo_gambled = true
+	_save_tetrivo_state()
 
 
 func _add_pixel_text(parent: Node, text: String, pos: Vector2, px_size: float, color: Color) -> void:
@@ -2779,17 +2822,17 @@ func _show_win() -> void:
 		return
 	_won = true
 
-	# Play the win fanfare (replace the tetrino music).
+	# Play the win fanfare (replace the tetrivo music).
 	if _music:
 		_music.stop()
 	var complete := AudioStreamPlayer.new()
-	complete.stream = load(TETRINO_COMPLETE)
+	complete.stream = load(TETRIVO_COMPLETE)
 	complete.bus = "Music"
 	add_child(complete)
 	complete.play()
 
 	var awarded := _resolve_win_reward()
-	var can_gamble: bool = _daily_available(_now_sec()) and not GameState.tetrino_gambled
+	var can_gamble: bool = _daily_available(_now_sec()) and not GameState.tetrivo_gambled
 	var p := _palette()
 
 	var ov := ColorRect.new()
@@ -2809,7 +2852,7 @@ func _show_win() -> void:
 	_ui.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "YOU WIN — TETRINO COMPLETE"
+	sub.text = "YOU WIN — TETRIVO COMPLETE"
 	sub.position = Vector2(0, 168)
 	sub.size = Vector2(ROOM_W, 40)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2864,14 +2907,14 @@ func _handle_win_input() -> void:
 	"""On the win screen: G starts the hard-mode gamble run (when available)."""
 	var g := InputSystem.is_pressed("gamble")
 	if g and not _g_was_down:
-		if _daily_available(_now_sec()) and not GameState.tetrino_gambled:
+		if _daily_available(_now_sec()) and not GameState.tetrivo_gambled:
 			_hard_mode = true
-			_start_tetrino_game()
+			_start_tetrivo_game()
 	_g_was_down = g
 
 
-func _exit_tetrino_game() -> void:
-	"""ESC from inside the game goes back to the Tetrino title screen and stops
+func _exit_tetrivo_game() -> void:
+	"""ESC from inside the game goes back to the Tetrivo title screen and stops
 	the music (it only plays while actually in the minigame)."""
 	if not _game_active:
 		return
@@ -2882,10 +2925,10 @@ func _exit_tetrino_game() -> void:
 	_game_active = false
 	for child: Node in _ui.get_children():
 		child.queue_free()
-	_show_tetrino_menu()
+	_show_tetrivo_menu()
 
 
-func _close_tetrino() -> void:
+func _close_tetrivo() -> void:
 	_intro_active = false
 	_menu_active = false
 	_game_active = false
@@ -2899,6 +2942,452 @@ func _close_tetrino() -> void:
 	if _music:
 		_music.stop()
 	_show_minigame_browser()
+
+
+# ═══════════════ DIRTYSWEEPER (EMBEDDED) ═══════════════
+
+func _start_dirtysweeper() -> void:
+	if not _browser_active or _menu_active or _boot_active:
+		return
+	_clear_browser()
+	_dirty_active = true
+	_dirty_hard = GameState.dirtysweeper_hard
+	TouchControls.set_mode(TouchControls.MINESWEEPER)
+	_build_dirtysweeper()
+
+
+func _close_dirtysweeper() -> void:
+	if not _dirty_active:
+		return
+	GameState.dirtysweeper_hard = _dirty_hard
+	_dirty_active = false
+	_dirty_win_awarded = false
+	for child: Node in _ui.get_children():
+		child.queue_free()
+	_dirty_root = null
+	TouchControls.set_mode(TouchControls.OVERWORLD)
+	_show_minigame_browser()
+
+
+## ── Board generation ───────────────────────────────────────────────
+
+func _dirty_new_board(exclude: Vector2i) -> void:
+	var mines: int = DS_MINES_HARD if _dirty_hard else DS_MINES
+	_dirty_board = []
+	for r in range(DS_GRID):
+		var row: Array = []
+		for c in range(DS_GRID):
+			row.append({"mine": false, "revealed": false, "flagged": false, "count": 0})
+		_dirty_board.append(row)
+	var placed := 0
+	while placed < mines:
+		var r: int = randi() % DS_GRID
+		var c: int = randi() % DS_GRID
+		if Vector2i(r, c) == exclude:
+			continue
+		if absi(r - exclude.x) <= 1 and absi(c - exclude.y) <= 1:
+			continue
+		if _dirty_board[r][c]["mine"]:
+			continue
+		_dirty_board[r][c]["mine"] = true
+		placed += 1
+	_dirty_compute_counts()
+	_dirty_game_over = false
+	_dirty_won = false
+	_dirty_flag_mode = false
+	_dirty_press_armed = false
+	_dirty_cursor = exclude
+	_dirty_win_awarded = false
+
+
+func _dirty_compute_counts() -> void:
+	for r in range(DS_GRID):
+		for c in range(DS_GRID):
+			var n := 0
+			for dr in [-1, 0, 1]:
+				for dc in [-1, 0, 1]:
+					if dr == 0 and dc == 0:
+						continue
+					var rr: int = r + dr
+					var cc: int = c + dc
+					if rr >= 0 and rr < DS_GRID and cc >= 0 and cc < DS_GRID and _dirty_board[rr][cc]["mine"]:
+						n += 1
+			_dirty_board[r][c]["count"] = n
+
+
+func _dirty_mines_flagged() -> int:
+	var n := 0
+	for r in range(DS_GRID):
+		for c in range(DS_GRID):
+			if _dirty_board[r][c]["flagged"]:
+				n += 1
+	return n
+
+
+func _dirty_unrevealed_safe() -> int:
+	var n := 0
+	for r in range(DS_GRID):
+		for c in range(DS_GRID):
+			if not _dirty_board[r][c]["mine"] and not _dirty_board[r][c]["revealed"]:
+				n += 1
+	return n
+
+
+## ── UI build ───────────────────────────────────────────────────────
+
+func _build_dirtysweeper() -> void:
+	var p := _ds_palette()
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(root)
+	_dirty_root = root
+
+	var bg := ColorRect.new()
+	bg.color = p["bg"]
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(bg)
+
+	var title := Label.new()
+	title.text = "DIRTYSWEEPER"
+	title.position = Vector2(0, 24)
+	title.size = Vector2(ROOM_W, 56)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", p["accent"])
+	title.add_theme_font_size_override("font_size", 52)
+	root.add_child(title)
+
+	_dirty_face_tex = TextureRect.new()
+	_dirty_face_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_dirty_face_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_dirty_face_tex.size = Vector2(64, 64)
+	_dirty_face_tex.position = Vector2(ROOM_W / 2.0 - 32, 92)
+	_dirty_face_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_dirty_face_tex)
+	_dirty_face_btn = Button.new()
+	_dirty_face_btn.position = Vector2(ROOM_W / 2.0 - 40, 88)
+	_dirty_face_btn.size = Vector2(80, 72)
+	_dirty_face_btn.flat = true
+	_dirty_face_btn.pressed.connect(_dirty_restart)
+	root.add_child(_dirty_face_btn)
+	_dirty_refresh_face()
+
+	_dirty_status = Label.new()
+	_dirty_status.position = Vector2(0, 158)
+	_dirty_status.size = Vector2(ROOM_W, 30)
+	_dirty_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dirty_status.add_theme_color_override("font_color", p["text"])
+	_dirty_status.add_theme_font_size_override("font_size", 20)
+	root.add_child(_dirty_status)
+	_dirty_counts = Label.new()
+	_dirty_counts.position = Vector2(0, 184)
+	_dirty_counts.size = Vector2(ROOM_W, 26)
+	_dirty_counts.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dirty_counts.add_theme_color_override("font_color", Color(1, 0.8, 0.3, 1))
+	_dirty_counts.add_theme_font_size_override("font_size", 20)
+	root.add_child(_dirty_counts)
+
+	var grid_w: float = DS_GRID * DS_CELL
+	var ox: float = (ROOM_W - grid_w) / 2.0
+	var oy: float = 230.0
+	for r in range(DS_GRID):
+		var row_arr: Array = []
+		for c in range(DS_GRID):
+			var b := Button.new()
+			b.position = Vector2(ox + c * DS_CELL, oy + r * DS_CELL)
+			b.size = Vector2(DS_CELL, DS_CELL)
+			b.custom_minimum_size = Vector2(DS_CELL, DS_CELL)
+			b.add_theme_font_size_override("font_size", 22)
+			b.add_theme_stylebox_override("normal", _dirty_cell_style(Color(0.45,0.45,0.5), 2))
+			b.add_theme_stylebox_override("hover", _dirty_cell_style(Color(0.55,0.55,0.62), 2))
+			b.add_theme_stylebox_override("pressed", _dirty_cell_style(Color(0.3,0.3,0.34), 2))
+			b.add_theme_stylebox_override("focus", _dirty_cell_style(Color(1,1,1,0), 2))
+			b.focus_mode = Control.FOCUS_NONE
+			var cell := Vector2i(r, c)
+			b.button_down.connect(_dirty_on_cell_down.bind(cell))
+			b.button_up.connect(_dirty_on_cell_up.bind(cell))
+			b.mouse_exited.connect(_dirty_on_cell_exited.bind(cell))
+			root.add_child(b)
+			row_arr.append(b)
+		_dirty_buttons.append(row_arr)
+
+	_dirty_cursor_rect = ColorRect.new()
+	_dirty_cursor_rect.color = Color(1, 1, 1, 0.28)
+	_dirty_cursor_rect.size = Vector2(DS_CELL, DS_CELL)
+	_dirty_cursor_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_dirty_cursor_rect)
+
+	var hint := Label.new()
+	hint.text = "ENTER reveal   •   F flag   •   arrows/WASD move   •   ESC quit   •   face restarts"
+	hint.position = Vector2(0, oy + grid_w + 14)
+	hint.size = Vector2(ROOM_W, 26)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_color_override("font_color", p["text_dim"])
+	hint.add_theme_font_size_override("font_size", 18)
+	root.add_child(hint)
+
+	_dirty_new_board(Vector2i(DS_GRID / 2, DS_GRID / 2))
+	_dirty_update_all()
+	_dirty_update_cursor_rect()
+
+
+func _dirty_cell_style(color: Color, border: int) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color
+	sb.set_border_width_all(border)
+	sb.border_color = Color(0.2, 0.2, 0.22, 1)
+	return sb
+
+
+func _ds_palette() -> Dictionary:
+	return {
+		"bg": Color(0.05, 0.05, 0.08, 1),
+		"accent": Color(0.5, 1.0, 0.5, 1),
+		"text": Color(0.85, 0.85, 0.85, 1),
+		"text_dim": Color(0.5, 0.5, 0.5, 1),
+	}
+
+
+func _dirty_face_path() -> String:
+	if _dirty_game_over and not _dirty_won:
+		return DS_FACE_DEAD_G if _dirty_hard else DS_FACE_DEAD
+	if _dirty_won:
+		return DS_FACE_NEUTRAL_G if _dirty_hard else DS_FACE_NEUTRAL
+	if _dirty_press_armed and not _dirty_flag_mode and _dirty_press_is_on_mine():
+		return DS_FACE_WARNING_G if _dirty_hard else DS_FACE_WARNING
+	return DS_FACE_NEUTRAL_G if _dirty_hard else DS_FACE_NEUTRAL
+
+
+func _dirty_refresh_face() -> void:
+	_dirty_face_tex.texture = load(_dirty_face_path())
+
+
+func _dirty_press_is_on_mine() -> bool:
+	if _dirty_press_cell.x < 0 or _dirty_press_cell.y < 0:
+		return false
+	return bool(_dirty_board[_dirty_press_cell.x][_dirty_press_cell.y]["mine"])
+
+
+## ── Rendering ──────────────────────────────────────────────────────
+
+func _dirty_update_all() -> void:
+	for r in range(DS_GRID):
+		for c in range(DS_GRID):
+			_dirty_update_cell(r, c)
+	_dirty_counts.text = "MINES LEFT: %d" % maxi(DS_MINES_HARD if _dirty_hard else DS_MINES - _dirty_mines_flagged(), 0)
+	if _dirty_won:
+		_dirty_status.text = "YOU WIN! +%d Grass coin" % (2 if _dirty_hard else 1)
+	elif _dirty_game_over:
+		_dirty_status.text = "BOOM! GAME OVER"
+	else:
+		_dirty_status.text = ("FLAG MODE" if _dirty_flag_mode else "SAFE") + ("  [HARD]" if _dirty_hard else "  [NORMAL]")
+
+
+func _dirty_update_cell(r: int, c: int) -> void:
+	var b: Button = _dirty_buttons[r][c]
+	var cell: Dictionary = _dirty_board[r][c]
+	if cell["revealed"]:
+		if cell["mine"]:
+			b.text = "💣"
+			b.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+			b.add_theme_stylebox_override("normal", _dirty_cell_style(Color(0.6, 0.2, 0.2), 2))
+		else:
+			var n: int = cell["count"]
+			b.text = "" if n == 0 else str(n)
+			b.add_theme_color_override("font_color", DS_NUM_COLORS[n] if n > 0 else Color(0.8, 0.8, 0.8, 1))
+			b.add_theme_stylebox_override("normal", _dirty_cell_style(Color(0.72, 0.72, 0.78), 2))
+	else:
+		if cell["flagged"]:
+			b.text = "⚑"
+			b.add_theme_color_override("font_color", Color(1, 0.5, 0.2, 1))
+		else:
+			b.text = ""
+		b.add_theme_stylebox_override("normal", _dirty_cell_style(Color(0.45, 0.45, 0.5), 2))
+
+
+func _dirty_update_cursor_rect() -> void:
+	if _dirty_game_over:
+		_dirty_cursor_rect.visible = false
+		return
+	_dirty_cursor_rect.visible = true
+	var grid_w: float = DS_GRID * DS_CELL
+	var ox: float = (ROOM_W - grid_w) / 2.0
+	_dirty_cursor_rect.position = Vector2(ox + _dirty_cursor.y * DS_CELL, 230.0 + _dirty_cursor.x * DS_CELL)
+
+
+## ── Game logic ─────────────────────────────────────────────────────
+
+func _dirty_reveal(r: int, c: int) -> void:
+	if _dirty_game_over or _dirty_won:
+		return
+	var cell: Dictionary = _dirty_board[r][c]
+	if cell["flagged"]:
+		return
+	if cell["mine"]:
+		cell["revealed"] = true
+		_dirty_game_over = true
+		_dirty_reveal_all_mines()
+		_dirty_update_all()
+		_dirty_refresh_face()
+		return
+	_dirty_flood_reveal(r, c)
+	_dirty_update_all()
+	if _dirty_unrevealed_safe() == 0:
+		_dirty_win()
+
+
+func _dirty_flood_reveal(r: int, c: int) -> void:
+	var cell: Dictionary = _dirty_board[r][c]
+	if cell["revealed"] or cell["flagged"]:
+		return
+	cell["revealed"] = true
+	if cell["count"] != 0:
+		return
+	for dr in [-1, 0, 1]:
+		for dc in [-1, 0, 1]:
+			if dr == 0 and dc == 0:
+				continue
+			var rr: int = r + dr
+			var cc: int = c + dc
+			if rr >= 0 and rr < DS_GRID and cc >= 0 and cc < DS_GRID:
+				_dirty_flood_reveal(rr, cc)
+
+
+func _dirty_reveal_all_mines() -> void:
+	for r in range(DS_GRID):
+		for c in range(DS_GRID):
+			if _dirty_board[r][c]["mine"]:
+				_dirty_board[r][c]["revealed"] = true
+
+
+func _dirty_flag(r: int, c: int) -> void:
+	if _dirty_game_over or _dirty_won:
+		return
+	var cell: Dictionary = _dirty_board[r][c]
+	if cell["revealed"]:
+		return
+	cell["flagged"] = not cell["flagged"]
+	_dirty_update_all()
+	_dirty_refresh_face()
+
+
+func _dirty_on_cell_down(cell: Vector2i) -> void:
+	if _dirty_game_over or _dirty_won:
+		return
+	var c: Dictionary = _dirty_board[cell.x][cell.y]
+	if c["revealed"]:
+		return
+	_dirty_press_armed = true
+	_dirty_press_cell = cell
+	_dirty_refresh_face()
+
+
+func _dirty_on_cell_up(cell: Vector2i) -> void:
+	var was_armed: bool = _dirty_press_armed and _dirty_press_cell == cell
+	_dirty_press_armed = false
+	_dirty_refresh_face()
+	if not was_armed:
+		return
+	if _dirty_flag_mode:
+		_dirty_flag(cell.x, cell.y)
+	else:
+		_dirty_reveal(cell.x, cell.y)
+
+
+func _dirty_on_cell_exited(cell: Vector2i) -> void:
+	if _dirty_press_armed and _dirty_press_cell == cell:
+		_dirty_press_armed = false
+		_dirty_refresh_face()
+
+
+func _dirty_restart() -> void:
+	_dirty_new_board(Vector2i(DS_GRID / 2, DS_GRID / 2))
+	_dirty_update_all()
+	_dirty_update_cursor_rect()
+	_dirty_refresh_face()
+
+
+func _dirty_win() -> void:
+	_dirty_won = true
+	_dirty_award_win()
+	_dirty_update_all()
+	_dirty_refresh_face()
+
+
+## ── Coin economy (reuses the shared Tetrivo coin pool) ─────────────
+
+func _dirty_award_win() -> void:
+	if _dirty_win_awarded:
+		return
+	var now: int = _now_sec()
+	if _daily_available(now):
+		GameState.tetrivo_gambled = false
+	var awarded := 0
+	if _dirty_hard and not GameState.tetrivo_gambled:
+		awarded = 2
+		GameState.tetrivo_coins_earned += 2
+		GameState.tetrivo_gambled = true
+		GameState.tetrivo_last_coin_time = now
+	else:
+		awarded = 1
+		GameState.tetrivo_coins_earned += 1
+		GameState.tetrivo_last_coin_time = now
+	if awarded > 0:
+		GameState.add_money(awarded)
+		_save_tetrivo_state()
+	_dirty_win_awarded = true
+
+
+## ── Input ──────────────────────────────────────────────────────────
+
+func _dirty_process(delta: float) -> void:
+	if _dirty_game_over or _dirty_won:
+		return
+	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if dir != Vector2.ZERO:
+		_dirty_move_timer -= delta
+		if _dirty_move_timer <= 0.0:
+			_dirty_move_cursor(dir)
+			_dirty_move_timer = 0.13
+	else:
+		_dirty_move_timer = 0.0
+
+
+func _dirty_move_cursor(dir: Vector2) -> void:
+	var nx: int = clampi(_dirty_cursor.x + int(round(dir.y)), 0, DS_GRID - 1)
+	var ny: int = clampi(_dirty_cursor.y + int(round(dir.x)), 0, DS_GRID - 1)
+	_dirty_cursor = Vector2i(nx, ny)
+	_dirty_update_cursor_rect()
+
+
+func _dirty_handle_input() -> void:
+	var enter := InputSystem.is_pressed("confirm")
+	if enter and not _enter_was_down:
+		_dirty_reveal(_dirty_cursor.x, _dirty_cursor.y)
+	_enter_was_down = enter
+	var esc := InputSystem.is_pressed("cancel")
+	if esc and not _esc_was_down:
+		_close_dirtysweeper()
+	_esc_was_down = esc
+	if InputSystem.just_pressed("flag"):
+		_dirty_flag_mode = not _dirty_flag_mode
+		_dirty_update_all()
+		_dirty_refresh_face()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not _dirty_active:
+		return
+	if event is InputEventMouseButton:
+		if event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+			_dirty_flag(_dirty_cursor.x, _dirty_cursor.y)
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_R:
+			_dirty_restart()
+			get_viewport().set_input_as_handled()
 
 
 # ═══════════════ TRANSITIONS ═══════════════

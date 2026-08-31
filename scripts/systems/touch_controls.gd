@@ -182,7 +182,7 @@ func _build_buttons() -> void:
 	_add_pill("ovw_menu", "MENU", ["pause"], [OVERWORLD],
 		Vector2(0.05, 0.18), NEUTRAL)
 
-	# --- Tetris (Tetrino): joystick moves; dedicated action buttons. ---
+	# --- Tetris (Tetrivo): joystick moves; dedicated action buttons. ---
 	_add_pill("tet_drop", "DROP", ["tetris_harddrop"], [TETRIS],
 		Vector2(0.74, 0.82), BLUE)
 	_add_pill("tet_rotate", "ROTATE", ["tetris_rotate"], [TETRIS],
@@ -535,7 +535,7 @@ func _set_joy(v: Vector2) -> void:
 	_press_move("move_right", clamped.x > DEADZONE)
 	_press_move("move_up", clamped.y < -DEADZONE)
 	_press_move("move_down", clamped.y > DEADZONE)
-	# Same directions drive the Tetrino grid (soft drop = down).
+	# Same directions drive the Tetrivo grid (soft drop = down).
 	_press_move("tetris_left", clamped.x < -DEADZONE)
 	_press_move("tetris_right", clamped.x > DEADZONE)
 	_press_move("tetris_down", clamped.y > DEADZONE)

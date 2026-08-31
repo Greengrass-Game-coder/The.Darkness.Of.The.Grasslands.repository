@@ -16,8 +16,8 @@ const GIFTS_FILE: String = "user://pending_gifts.json"
 
 ## Cartridge metadata shared with the arcade room (cost + profile unlock key).
 const CARTRIDGES: Array[Dictionary] = [
-	{"name": "TETRINO 2", "cost": 2, "owned_key": "tetrino_owns_paid"},
-	{"name": "TETRINO 3", "cost": 3, "owned_key": "tetrino_owns_paid3"},
+	{"name": "TETRIVO 2", "cost": 2, "owned_key": "tetrivo_owns_paid"},
+	{"name": "TETRIVO 3", "cost": 3, "owned_key": "tetrivo_owns_paid3"},
 ]
 
 
@@ -158,14 +158,14 @@ func refund(username: String, cost: int) -> void:
 	var gs: Node = get_node_or_null("/root/GameState")
 	var sm: Node = get_node_or_null("/root/SaveManager")
 	if gs != null and username.to_lower() == str(gs.get("logged_in_username")).to_lower():
-		gs.tetrino_coins_spent = maxi(int(gs.tetrino_coins_spent) - cost, 0)
+		gs.tetrivo_coins_spent = maxi(int(gs.tetrivo_coins_spent) - cost, 0)
 		if sm != null:
 			sm.autosave(username)
 		return
 	var data: Dictionary = SaveManager.load_player_data(username)
 	if data.is_empty():
 		return
-	data["tetrino_coins_spent"] = maxi(int(data.get("tetrino_coins_spent", 0)) - cost, 0)
+	data["tetrivo_coins_spent"] = maxi(int(data.get("tetrivo_coins_spent", 0)) - cost, 0)
 	SaveManager.save_player_data(username, data)
 
 

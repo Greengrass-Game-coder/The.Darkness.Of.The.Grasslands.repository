@@ -158,15 +158,15 @@ static func autosave(username: String) -> bool:
 		"hide_leaderboard": GameState.hide_leaderboard,
 		"epilepsy_safe_mode": GameState.epilepsy_safe_mode,
 		"is_admin": GameState.is_admin,
-		"tetrino_coins_earned": GameState.tetrino_coins_earned,
-		"tetrino_last_coin_time": GameState.tetrino_last_coin_time,
-		"tetrino_gambled": GameState.tetrino_gambled,
-		"tetrino_time_penalty_until": GameState.tetrino_time_penalty_until,
-		"tetrino_last_seen_time": GameState.tetrino_last_seen_time,
-		"tetrino_coins_spent": GameState.tetrino_coins_spent,
-		"tetrino_owns_paid": GameState.tetrino_owns_paid,
-		"tetrino_owns_paid3": GameState.tetrino_owns_paid3,
-		"tetrino_gift_given": GameState.tetrino_gift_given,
+		"tetrivo_coins_earned": GameState.tetrivo_coins_earned,
+		"tetrivo_last_coin_time": GameState.tetrivo_last_coin_time,
+		"tetrivo_gambled": GameState.tetrivo_gambled,
+		"tetrivo_time_penalty_until": GameState.tetrivo_time_penalty_until,
+		"tetrivo_last_seen_time": GameState.tetrivo_last_seen_time,
+		"tetrivo_coins_spent": GameState.tetrivo_coins_spent,
+		"tetrivo_owns_paid": GameState.tetrivo_owns_paid,
+		"tetrivo_owns_paid3": GameState.tetrivo_owns_paid3,
+		"tetrivo_gift_given": GameState.tetrivo_gift_given,
 		"dirtysweeper_owns_paid": GameState.dirtysweeper_owns_paid,
 		"dirtysweeper_hard": GameState.dirtysweeper_hard
 	}
@@ -205,24 +205,24 @@ static func autoload(username: String) -> bool:
 		GameState.epilepsy_safe_mode = data.epilepsy_safe_mode
 	if data.has("is_admin"):
 		GameState.is_admin = data.is_admin
-	if data.has("tetrino_coins_earned"):
-		GameState.tetrino_coins_earned = data.tetrino_coins_earned
-	if data.has("tetrino_last_coin_time"):
-		GameState.tetrino_last_coin_time = data.tetrino_last_coin_time
-	if data.has("tetrino_gambled"):
-		GameState.tetrino_gambled = data.tetrino_gambled
-	if data.has("tetrino_time_penalty_until"):
-		GameState.tetrino_time_penalty_until = data.tetrino_time_penalty_until
-	if data.has("tetrino_last_seen_time"):
-		GameState.tetrino_last_seen_time = data.tetrino_last_seen_time
-	if data.has("tetrino_coins_spent"):
-		GameState.tetrino_coins_spent = data.tetrino_coins_spent
-	if data.has("tetrino_owns_paid"):
-		GameState.tetrino_owns_paid = data.tetrino_owns_paid
-	if data.has("tetrino_owns_paid3"):
-		GameState.tetrino_owns_paid3 = data.tetrino_owns_paid3
-	if data.has("tetrino_gift_given"):
-		GameState.tetrino_gift_given = data.tetrino_gift_given
+	if data.has("tetrivo_coins_earned"):
+		GameState.tetrivo_coins_earned = data.tetrivo_coins_earned
+	if data.has("tetrivo_last_coin_time"):
+		GameState.tetrivo_last_coin_time = data.tetrivo_last_coin_time
+	if data.has("tetrivo_gambled"):
+		GameState.tetrivo_gambled = data.tetrivo_gambled
+	if data.has("tetrivo_time_penalty_until"):
+		GameState.tetrivo_time_penalty_until = data.tetrivo_time_penalty_until
+	if data.has("tetrivo_last_seen_time"):
+		GameState.tetrivo_last_seen_time = data.tetrivo_last_seen_time
+	if data.has("tetrivo_coins_spent"):
+		GameState.tetrivo_coins_spent = data.tetrivo_coins_spent
+	if data.has("tetrivo_owns_paid"):
+		GameState.tetrivo_owns_paid = data.tetrivo_owns_paid
+	if data.has("tetrivo_owns_paid3"):
+		GameState.tetrivo_owns_paid3 = data.tetrivo_owns_paid3
+	if data.has("tetrivo_gift_given"):
+		GameState.tetrivo_gift_given = data.tetrivo_gift_given
 	if data.has("dirtysweeper_owns_paid"):
 		GameState.dirtysweeper_owns_paid = data.dirtysweeper_owns_paid
 	if data.has("dirtysweeper_hard"):

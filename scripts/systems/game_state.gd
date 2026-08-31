@@ -41,29 +41,29 @@ var console_theme: String = "system"
 ## Money tracking per player
 var player_money: int = 0
 
-## Tetrino minigame coin-reward state (persisted via SaveManager):
-## - tetrino_coins_earned: total coins earned from Tetrino (0..3; 3 = gamble win)
-## - tetrino_last_coin_time: unix time of the most recent coin earned (daily limit)
-## - tetrino_gambled: whether the player took the hard-mode gamble (permanent)
-## - tetrino_time_penalty_until: if the clock was tampered with, coins unlock only after this
-## - tetrino_last_seen_time: last recorded wall-clock time, used to detect roll-backs
-var tetrino_coins_earned: int = 0
-var tetrino_last_coin_time: int = 0
-var tetrino_gambled: bool = false
-var tetrino_time_penalty_until: int = 0
-var tetrino_last_seen_time: int = 0
-## tetrino_coins_spent: coins the player has spent on paid cartridges (so the
-## spendable "Grass coin" balance = tetrino_coins_earned - tetrino_coins_spent)
-var tetrino_coins_spent: int = 0
-## tetrino_owns_paid: permanent ownership of the paid "TETRINO 2" cartridge.
+## Tetrivo minigame coin-reward state (persisted via SaveManager):
+## - tetrivo_coins_earned: total coins earned from Tetrivo (0..3; 3 = gamble win)
+## - tetrivo_last_coin_time: unix time of the most recent coin earned (daily limit)
+## - tetrivo_gambled: whether the player took the hard-mode gamble (permanent)
+## - tetrivo_time_penalty_until: if the clock was tampered with, coins unlock only after this
+## - tetrivo_last_seen_time: last recorded wall-clock time, used to detect roll-backs
+var tetrivo_coins_earned: int = 0
+var tetrivo_last_coin_time: int = 0
+var tetrivo_gambled: bool = false
+var tetrivo_time_penalty_until: int = 0
+var tetrivo_last_seen_time: int = 0
+## tetrivo_coins_spent: coins the player has spent on paid cartridges (so the
+## spendable "Grass coin" balance = tetrivo_coins_earned - tetrivo_coins_spent)
+var tetrivo_coins_spent: int = 0
+## tetrivo_owns_paid: permanent ownership of the paid "TETRIVO 2" cartridge.
 ## Once bought (spending coins through the game profile) it stays owned forever.
-var tetrino_owns_paid: bool = false
-## tetrino_owns_paid3: permanent ownership of the paid "TETRINO 3" cartridge
-## (the 3-coin copy). Once bought it stays owned forever, like TETRINO 2.
-var tetrino_owns_paid3: bool = false
-## tetrino_gift_given: whether the one-time anti-softlock apology gift (2 Grass
+var tetrivo_owns_paid: bool = false
+## tetrivo_owns_paid3: permanent ownership of the paid "TETRIVO 3" cartridge
+## (the 3-coin copy). Once bought it stays owned forever, like TETRIVO 2.
+var tetrivo_owns_paid3: bool = false
+## tetrivo_gift_given: whether the one-time anti-softlock apology gift (2 Grass
 ## coins + 1,000 gold) has already been granted to this profile.
-var tetrino_gift_given: bool = false
+var tetrivo_gift_given: bool = false
 ## dirtysweeper_owns_paid: permanent ownership of the paid "DIRTYSWEEPER"
 ## cartridge (2 coins). Once bought it stays owned forever.
 var dirtysweeper_owns_paid: bool = false

@@ -11,7 +11,7 @@
 [ext_resource type="Texture2D" uid="uid://cdt47paw0ad8i" path="res://The Darkness Of The Grasslands assets/Sprites/Lobby person (Player(s))/Walk directions/Lobby person ---- Lobby -AKA- spectator/Right (from human prespective - RIGHT)/Walk_RIGHT_frame-1.png" id="9_w8x9y"]
 [ext_resource type="Texture2D" uid="uid://t3gkvtoo16k2" path="res://The Darkness Of The Grasslands assets/Sprites/Lobby person (Player(s))/Walk directions/Lobby person ---- Lobby -AKA- spectator/Right (from human prespective - RIGHT)/Walk_RIGHT_frame-2.png" id="10_z1a2b"]
 [ext_resource type="Texture2D" uid="uid://d1ngvh832qhdg" path="res://The Darkness Of The Grasslands assets/Maps/Lobby/Map_Lobby.png" id="11_map"]
-[ext_resource type="Shader" uid="uid://c5napiqqfb1yy" path="res://assets/shaders/circular_infade.gdshader" id="12_shader"]
+[ext_resource type="Shader" uid="uid://b1xi6yqumvfe2" path="res://assets/shaders/circular_infade.gdshader" id="12_shader"]
 [ext_resource type="Script" uid="uid://bf2wbxx0rjf5y" path="res://scripts/ui/dialogue_ui.gd" id="13_dlg"]
 [ext_resource type="Resource" path="res://resources/browngrass_dialogue.tres" id="14_brown"]
 [ext_resource type="Texture2D" uid="uid://d4npt062xo73y" path="res://The Darkness Of The Grasslands assets/Characters/Lobby/the flying Evil potato! [but not really evil].png" id="15_potato"]
@@ -132,7 +132,7 @@ position = Vector2(413, 170)
 scale = Vector2(0.82495874, 1.126525)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="BrownNPC" unique_id=443112921]
-position = Vector2(109.000015, -5.0000005)
+position = Vector2(161.22015, -34.61973)
 scale = Vector2(4.039997, 7.27)
 shape = SubResource("RectangleShape2D_h7k9m")
 
@@ -156,7 +156,6 @@ max_distance = 4096.0
 bus = &"Music"
 
 [node name="CountdownTimer" type="Timer" parent="." unique_id=264930212]
-autostart = false
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=1333913836]
 
