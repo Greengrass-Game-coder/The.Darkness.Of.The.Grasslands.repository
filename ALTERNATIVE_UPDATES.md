@@ -1102,3 +1102,7 @@ Ported to BOTH `ai_survivor_bot_controller.gd` (main) and
 - **Killer outro plays the ENDING of the LMS, not the chase theme**: verified
   both main and test already stop every chase player and keep the LMS song's
   final ~1:33 tail playing under the killer-win outro — no change needed.
+- **Dirtysweeper warning face on bomb**: the worried face now appears only while
+  the player holds down on a BOMB cell (in reveal mode) — a classic minesweeper
+  "am I about to step on a mine?" warning. Holding a safe cell keeps the neutral
+  face. (`dirtysweeper.gd`)

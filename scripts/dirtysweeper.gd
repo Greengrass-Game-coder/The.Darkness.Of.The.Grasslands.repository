@@ -249,16 +249,23 @@ func _face_path() -> String:
 		return FACE_DEAD_G if _hard else FACE_DEAD
 	if _won:
 		return FACE_NEUTRAL_G if _hard else FACE_NEUTRAL
-	# The worried face shows while the player holds down on a cell (classic
-	# minesweeper "am I about to die?" warning) — but only when revealing,
-	# not when placing flags.
-	if _press_armed and not _flag_mode:
+	# The worried face shows while the player holds down on a BOMB cell
+	# (classic minesweeper "am I about to step on a mine?" warning) — and only
+	# when revealing, not when placing flags.
+	if _press_armed and not _flag_mode and _press_is_on_mine():
 		return FACE_WARNING_G if _hard else FACE_WARNING
 	return FACE_NEUTRAL_G if _hard else FACE_NEUTRAL
 
 
 func _refresh_face() -> void:
 	_face_tex.texture = load(_face_path())
+
+
+func _press_is_on_mine() -> bool:
+	"""True when the currently held cell is a mine (so the face can warn)."""
+	if _press_cell.x < 0 or _press_cell.y < 0:
+		return false
+	return bool(_board[_press_cell.x][_press_cell.y]["mine"])
 
 
 ## ── Rendering ──────────────────────────────────────────────────────
