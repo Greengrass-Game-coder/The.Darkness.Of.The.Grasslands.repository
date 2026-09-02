@@ -26,14 +26,16 @@ func test_first_win_awards_one() -> void:
 	assert(a == 1 and GameState.tetrivo_coins_earned == 1 and GameState.player_money == 1,
 		"first win should award 1 coin")
 
-func test_same_day_second_win_blocked() -> void:
+func test_same_day_second_win_farmable() -> void:
+	# Per the documented design, NORMAL wins are intentionally farmable (1 coin,
+	# no daily gate). Only the hard-mode 2-coin bonus is daily-limited.
 	_setup()
 	GameState.tetrivo_coins_earned = 1
 	GameState.tetrivo_last_coin_time = _node._now_sec()
 	_node._hard_mode = false
 	var a: int = _node._resolve_win_reward()
-	assert(a == 0 and GameState.tetrivo_coins_earned == 1,
-		"same-day second win should be blocked by daily limit")
+	assert(a == 1 and GameState.tetrivo_coins_earned == 2,
+		"same-day second normal win should still award 1 coin (farmable)")
 
 func test_next_day_second_win() -> void:
 	_setup()
