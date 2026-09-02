@@ -1094,6 +1094,14 @@ Ported to BOTH `ai_survivor_bot_controller.gd` (main) and
 - **Abilities disabled near a puzzle/generator**: puzzle zones are now in the
   `"puzzles"` group, and the survivor's `_input` ignores abilities while inside
   one — block/charge-punch/spare-flower can't fire accidentally while you're
+  interacting with a puzzle. Bots are unaffected (they call abilities directly).
+  (`game_map.gd` + `_test.gd`; `greengrass_controller.gd`.)
+- **M1 hit sound plays the instant the killer hits**: the hit sound now fires
+  before the swing animation in `use_hit()`, so it never arrives late.
+  (`violentgrass_controller.gd`, shared by human killer + killer bot.)
+- **Killer outro plays the ENDING of the LMS, not the chase theme**: verified
+  both main and test already stop every chase player and keep the LMS song's
+  final ~1:33 tail playing under the killer-win outro — no change needed.
 - **Dirtysweeper warning face on bomb**: the worried face now appears only while
   the player holds down on a BOMB cell (in reveal mode) — a classic minesweeper
   "am I about to step on a mine?" warning. Holding a safe cell keeps the neutral
@@ -1103,7 +1111,7 @@ Ported to BOTH `ai_survivor_bot_controller.gd` (main) and
 
 ## Session 35 — Dirtysweeper embedded into the arcade + Tetrino → Tetrivo rename
 
-**Commit: this session (HEAD `f6bd3d3` → next).**
+**Commits: `51da565` (embed + rename), `44a3389` (DS tests + stale test fix).**
 
 ### 1. Dirtysweeper is now fully embedded in the arcade room (no separate scene)
 Following the "make it playable inside one scene only, like Tetrivo" request:
@@ -1115,8 +1123,8 @@ Following the "make it playable inside one scene only, like Tetrivo" request:
     UI as a full-rect Control child of `_ui`; `_close_dirtysweeper()` frees it and
     returns to the cartridge browser.
   - All `_dirty_*` state vars + helpers: board generation (`_dirty_new_board`,
-    `_dirty_compute_counts`), rendering (`_dirty_update_all`/`_cell`/`_cursor_rect`),
-    game logic (`_dirty_reveal`/`_flood_reveal`/`_flag`/`_win`/`_restart`), the
+    `_dirty_compute_counts`), rendering, game logic
+    (`_dirty_reveal`/`_flood_reveal`/`_flag`/`_win`/`_restart`), the
     worried-face-on-bomb behaviour, and input (`_dirty_process`, `_dirty_handle_input`,
     `_unhandled_input` for R / right-click flag).
   - Runs while `_dirty_active`; the `_physics_process` branch freezes the player and
@@ -1137,13 +1145,45 @@ Full rename across `arcade_room.gd`, `game_state.gd`, `save_manager.gd`,
   const path VALUES still point at those files, so audio/art load fine.
 - **Accepted trade-off:** because the save keys changed, previously-saved Tetrino
   coin balances / ownership reset (the user accepted this).
-- Verified headless (arcade scene boots with 0 script errors) and all 7
-  `tetrivo_coin_test.gd` tests pass. never arrives late.
-  (`violentgrass_controller.gd`, shared by human killer + killer bot.)
-- **Killer outro plays the ENDING of the LMS, not the chase theme**: verified
-  both main and test already stop every chase player and keep the LMS song's
-  final ~1:33 tail playing under the killer-win outro — no change needed.
-- **Dirtysweeper warning face on bomb**: the worried face now appears only while
-  the player holds down on a BOMB cell (in reveal mode) — a classic minesweeper
-  "am I about to step on a mine?" warning. Holding a safe cell keeps the neutral
-  face. (`dirtysweeper.gd`)
+
+### 3. New Dirtysweeper logic test suite
+- Added `tests/dirtysweeper_logic_test.gd` (12 tests) covering board generation
+  invariants (mine count, centre exclusion, count correctness), hard-mode mine
+  count, centre flood reveal, mine-loss, flag toggle, flagged-not-revealed, win
+  detection + coin awards, the hard 2-coin bonus and its daily consumption,
+  repeatable normal wins, restart, and close-to-browser. All pass with no
+  assertion failures.
+
+---
+
+## Session 36 — More rigorous testing + LMS no longer plays in the lobby intermission
+
+**Commits: `44a3389` (DS tests + stale tetrivo fix), `b6d469a` (LMS-in-lobby fix).**
+
+### 1. Hardened the test suites (they were giving false confidence)
+- Discovered the test runner marks a test "pass" even when its `assert()` fails
+  (the failure only shows in the process log). Re-audited every test by scanning
+  for "Assertion failed" in the runner output instead of trusting the pass count.
+- **Fixed a stale Tetrivo test**: `test_same_day_second_win_blocked` expected a
+  daily gate on NORMAL wins that the (documented) design removed — normal wins
+  are intentionally farmable at 1 coin; only the hard 2-coin bonus is daily
+  limited. Renamed to `test_same_day_second_win_farmable` and corrected the
+  expectation. This test had been failing silently.
+- **New Dirtysweeper test suite** (12 tests) added — see Session 35.3.
+- Verified: 12 DS tests + 7 Tetrivo tests all pass with **zero** "Assertion
+  failed" in the runner log; both `arcade_room.tscn` and `lobby_test.tscn` boot
+  headless with 0 script errors; no leftover `tetrino` code identifiers.
+
+### 2. Fixed: LMS music no longer plays in the lobby intermission on win/lose
+- **Reported bug**: the LMS (last-man-standing) track kept playing in the lobby
+  intermission whenever the match ended while the LMS finale was active (win OR
+  lose).
+- **Root cause**: `game_map._end_match()` set
+  `GameState.returning_from_lms = _lms_active`, and the lobby then replaced its
+  normal intermission tune with the LMS track via `_play_lms_in_lobby()`.
+- **Fix**: the killer-win drama already plays its LMS tail inside the match
+  (outro), so the lobby should always return to its normal tune. Changed
+  `_end_match()` to set `GameState.returning_from_lms = false`, leaving the
+  lobby carry-over code inert.
+- **Verified**: both `game_map.tscn` and `game_map_test.tscn` boot headless with
+  0 script errors; no `returning_from_lms = true` remains anywhere.
