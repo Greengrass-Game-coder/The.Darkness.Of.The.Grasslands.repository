@@ -3528,8 +3528,11 @@ func _end_match() -> void:
 	GameState.match_character_name = _character_name
 	GameState.match_damage_taken = _total_damage_taken
 	GameState.match_damage_dealt = _total_damage_dealt
-	# Carry the LMS track into the lobby if the LMS finale was playing at round end.
-	GameState.returning_from_lms = _lms_active
+	# Do NOT carry the LMS track into the lobby intermission. The killer-win
+	# drama already plays its LMS tail inside the match (outro), and on ANY
+	# match end (win or lose) the lobby should return to its normal intermission
+	# tune rather than keep the LMS music playing.
+	GameState.returning_from_lms = false
 	
 	# If the KILLER won (the last survivor died), we don't just cut to the lobby:
 	# cut to black, let the LMS song's ~1:33 tail keep playing, then play
