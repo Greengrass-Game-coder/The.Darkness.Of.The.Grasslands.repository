@@ -50,6 +50,19 @@ var _strafe_change_timer: float = 0.0
 var _just_hit_timer: float = 0.0
 var _has_los_to_killer: bool = false
 
+# --- Death fling: when a survivor bot is killed, its body gets knocked around
+# the map (bounces off walls, spins, slides to a stop), then fades out and is
+# removed after a delay. ---
+var _dead: bool = false
+var _fling_velocity: Vector2 = Vector2.ZERO
+var _death_timer: float = 0.0
+var _spin_speed: float = 0.0
+const DEATH_FLING_DURATION: float = 10.0       # seconds before the body disappears
+const FLING_FRICTION: float = 0.90              # per-frame velocity damping (slides to a stop)
+const FLING_BOUNCE_RESTITUTION: float = 0.6     # energy kept when bouncing off a wall
+const FLING_START_SPEED_MIN: float = 250.0
+const FLING_START_SPEED_MAX: float = 420.0
+
 # "human" behaviors:
 var _hide_timer: float = 0.0      # Holds still (hidden) after LOS breaks mid-flee
 var _puzzle_index: int = 0        # Bot's chosen puzzle slot for distribution
@@ -113,6 +126,11 @@ func _input(_event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# A dead body is no longer an AI survivor — just tumble around and vanish.
+	if _dead:
+		_physics_process_dead(delta)
+		return
+
 	if current_state == State.STUNNED:
 		velocity = Vector2.ZERO
 		move_and_slide()
@@ -222,6 +240,44 @@ func _physics_process(delta: float) -> void:
 	# PRIORITY 4: Patrol
 	_ai_patrol(delta)
 	move_and_slide()
+
+
+func play_death_fling(dir: Vector2) -> void:
+	"""Knock the dead body around the map, then fade it out and remove it after
+	DEATH_FLING_DURATION seconds."""
+	_dead = true
+	# Stop the AI's own state/animations from fighting the corpse tumble.
+	_death_timer = 0.0
+	_spin_speed = randf_range(-4.0, 4.0)
+	var speed: float = randf_range(FLING_START_SPEED_MIN, FLING_START_SPEED_MAX)
+	_fling_velocity = dir.normalized() * speed
+	# Visible grey corpse (fully opaque so it reads clearly during the fling).
+	modulate = Color(0.5, 0.5, 0.5, 1.0)
+
+
+func _physics_process_dead(delta: float) -> void:
+	"""Drive the dead body: apply friction, bounce off walls, spin, then fade out."""
+	_fling_velocity *= FLING_FRICTION
+	if _fling_velocity.length() < 2.0:
+		_fling_velocity = Vector2.ZERO
+	velocity = _fling_velocity
+	move_and_slide()
+	# Bounce off any wall we hit, losing a bit of energy each time.
+	for i in get_slide_collision_count():
+		var n: Vector2 = get_slide_collision(i).get_normal()
+		if n != Vector2.ZERO and _fling_velocity.length() > 60.0:
+			_fling_velocity = _fling_velocity.bounce(n) * FLING_BOUNCE_RESTITUTION
+	# Tumble the body and slow the spin down as it settles.
+	rotation += _spin_speed * delta
+	_spin_speed = move_toward(_spin_speed, 0.0, 3.0 * delta)
+
+	_death_timer += delta
+	if _death_timer >= DEATH_FLING_DURATION - 0.6:
+		# Fade out, then remove the body.
+		_death_timer = INF  # only fade once
+		var t := create_tween()
+		t.tween_property(self, "modulate:a", 0.0, 0.6)
+		t.tween_callback(queue_free)
 
 
 func _is_killer_near_puzzle(puzzle: Area2D, killer_dist: float) -> bool:

@@ -2790,9 +2790,19 @@ func _on_bot_hp_changed(current_hp: float, _max_hp: float, bot: Node2D) -> void:
 	_survivor_bots.erase(bot)
 	_refresh_survivor_cache()
 	
-	# Grey out the bot
-	bot.modulate = Color(0.4, 0.4, 0.4, 0.5)
-	bot.set_physics_process(false)
+	# Fling the dead body around the map (away from whoever killed it), then fade
+	# it out and remove it after a few seconds. The controller handles the physics.
+	var killer_pos: Vector2 = bot.global_position
+	if is_instance_valid(_player) and _character_name == "Violentgrass":
+		killer_pos = _player.global_position
+	elif is_instance_valid(_killer_bot):
+		killer_pos = _killer_bot.global_position
+	var fling_dir: Vector2 = (bot.global_position - killer_pos).normalized()
+	if fling_dir == Vector2.ZERO:
+		fling_dir = Vector2.RIGHT.rotated(randf() * TAU)
+	fling_dir = fling_dir.rotated(randf_range(-0.6, 0.6))
+	if bot.has_method("play_death_fling"):
+		bot.play_death_fling(fling_dir)
 	
 	print("GameMap: Survivor bot eliminated — %d bot(s) remaining" % _alive_survivor_bot_count)
 	_on_survivor_eliminated("SurvivorBot")
