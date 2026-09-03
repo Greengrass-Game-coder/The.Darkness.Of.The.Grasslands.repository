@@ -38,6 +38,8 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var spare_flower_heal: float = 70.0
 @export var ally_detect_radius: float = 300.0
 @export var punch_range: float = 80.0
+@export var punch_launch_speed: float = 650.0
+@export var punch_launch_distance: float = 200.0
 
 # ---------- SIZE ----------
 @export var size_mult: float = 1.0:
@@ -70,6 +72,9 @@ var punch_target: Vector2 = Vector2.ZERO
 var punch_locked: bool = true
 var _charging: bool = false
 var _charge_time: float = 0.0
+var _punch_launch_timer: float = 0.0
+var _punch_dmg_mult: float = 1.0
+var _launch_hit_targets: Array = []
 
 var healing_ally: Node = null
 var heal_over_time_active: bool = false
@@ -263,8 +268,28 @@ func _handle_dash_blocking(_delta: float) -> void:
 		_end_block()
 
 
-func _handle_punching(_delta: float) -> void:
-	velocity = Vector2.ZERO
+func _handle_punching(delta: float) -> void:
+	# Launch the player toward the aimed direction until they reach the target
+	# or the launch time runs out.
+	if _punch_launch_timer <= 0.0:
+		velocity = Vector2.ZERO
+		_change_state(State.IDLE)
+		return
+	_punch_launch_timer -= delta
+
+	var to_target: Vector2 = punch_target - global_position
+	var dist := to_target.length()
+	if dist <= 6.0:
+		velocity = Vector2.ZERO
+		_punch_launch_timer = 0.0
+		_change_state(State.IDLE)
+		return
+
+	var dir := to_target.normalized()
+	velocity = dir * punch_launch_speed
+	_update_direction(dir)
+	_check_punch_hits_during_launch()
+	move_and_slide()
 
 
 func _handle_healing(_delta: float) -> void:
@@ -375,6 +400,27 @@ func _setup_ability_vfx_frames() -> void:
 		for tex in parry_frames:
 			vfx_sf.add_frame("punch_parry", tex)
 
+	# Charge animation — played once and HELD on its last frame while the player
+	# holds the punch button, to show the power building up.
+	var charge_frames: Array[Texture2D] = []
+	var charge_paths: Array[String] = [
+		"res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_0000.png",
+		"res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_00001.png",
+		"res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_00002.png",
+		"res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_00003.png",
+		"res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_00004.png",
+	]
+	for path in charge_paths:
+		var tex: Texture2D = load(path)
+		if tex:
+			charge_frames.append(tex)
+	if not charge_frames.is_empty():
+		vfx_sf.add_animation("charge")
+		vfx_sf.set_animation_loop("charge", false)
+		vfx_sf.set_animation_speed("charge", 12.0)
+		for tex in charge_frames:
+			vfx_sf.add_frame("charge", tex)
+
 	var heal_frames: Array[Texture2D] = []
 	for i in range(9):
 		var path: String = "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-%d.png" % i
@@ -404,6 +450,10 @@ func _hide_vfx() -> void:
 
 
 func _on_ability_vfx_finished() -> void:
+	if _charging:
+		# Keep the charge animation held on its last frame while the player holds
+		# the punch button down — don't let the finished signal hide it.
+		return
 	_hide_vfx()
 	if current_state in [State.PUNCHING, State.HEALING, State.BLOCKING]:
 		current_state = State.IDLE
@@ -554,18 +604,30 @@ func _start_charge_punch() -> void:
 	_change_state(State.PUNCH_CHARGING)
 	_play_animation("idle")
 	ability_vfx.visible = true
-	ability_vfx.play("punch")
+	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation("charge"):
+		ability_vfx.play("charge")
+	else:
+		ability_vfx.play("punch")
+	queue_redraw()
 
 
 func _fire_charged_punch() -> void:
 	if not _charging:
 		return
 	_charging = false
+	queue_redraw()
 	punch_on_cooldown = true
 	_punch_cd_timer = parry_punch_cooldown if parry_window_active else punch_cooldown
 
-	var target_pos: Vector2 = get_global_mouse_position()
-	punch_target = target_pos
+	# Launch toward where the mouse is pointing (capped so a far-away cursor
+	# doesn't send the player across the map).
+	var mouse_pos: Vector2 = get_global_mouse_position()
+	var to_mouse: Vector2 = mouse_pos - global_position
+	var dir: Vector2 = to_mouse.normalized()
+	if to_mouse.length() < 1.0:
+		dir = _facing_dir()
+	punch_target = global_position + dir * min(to_mouse.length(), punch_launch_distance)
+
 	_change_state(State.PUNCHING)
 
 	is_parry_punch = parry_window_active
@@ -575,23 +637,64 @@ func _fire_charged_punch() -> void:
 	_play_animation("punch_parry" if is_parry_punch else "punch")
 
 	var charge_ratio: float = min(_charge_time / 1.5, 1.0)
-	var dmg_mult: float = 0.5 + charge_ratio * 1.5
+	_punch_dmg_mult = 0.5 + charge_ratio * 1.5
 	_charge_time = 0.0
 
+	# Launch duration is distance / speed; start by hitting whatever is already
+	# in reach.
+	_punch_launch_timer = punch_launch_distance / punch_launch_speed
+	_launch_hit_targets.clear()
+	_check_punch_hits_during_launch()
+
+
+func _facing_dir() -> Vector2:
+	match current_direction:
+		Direction.UP:
+			return Vector2(0, -1)
+		Direction.DOWN:
+			return Vector2(0, 1)
+		Direction.LEFT:
+			return Vector2(-1, 0)
+		Direction.RIGHT:
+			return Vector2(1, 0)
+	return Vector2(0, 1)
+
+
+func _check_punch_hits_during_launch() -> void:
 	var hits: Array[Node2D] = _check_punch_hit()
 	for target in hits:
+		if _launch_hit_targets.has(target):
+			continue
+		_launch_hit_targets.append(target)
 		punch_landed.emit(is_parry_punch)
-		var stun_duration: float = (parry_stun if is_parry_punch else normal_stun) * dmg_mult
+		var stun_duration: float = (parry_stun if is_parry_punch else normal_stun) * _punch_dmg_mult
 		if target.has_method("take_stun"):
 			target.take_stun(stun_duration)
 		if target.has_method("take_damage"):
-			target.take_damage(punch_damage * dmg_mult)
-		break
+			target.take_damage(punch_damage * _punch_dmg_mult)
 
-	state_timer.start(1.0)
-	await state_timer.timeout
-	if current_state == State.PUNCHING:
-		_change_state(State.IDLE)
+
+# ---------- AIM ARROW ----------
+
+func _draw() -> void:
+	# Show an arrow while charging so the player can see the direction they'll
+	# launch when they release. Only the human player ever charges, so this
+	# never appears on bots.
+	if not _charging or current_state != State.PUNCH_CHARGING:
+		return
+	var mouse := get_global_mouse_position()
+	var to_mouse := mouse - global_position
+	if to_mouse.length() < 4.0:
+		return
+	var dir := to_mouse.normalized()
+	var length := clampf(to_mouse.length(), 60.0, punch_launch_distance)
+	var start: Vector2 = dir * 36.0
+	var tip: Vector2 = dir * length
+	var color := Color(0.35, 1.0, 0.4, 0.85)
+	draw_line(start, tip, color, 4.0)
+	var head := 14.0
+	draw_line(tip, tip - dir.rotated(0.55) * head, color, 4.0)
+	draw_line(tip, tip - dir.rotated(-0.55) * head, color, 4.0)
 
 
 func _handle_charge(delta: float) -> void:
@@ -601,6 +704,8 @@ func _handle_charge(delta: float) -> void:
 
 	velocity = Vector2.ZERO
 	move_and_slide()
+	# Keep the aim arrow tracking the cursor while charging.
+	queue_redraw()
 
 
 # ---------- SPARE FLOWER ----------
