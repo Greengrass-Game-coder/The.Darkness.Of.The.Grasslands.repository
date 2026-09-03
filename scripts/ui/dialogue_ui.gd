@@ -17,6 +17,7 @@ var _current_index: int = 0
 var _is_active: bool = false
 var _waiting_for_choice: bool = false
 var _auto_advance_pending: bool = false
+var _auto_advance_target: int = -1
 
 # Track consumed choices across dialogue sessions: "resource_path|line_idx|choice_text" -> true
 var _consumed_choices: Dictionary = {}
@@ -144,23 +145,12 @@ func _show_line() -> void:
 		_waiting_for_choice = true
 		_show_choices()
 	elif _dl and _dl.get_auto_target_at(_current_index) >= 0:
-		# Auto-return: show this line's text, then auto-advance after a brief pause
-		var target: int = _dl.get_auto_target_at(_current_index)
+		# Auto-return: show this line's text, then jump to the target only when the
+		# player presses Space/Enter — never auto-skip, so they have time to read.
+		_auto_advance_target = _dl.get_auto_target_at(_current_index)
 		_waiting_for_choice = true
 		_auto_advance_pending = true
-		# Use a one-shot timer to auto-advance so the text is visible
-		var auto_timer: Timer = Timer.new()
-		auto_timer.one_shot = true
-		auto_timer.wait_time = 1.5
-		auto_timer.timeout.connect(func():
-			_current_index = target
-			_waiting_for_choice = false
-			_auto_advance_pending = false
-			auto_timer.queue_free()
-			_show_line()
-		)
-		add_child(auto_timer)
-		auto_timer.start()
+		continue_label.show()
 	else:
 		_waiting_for_choice = false
 		continue_label.show()
@@ -264,11 +254,29 @@ func _end_dialogue() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not _is_active or _waiting_for_choice or _auto_advance_pending:
+	if not _is_active:
+		return
+	# Auto-return lines wait for the player to press Space/Enter before jumping
+	# to their target line, so the text stays readable.
+	if _auto_advance_pending:
+		if event.is_action_pressed("ui_accept") or event.is_action_pressed("ui_text_newline"):
+			_finish_auto_advance()
+			get_viewport().set_input_as_handled()
+		return
+	if _waiting_for_choice:
 		return
 	if event.is_action_pressed("ui_accept") or event.is_action_pressed("ui_text_newline"):
 		_advance()
 		get_viewport().set_input_as_handled()
+
+
+func _finish_auto_advance() -> void:
+	_auto_advance_pending = false
+	var target: int = _auto_advance_target
+	_auto_advance_target = -1
+	_waiting_for_choice = false
+	_current_index = target
+	_show_line()
 
 
 # Clear all choice buttons

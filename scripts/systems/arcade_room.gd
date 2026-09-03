@@ -240,6 +240,10 @@ func _ready() -> void:
 	_build_room()
 	_build_player()
 	_build_machine()
+	# Keep the machine's interact prompt in sync with the assigned input binding
+	# and the device currently in use (keyboard / gamepad / touch).
+	if not InputSystem.device_changed.is_connected(_refresh_machine_prompt):
+		InputSystem.device_changed.connect(_refresh_machine_prompt)
 	_build_ui()
 	# Reveal from black (right-to-left wipe continues from the lobby).
 	_reveal_from_black()
@@ -441,7 +445,7 @@ func _build_machine() -> void:
 
 	_machine_prompt = Label.new()
 	_machine_prompt.name = "InteractPrompt"
-	_machine_prompt.text = "Press [E] to boot up The Magic Entertainer™"
+	_machine_prompt.text = _machine_prompt_text()
 	_machine_prompt.position = Vector2(-110, -80)
 	_machine_prompt.size = Vector2(220, 30)
 	_machine_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1247,6 +1251,40 @@ func _on_machine_body_entered(body: Node) -> void:
 func _on_machine_body_exited(body: Node) -> void:
 	if body == _player:
 		_machine_prompt.visible = false
+
+
+func _machine_prompt_text() -> String:
+	return "Press [%s] to boot up The Magic Entertainer™" % _interact_key_label()
+
+
+func _refresh_machine_prompt() -> void:
+	if is_instance_valid(_machine_prompt):
+		_machine_prompt.text = _machine_prompt_text()
+
+
+## Display name for the "interact" action on the current input device, so the
+## prompt follows the player's assigned binding instead of hard-coding E (which
+## confuses people who remapped it).
+func _interact_key_label() -> String:
+	match InputSystem.current_device:
+		"touch":
+			return "TAP"
+		"gamepad":
+			return _joy_button_label(InputSystem.current_button("interact"))
+		_:
+			var key: int = InputSystem.current_key("interact")
+			return OS.get_keycode_string(key) if key != 0 else "E"
+
+
+func _joy_button_label(button: int) -> String:
+	if button < 0:
+		return "A"
+	return {
+		JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y",
+		JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB",
+		JOY_BUTTON_START: "Start", JOY_BUTTON_DPAD_UP: "D-Up", JOY_BUTTON_DPAD_DOWN: "D-Down",
+		JOY_BUTTON_DPAD_LEFT: "D-Left", JOY_BUTTON_DPAD_RIGHT: "D-Right",
+	}.get(button, "Btn%d" % button)
 
 
 # ═══════════════ CONSOLE BOOT SEQUENCE ═══════════════
