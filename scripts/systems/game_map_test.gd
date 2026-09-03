@@ -535,13 +535,29 @@ func _place_markers() -> void:
 	print("GameMap: Placed marker nodes")
 
 
+func _survivor_scene_for(survivor_name: String) -> PackedScene:
+	# Map an equipped survivor name to its scene. Only Greengrass exists today —
+	# extend this map (and add the entry to GameState.CHARACTER_CATALOG) as more
+	# survivors are added.
+	return GREENGRASS_SCENE
+
+
 func spawn_player(spawn_as_killer: bool = false) -> void:
 	"""Spawn the player character at the appropriate spawn point."""
 	var gs_sp = get_node("/root/GameState")
 	var is_killer_player: bool = spawn_as_killer or (gs_sp != null and gs_sp.is_killer)
 	var spawn_pos: Vector2 = _map_manager.get_spawn_point(is_killer_player)
 	
-	var player_scene: PackedScene = VIOLENTGRASS_SCENE if is_killer_player else GREENGRASS_SCENE
+	var player_scene: PackedScene
+	var character_name: String = "Violentgrass"
+	if is_killer_player:
+		player_scene = VIOLENTGRASS_SCENE
+	else:
+		# Spawn the player's equipped survivor (Greengrass by default).
+		character_name = "Greengrass"
+		if gs_sp != null and gs_sp.selected_survivor != "":
+			character_name = gs_sp.selected_survivor
+		player_scene = _survivor_scene_for(character_name)
 	_player = player_scene.instantiate()
 	_player.name = "Player"
 	_player.position = spawn_pos
@@ -563,7 +579,7 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	var cam: Camera2D = _player.get_node_or_null("Camera2D") as Camera2D
 	
 	# Set character name for analysis screen
-	_character_name = "Violentgrass" if is_killer_player else "Greengrass"
+	_character_name = character_name
 	
 	# Create ability icons
 	_create_ability_icons(_player, is_killer_player)

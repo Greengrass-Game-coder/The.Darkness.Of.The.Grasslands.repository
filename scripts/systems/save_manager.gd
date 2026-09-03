@@ -155,6 +155,8 @@ static func autosave(username: String) -> bool:
 		"display_name": GameState.display_name,
 		"selected_survivor": GameState.selected_survivor,
 		"selected_killer": GameState.selected_killer,
+		"owned_survivors": GameState.owned_survivors.duplicate(true),
+		"owned_killers": GameState.owned_killers.duplicate(true),
 		"hide_leaderboard": GameState.hide_leaderboard,
 		"epilepsy_safe_mode": GameState.epilepsy_safe_mode,
 		"is_admin": GameState.is_admin,
@@ -199,6 +201,10 @@ static func autoload(username: String) -> bool:
 		GameState.selected_survivor = data.selected_survivor
 	if data.has("selected_killer"):
 		GameState.selected_killer = data.selected_killer
+	if data.has("owned_survivors") and data.owned_survivors is Dictionary:
+		GameState.owned_survivors = data.owned_survivors.duplicate(true)
+	if data.has("owned_killers") and data.owned_killers is Dictionary:
+		GameState.owned_killers = data.owned_killers.duplicate(true)
 	if data.has("hide_leaderboard"):
 		GameState.hide_leaderboard = data.hide_leaderboard
 	if data.has("epilepsy_safe_mode"):

@@ -29,6 +29,49 @@ var pending_join_code: String = ""
 var selected_survivor: String = "Greengrass"  # Will be set from CharacterData
 var selected_killer: String = "Violentgrass"  # Will be set from CharacterData
 
+## Character catalog — the single source of truth for selectable characters.
+## Add a new survivor/killer here and it automatically appears in the lobby
+## Shop (BUY) and Inventory (EQUIP). `cost` 0 means it's a free starter.
+const CHARACTER_CATALOG: Dictionary = {
+	"Greengrass": {"kind": "survivor", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Greengrass - survivor icon.png"},
+	"Violentgrass": {"kind": "killer", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png"},
+}
+
+## Ownership: which characters the player has bought. Starters are owned by
+## default. Keyed by character name -> true.
+var owned_survivors: Dictionary = {"Greengrass": true}
+var owned_killers: Dictionary = {"Violentgrass": true}
+
+## Character helper methods ------------------------------------------------
+
+func is_character_owned(kind: String, name: String) -> bool:
+	if kind == "survivor":
+		return owned_survivors.get(name, false)
+	return owned_killers.get(name, false)
+
+
+func own_character(kind: String, name: String) -> void:
+	if kind == "survivor":
+		owned_survivors[name] = true
+	else:
+		owned_killers[name] = true
+
+
+func get_equipped_character(kind: String) -> String:
+	return selected_survivor if kind == "survivor" else selected_killer
+
+
+## Equip a character (sets it as selected for its kind). Returns false if the
+## player doesn't own it yet.
+func equip_character(kind: String, name: String) -> bool:
+	if not is_character_owned(kind, name):
+		return false
+	if kind == "survivor":
+		selected_survivor = name
+	else:
+		selected_killer = name
+	return true
+
 ## User settings (persisted across scenes, not yet saved to disk)
 var hide_leaderboard: bool = false
 var epilepsy_safe_mode: bool = true
