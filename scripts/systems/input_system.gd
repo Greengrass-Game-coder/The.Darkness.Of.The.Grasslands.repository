@@ -244,6 +244,32 @@ func current_button(action: String) -> int:
 	return -1
 
 
+## Return a short display string for an action's primary binding on the current
+## device, so UI prompts read out the ASSIGNED key/button (e.g. "E", "A", "TAP")
+## instead of a hard-coded one. `fallback` is used when no keyboard binding
+## exists. Action need not be in ACTIONS — any InputMap action works.
+func prompt_for(action: String, fallback: String = "") -> String:
+	match current_device:
+		"touch":
+			return "TAP"
+		"gamepad":
+			var button: int = current_button(action)
+			return _button_name(button) if button >= 0 else fallback
+		_:
+			var key: int = current_key(action)
+			return OS.get_keycode_string(key) if key != 0 else fallback
+
+
+func _button_name(button: int) -> String:
+	return {
+		JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y",
+		JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB",
+		JOY_BUTTON_BACK: "Back", JOY_BUTTON_START: "Start",
+		JOY_BUTTON_DPAD_UP: "D-Up", JOY_BUTTON_DPAD_DOWN: "D-Down",
+		JOY_BUTTON_DPAD_LEFT: "D-Left", JOY_BUTTON_DPAD_RIGHT: "D-Right",
+	}.get(button, "Btn%d" % button)
+
+
 ## ── Persistence ───────────────────────────────────────────────────────
 
 func _save() -> void:

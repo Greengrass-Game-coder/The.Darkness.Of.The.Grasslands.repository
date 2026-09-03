@@ -150,9 +150,11 @@ func _show_line() -> void:
 		_auto_advance_target = _dl.get_auto_target_at(_current_index)
 		_waiting_for_choice = true
 		_auto_advance_pending = true
+		continue_label.text = "Press %s to continue" % _continue_key_label()
 		continue_label.show()
 	else:
 		_waiting_for_choice = false
+		continue_label.text = "Press %s to continue" % _continue_key_label()
 		continue_label.show()
 
 
@@ -277,6 +279,19 @@ func _finish_auto_advance() -> void:
 	_waiting_for_choice = false
 	_current_index = target
 	_show_line()
+
+
+## The continue prompt shows the key that actually advances the dialogue on the
+## current device (SPACE on keyboard, A on gamepad, Tap on touch), instead of a
+## vague "..." that leaves players guessing what to press.
+func _continue_key_label() -> String:
+	match InputSystem.current_device:
+		"gamepad":
+			return "A"
+		"touch":
+			return "Tap"
+		_:
+			return "SPACE"
 
 
 # Clear all choice buttons

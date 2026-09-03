@@ -1266,25 +1266,7 @@ func _refresh_machine_prompt() -> void:
 ## prompt follows the player's assigned binding instead of hard-coding E (which
 ## confuses people who remapped it).
 func _interact_key_label() -> String:
-	match InputSystem.current_device:
-		"touch":
-			return "TAP"
-		"gamepad":
-			return _joy_button_label(InputSystem.current_button("interact"))
-		_:
-			var key: int = InputSystem.current_key("interact")
-			return OS.get_keycode_string(key) if key != 0 else "E"
-
-
-func _joy_button_label(button: int) -> String:
-	if button < 0:
-		return "A"
-	return {
-		JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y",
-		JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB",
-		JOY_BUTTON_START: "Start", JOY_BUTTON_DPAD_UP: "D-Up", JOY_BUTTON_DPAD_DOWN: "D-Down",
-		JOY_BUTTON_DPAD_LEFT: "D-Left", JOY_BUTTON_DPAD_RIGHT: "D-Right",
-	}.get(button, "Btn%d" % button)
+	return InputSystem.prompt_for("interact", "E")
 
 
 # ═══════════════ CONSOLE BOOT SEQUENCE ═══════════════

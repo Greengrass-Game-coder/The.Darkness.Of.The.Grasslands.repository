@@ -1006,7 +1006,7 @@ func _restore_focus() -> void:
 func _on_brown_area_entered(_body: Node2D) -> void:
 	if _brown_state == 2:
 		return
-	interact_prompt.text = "Press [E] to talk"
+	interact_prompt.text = "Press [%s] to talk" % InputSystem.prompt_for("interact", "E")
 	interact_prompt.show()
 
 
@@ -1018,7 +1018,7 @@ func _on_brown_area_exited(_body: Node2D) -> void:
 
 func _on_flower_area_entered(_body: Node2D) -> void:
 	if not _flower_dialogue_done:
-		flower_prompt.text = "Press [E] to examine"
+		flower_prompt.text = "Press [%s] to examine" % InputSystem.prompt_for("interact", "E")
 		flower_prompt.show()
 
 
@@ -1042,6 +1042,7 @@ func _start_potato_flying() -> void:
 
 
 func _on_potato_area_entered(_body: Node2D) -> void:
+	potato_prompt.text = "Press [%s] to talk with MISTER EVIL POTATA RAHHHHH" % InputSystem.prompt_for("interact", "E")
 	potato_prompt.show()
 
 
