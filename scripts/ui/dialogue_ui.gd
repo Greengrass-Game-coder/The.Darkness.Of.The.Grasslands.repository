@@ -19,6 +19,15 @@ var _waiting_for_choice: bool = false
 var _auto_advance_pending: bool = false
 var _auto_advance_target: int = -1
 
+# Typewriter state: dialogue text reveals one character at a time (playing the
+# speaker's blip sound) instead of appearing all at once.
+var _typing: bool = false
+var _typing_full_text: String = ""
+var _typing_visible_chars: int = 0
+var _typing_accum: float = 0.0
+var _blip_player: AudioStreamPlayer = null
+var _blip_streams: Dictionary = {}  # speaker name -> cached loaded AudioStream
+
 # Track consumed choices across dialogue sessions: "resource_path|line_idx|choice_text" -> true
 var _consumed_choices: Dictionary = {}
 
@@ -29,10 +38,38 @@ const SPEAKER_COLORS: Dictionary = {
 	"Lobby Person": Color(0.5, 0.8, 0.9, 1),
 }
 
+# Seconds between each character revealed by the typewriter.
+const TYPE_CHAR_INTERVAL: float = 0.045
+# Per-speaker "blip" sound path played once per character while typing. Loaded
+# lazily (see _apply_speaker_blip) so a not-yet-imported sound just types
+# silently instead of breaking the whole dialogue script. Only speakers listed
+# here make a sound; everyone else types silently.
+const BLIP_PATHS: Dictionary = {
+	"Browngrass": "res://The Darkness Of The Grasslands assets/Sound/Lobby/Browngrass_blip_sound.wav",
+	"Evil Potato": "res://The Darkness Of The Grasslands assets/Sound/Lobby/mister_evil_potato_blip_sound.wav",
+}
+
 
 func _ready() -> void:
 	panel.hide()
 	choice_container.hide()
+	_blip_player = AudioStreamPlayer.new()
+	_blip_player.bus = "SFX"
+	add_child(_blip_player)
+
+
+func _process(delta: float) -> void:
+	"""Reveal the current line one character at a time (typewriter)."""
+	if not _typing:
+		return
+	_typing_accum += delta
+	while _typing_accum >= TYPE_CHAR_INTERVAL and _typing_visible_chars < _typing_full_text.length():
+		_typing_accum -= TYPE_CHAR_INTERVAL
+		_typing_visible_chars += 1
+		label.text = _typing_full_text.substr(0, _typing_visible_chars)
+		_play_blip()
+	if _typing_visible_chars >= _typing_full_text.length():
+		_finish_typewriter()
 
 
 func is_dialogue_active() -> bool:
@@ -138,7 +175,28 @@ func _show_line() -> void:
 		else:
 			label.add_theme_color_override("default_color", Color(1, 1, 1, 1))
 	
-	label.text = display_text
+	_apply_speaker_blip(speaker_name)
+	_start_typewriter(display_text)
+
+
+func _start_typewriter(text: String) -> void:
+	"""Begin revealing `text` one character at a time."""
+	_typing_full_text = text
+	_typing_visible_chars = 0
+	_typing_accum = 0.0
+	label.text = ""
+	if text.is_empty():
+		_typing = false
+		_finish_typewriter()
+	else:
+		_typing = true
+
+
+func _finish_typewriter() -> void:
+	"""Stop typing, show the full line, then reveal the continue prompt/choices."""
+	_typing = false
+	label.text = _typing_full_text
+	_typing_full_text = ""
 	
 	# Check if this line has choices
 	if _dl and _dl.has_choices_at(_current_index):
@@ -156,6 +214,24 @@ func _show_line() -> void:
 		_waiting_for_choice = false
 		continue_label.text = "Press %s to continue" % _continue_key_label()
 		continue_label.show()
+
+
+func _apply_speaker_blip(speaker: String) -> void:
+	"""Set the blip player's stream to the speaker's blip sound, if they have one."""
+	if _blip_player == null:
+		return
+	if BLIP_PATHS.has(speaker):
+		if not _blip_streams.has(speaker):
+			_blip_streams[speaker] = load(BLIP_PATHS[speaker])
+		_blip_player.stream = _blip_streams[speaker]
+	else:
+		_blip_player.stream = null
+
+
+func _play_blip() -> void:
+	"""Play the speaker's blip once for the just-revealed character."""
+	if _blip_player != null and _blip_player.stream != null:
+		_blip_player.play()
 
 
 func _show_choices() -> void:
@@ -250,6 +326,8 @@ func is_all_questions_exhausted_in(dialogue: DialogueLine, choice_line: int) -> 
 func _end_dialogue() -> void:
 	_is_active = false
 	_waiting_for_choice = false
+	_typing = false
+	_typing_full_text = ""
 	panel.hide()
 	hide()
 	dialogue_finished.emit()
@@ -257,6 +335,13 @@ func _end_dialogue() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _is_active:
+		return
+	# While a line is still typing, the first press just reveals the rest of the
+	# line instantly (it doesn't skip past it).
+	if _typing:
+		if event.is_action_pressed("ui_accept") or event.is_action_pressed("ui_text_newline"):
+			_finish_typewriter()
+			get_viewport().set_input_as_handled()
 		return
 	# Auto-return lines wait for the player to press Space/Enter before jumping
 	# to their target line, so the text stays readable.
