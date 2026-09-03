@@ -64,6 +64,11 @@ const LMS_KILL_ZOOM_IN: float = 0.5  # Tight zoom during kill punch-in (smaller 
 const LMS_KILL_ZOOM_HOLD: float = 0.6  # Seconds spent tight before pulling back out
 const LMS_REVEAL_DURATION: float = 4.0  # Seconds the survivor-reveal arrow stays on screen
 const LMS_MUSIC_DURATION: float = 100.0  # Fallback countdown length (actual WAV is ~99.7s)
+# LMS timer-transition: when LMS starts the match clock animates (up or down) to
+# the LMS song length with a dark-red screen while it runs.
+const LMS_TRANSITION_TICK_RATE: float = 0.03   # seconds between each 1s timer step (~33s/sec)
+const LMS_TRANSITION_ALPHA: float = 0.6        # dark-red overlay strength during the animation
+const LMS_TRANSITION_FADE_OUT: float = 1.2     # seconds to fade the red away after the animation
 const ROUND_END_GIFT_RING: int = 1    # +1 gift ring added to persistent player_rings each round
 # ── LMS end-of-song camera heartbeat (keyed to MUSIC playback, not match clock) ──
 # While the LMS song still has LMS_HEARTBEAT_FROM seconds left to play, the camera
@@ -168,6 +173,12 @@ var _round_ended: bool = false
 
 # LMS (Last Man Standing) finale state
 var _lms_active: bool = false          # True once 1 killer + 1 survivor remain
+# LMS timer-transition state: while _lms_transition_active the match clock
+# animates toward _lms_transition_target with a dark-red screen.
+var _lms_transition_active: bool = false
+var _lms_transition_target: float = 0.0
+var _lms_transition_timer: float = 0.0
+var _lms_transition_overlay: ColorRect = null
 # True when the whole match is a 1v1 (1 killer + 1 survivor, i.e. 2 combatants).
 # In that case the map music never plays — the intro cutscene is the "loading"
 # beat and the LMS finale takes over as the sole score.
@@ -696,6 +707,12 @@ func _clear_role_entities() -> void:
 		_ending_red_right.queue_free()
 		_ending_red_right = null
 	_ending_screen_created = false
+	# LMS timer-transition overlay — free it so it can't linger on a role switch.
+	if is_instance_valid(_lms_transition_overlay):
+		_lms_transition_overlay.queue_free()
+		_lms_transition_overlay = null
+	_lms_transition_active = false
+	_lms_transition_target = 0.0
 
 
 func _switch_role(role: String) -> void:
@@ -904,6 +921,10 @@ func _process(delta: float) -> void:
 		if _time_remaining >= _bonus_target:
 			_bonus_target = 0.0
 			_bonus_tick_timer = 0.0
+	
+	# LMS timer-transition: animate the match clock up/down to the LMS song
+	# length with a dark-red screen while it runs.
+	_update_lms_timer_transition(delta)
 	
 	# Pause the match timer while a time adjustment is being applied (puzzle
 	# completion or kill +30s bonus), then resume once the pause duration elapses
@@ -2259,13 +2280,17 @@ func _start_lms() -> void:
 		if is_instance_valid(lms_stream) and lms_stream.get_length() > 0.0:
 			lms_duration = lms_stream.get_length()
 	if lms_duration > 0.0:
-		_time_remaining = lms_duration
+		# Animate the match clock up or down to the LMS song length with a
+		# dark-red screen while it runs, instead of instantly jumping the timer.
 		_bonus_target = 0.0
 		_timer_pause_remaining = 0.0
+		_lms_transition_active = true
+		_lms_transition_target = lms_duration
+		_lms_transition_timer = 0.0
 		if match_timer:
-			match_timer.paused = false
-		_update_timer_label()
-		print("GameMap: LMS — match clock set to ", lms_duration, "s (LMS music length)")
+			match_timer.paused = true  # hold the countdown while the clock animates
+		_show_lms_transition_overlay()
+		print("GameMap: LMS — animating match clock to ", lms_duration, "s (LMS music length)")
 
 	# Stop background map music + ending music so the LMS track is the sole score.
 	for n: String in ["MapMusicPlayer", "MusicPlayer"]:
@@ -2311,6 +2336,62 @@ func _start_lms() -> void:
 	# Give each remaining duelist their signature LMS aura: red/black for the
 	# Violentgrass killer, green/black for the Greengrass survivor.
 	_apply_lms_auras()
+
+
+func _update_lms_timer_transition(delta: float) -> void:
+	"""Animate the match clock up or down toward the LMS song length, keeping the
+	screen dark red while it runs, then resume the countdown when it arrives."""
+	if not _lms_transition_active:
+		return
+
+	# Keep the dark-red overlay at full strength during the animation.
+	if is_instance_valid(_lms_transition_overlay):
+		var a: float = _lms_transition_overlay.modulate.a
+		a = minf(a + delta * 4.0, LMS_TRANSITION_ALPHA)
+		_lms_transition_overlay.modulate = Color(1, 1, 1, a)
+
+	_lms_transition_timer += delta
+	while _lms_transition_timer >= LMS_TRANSITION_TICK_RATE and _time_remaining != _lms_transition_target:
+		_lms_transition_timer -= LMS_TRANSITION_TICK_RATE
+		if _time_remaining < _lms_transition_target:
+			_time_remaining = min(_time_remaining + 1.0, _lms_transition_target)
+		else:
+			_time_remaining = max(_time_remaining - 1.0, _lms_transition_target)
+		_timer_flash_red = 0.3
+		_update_timer_label()
+
+	if _time_remaining == _lms_transition_target:
+		_finish_lms_timer_transition()
+
+
+func _show_lms_transition_overlay() -> void:
+	"""Create the full-screen dark-red overlay shown while the LMS clock animates
+	to the LMS song length."""
+	if is_instance_valid(_lms_transition_overlay):
+		return
+	var overlay := ColorRect.new()
+	overlay.name = "LmsTransitionOverlay"
+	overlay.position = Vector2(0, 0)
+	overlay.size = Vector2(1280, 720)
+	overlay.color = Color(0.35, 0.0, 0.0, 1.0)  # dark red
+	overlay.modulate = Color(1, 1, 1, 0.0)       # starts transparent, ramps in
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$HUD.add_child(overlay)
+	_lms_transition_overlay = overlay
+
+
+func _finish_lms_timer_transition() -> void:
+	"""End the LMS clock transition: resume the countdown and fade the red out."""
+	_lms_transition_active = false
+	_lms_transition_target = 0.0
+	_lms_transition_timer = 0.0
+	if match_timer:
+		match_timer.paused = false
+	if is_instance_valid(_lms_transition_overlay):
+		var tween := create_tween()
+		tween.tween_property(_lms_transition_overlay, "modulate:a", 0.0, LMS_TRANSITION_FADE_OUT)
+		tween.tween_callback(_lms_transition_overlay.queue_free)
+		_lms_transition_overlay = null
 
 
 func _apply_lms_auras() -> void:
@@ -2901,13 +2982,15 @@ func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
 			gs.set_player_rings(username, current_rings + rings_per_level)
 		print("GameMap: Puzzle reward — +$", money_per_level, ", +", rings_per_level, " ring (level ", puzzle_level, ")")
 	
-	# Decrease match timer by 3.25 seconds per puzzle level (flash red).
-	# Pause the countdown while the deduction is applied, then resume.
-	var deduction: float = 3.25 * puzzle_level
-	_time_remaining = max(0.0, _time_remaining - deduction)
-	_timer_flash_red = 1.0
-	_update_timer_label()
-	_force_timer_pause(0.6)
+	# Decrease match timer by 3.25 seconds per puzzle level (flash red) — UNLESS
+	# this is an LMS finale or a straight 1v1 (survivor vs killer), where taking
+	# time away for solving a puzzle is considered cheating, so no penalty applies.
+	if not _lms_active and not _is_1v1:
+		var deduction: float = 3.25 * puzzle_level
+		_time_remaining = max(0.0, _time_remaining - deduction)
+		_timer_flash_red = 1.0
+		_update_timer_label()
+		_force_timer_pause(0.6)
 	
 	# Show success text
 	var prompt: Label = area.get_node_or_null("InteractPrompt")
