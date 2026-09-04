@@ -98,6 +98,7 @@ var _match_live: bool = false
 # True once the AI killer bot is eliminated (survivor mode). Lets the per-frame
 # check end the round even if the bot's hp_changed signal is somehow missed.
 var _killer_bot_eliminated: bool = false
+var _killer_sweep_timer: float = 0.0  # Cooldown for single-killer enforcement sweep
 var _survivor_bots: Array[Node2D] = []
 var _alive_survivor_bot_count: int = 0
 # Cached list of all nodes in the "survivors" group (human + bots).
@@ -579,6 +580,10 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	_create_stamina_bar(_player)
 	
 	add_child(_player)
+	if is_killer_player:
+		_player.add_to_group("killers")  # For single-killer enforcement sweep
+	else:
+		_player.add_to_group("survivors")
 	
 	# Enable camera on the player
 	# Camera zoom controller — adds scroll-wheel zoom + larger default zoom
@@ -900,6 +905,12 @@ func _process(delta: float) -> void:
 	
 	if not is_instance_valid(_player):
 		return
+	
+	# ── Single-killer enforcement: sweep every 2 seconds ──
+	_killer_sweep_timer += delta
+	if _killer_sweep_timer >= 2.0:
+		_killer_sweep_timer = 0.0
+		_enforce_single_killer()
 	
 	# Multiplayer position sync
 	if _multiplayer_sync and is_instance_valid(_player):
@@ -1272,8 +1283,56 @@ func _bots_create_survivor(spawn_pos: Vector2, name_str: String) -> void:
 	_alive_survivor_bot_count += 1
 
 
+func _enforce_single_killer() -> void:
+	"""Safety sweep: if more than one killer exists in the scene, eliminate extras.
+	- If the player is a killer and there's also a bot killer → kill the bot.
+	- If the player is a survivor and there are 2+ bot killers → kill all but one.
+	- If somehow 2 player-killers exist → kill both (should never happen offline)."""
+	var all_killers: Array[Node] = get_tree().get_nodes_in_group("killers")
+	# Filter out any queued-for-deletion nodes.
+	var valid_killers: Array[Node] = []
+	for k: Node in all_killers:
+		if is_instance_valid(k):
+			valid_killers.append(k)
+	if valid_killers.size() <= 1:
+		return  # Normal: exactly 0 or 1 killer.
+	
+	var player_is_killer: bool = GameState.is_killer if GameState else false
+	var bot_killers: Array[Node] = []
+	var player_killers: Array[Node] = []
+	for k: Node in valid_killers:
+		if k == _player or (is_instance_valid(_player) and k.name == _player.name):
+			player_killers.append(k)
+		else:
+			bot_killers.append(k)
+	
+	if player_killers.size() > 1:
+		print("GameMapTest: ENFORCE — ", player_killers.size(), " player-killers detected! Killing all.")
+		for pk: Node in player_killers:
+			if is_instance_valid(pk):
+				pk.queue_free()
+	elif player_killers.size() == 1 and bot_killers.size() >= 1:
+		print("GameMapTest: ENFORCE — player is killer, removing ", bot_killers.size(), " extra bot killer(s)")
+		for bk: Node in bot_killers:
+			if is_instance_valid(bk):
+				bk.queue_free()
+				if bk == _killer_bot:
+					_killer_bot = null
+	elif bot_killers.size() > 1:
+		print("GameMapTest: ENFORCE — ", bot_killers.size(), " bot killers, keeping one")
+		for i: int in range(1, bot_killers.size()):
+			if is_instance_valid(bot_killers[i]):
+				bot_killers[i].queue_free()
+				if bot_killers[i] == _killer_bot:
+					_killer_bot = null
+
+
 func _spawn_bot_killer() -> void:
-	"""Spawn an AI-controlled killer bot at a killer spawn point."""
+	"""Spawn an AI-controlled killer bot at a killer spawn point.
+	ENFORCES single-killer: if a killer bot already exists, this is a no-op."""
+	if is_instance_valid(_killer_bot):
+		print("GameMapTest: _spawn_bot_killer BLOCKED — killer bot already exists")
+		return
 	var spawn_pos: Vector2 = _map_manager.get_spawn_point(true)
 	
 	var bot: Node2D = VIOLENTGRASS_SCENE.instantiate()
@@ -1282,6 +1341,7 @@ func _spawn_bot_killer() -> void:
 	bot.position = spawn_pos
 	add_child(bot)
 	_killer_bot = bot
+	bot.add_to_group("killers")  # For single-killer enforcement sweep
 	# Connect killer hit signal for damage tracking
 	if bot.has_signal("hit_landed") and not bot.hit_landed.is_connected(_on_killer_hit_landed):
 		bot.hit_landed.connect(_on_killer_hit_landed)
@@ -3095,7 +3155,7 @@ func _on_puzzle_solved(area: Area2D, puzzle_level: int = 1) -> void:
 	_reward_puzzle_solve(area, puzzle_level)
 	if not _round_ended and not _killer_won:
 		_match_rings_earned += puzzle_level
-		print("GameMapTest: Human puzzle — rings this round: ", _match_rings_earned, "/", RING_KILLER_THRESHOLD)
+		print("GameMapTest: Human puzzle — rings this round: ", _match_rings_earned)
 		_check_ring_promotion()
 
 
@@ -3759,22 +3819,9 @@ func _update_death_fade(delta: float) -> void:
 # ═══════════════ TEST MODE: RINGS → BECOME THE KILLER ═══════════════
 
 func _check_ring_promotion() -> void:
-	"""Called after the human earns a ring. Promotes the survivor to the killer
-	role once they reach the ring threshold (one-shot per match)."""
-	if _promotion_happened or _round_ended or _killer_won:
-		return
-	# Only a living survivor can be promoted (a dead human can't take the killer role).
-	if _character_name != "Greengrass":
-		return
-	if not is_instance_valid(_player):
-		return
-	var player_hp_check: float = float(_player.get("current_hp")) if "current_hp" in _player else 1.0
-	if player_hp_check <= 0.0:
-		return
-	if _match_rings_earned < RING_KILLER_THRESHOLD:
-		return
-	_promotion_happened = true
-	_promote_player_to_killer()
+	"""Ring promotion is DISABLED. Solving puzzles gives rewards (money, rings, time
+	deduction) but NEVER promotes the survivor to the killer role."""
+	return  # Ring-to-killer promotion is permanently off.
 
 
 func _find_free_ring_spawn() -> Vector2:
