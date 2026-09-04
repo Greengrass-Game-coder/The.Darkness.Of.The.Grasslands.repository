@@ -60,8 +60,8 @@ var _spin_speed: float = 0.0
 const DEATH_FLING_DURATION: float = 10.0       # seconds before the body disappears
 const FLING_FRICTION: float = 0.975             # per-frame velocity damping (gentle slide)
 const FLING_BOUNCE_RESTITUTION: float = 0.6     # energy kept when bouncing off a wall
-const FLING_START_SPEED_MIN: float = 250.0
-const FLING_START_SPEED_MAX: float = 420.0
+const FLING_START_SPEED_MIN: float = 350.0
+const FLING_START_SPEED_MAX: float = 600.0
 
 # "human" behaviors:
 var _hide_timer: float = 0.0      # Holds still (hidden) after LOS breaks mid-flee
@@ -95,8 +95,8 @@ const AVOID_RAY_COUNT: int = 5                # fan of rays around the heading
 const AVOID_FOV_DEG: float = 70.0             # half-angle of the probe fan
 
 # ── Separation: push apart from other survivor bots so they don't clump ──
-const SEPARATION_RADIUS: float = 52.0          # push apart when closer than this
-const SEPARATION_STRENGTH: float = 200.0        # strength of the repulsion push
+const SEPARATION_RADIUS: float = 64.0          # push apart when closer than this
+const SEPARATION_STRENGTH: float = 350.0        # strength of the repulsion push
 
 # ── Fake-out juke: a hard direction change to shake the killer ──
 var _fake_out_active: bool = false
@@ -280,21 +280,33 @@ func play_death_fling(dir: Vector2, multiplier: float = 1.0) -> void:
 
 
 func _physics_process_dead(delta: float) -> void:
-	"""Drive the dead body: apply friction, bounce off walls, spin, then fade out."""
+	"""Drive the dead body with direct position manipulation — no move_and_slide()
+	(which can silently eat velocity when the body is pinned against a wall).
+	Bounces off walls via a short raycast, spins, then fades out."""
 	_fling_velocity *= FLING_FRICTION
 	if _fling_velocity.length() < 2.0:
 		_fling_velocity = Vector2.ZERO
-	velocity = _fling_velocity
-	move_and_slide()
-	# Bounce off any wall we hit, losing a bit of energy each time.
-	for i in get_slide_collision_count():
-		var n: Vector2 = get_slide_collision(i).get_normal()
-		if n != Vector2.ZERO and _fling_velocity.length() > 60.0:
+	
+	# Move the body directly, then check for wall penetration and bounce.
+	var motion: Vector2 = _fling_velocity * delta
+	var collision := move_and_collide(motion, true)  # true = test only, don't move yet
+	if collision:
+		# Hit a wall — slide along it, then bounce.
+		var n: Vector2 = collision.get_normal()
+		var remaining := motion - collision.get_travel()
+		# Project remaining motion along the wall surface.
+		var tangent := Vector2(-n.y, n.x) if abs(n.x) > 0.01 else Vector2(1, 0)
+		var slide := tangent * remaining.dot(tangent)
+		global_position += collision.get_travel() + slide
+		if _fling_velocity.length() > 60.0:
 			_fling_velocity = _fling_velocity.bounce(n) * FLING_BOUNCE_RESTITUTION
+	else:
+		global_position += motion
+	
 	# Tumble the body and slow the spin down as it settles.
 	rotation += _spin_speed * delta
 	_spin_speed = move_toward(_spin_speed, 0.0, 3.0 * delta)
-
+	
 	_death_timer += delta
 	if _death_timer >= DEATH_FLING_DURATION - 0.6:
 		# Fade out, then remove the body.
@@ -941,7 +953,7 @@ func _apply_separation_and_move() -> void:
 
 func _compute_separation() -> Vector2:
 	"""Return a repulsion vector that pushes this bot away from nearby survivor
-	bots so they don't clump together. Force scales up the closer they are."""
+	bots AND nearby walls so they don't clump or stick to edges."""
 	var sep: Vector2 = Vector2.ZERO
 	var bots: Array[Node] = get_tree().get_nodes_in_group("survivor_bots")
 	for other: Node in bots:
@@ -954,6 +966,27 @@ func _compute_separation() -> Vector2:
 			var away: Vector2 = (global_position - other.global_position).normalized()
 			var strength: float = (1.0 - dist / SEPARATION_RADIUS) * SEPARATION_STRENGTH
 			sep += away * strength
+		# Hard nudge: if bots are practically overlapping, shove them apart directly.
+		if dist < 16.0 and dist > 0.1:
+			var nudge: Vector2 = (global_position - other.global_position).normalized()
+			global_position += nudge * (16.0 - dist) * 0.5
+	
+	# ── Wall repulsion: probe in 4 cardinal directions and push away from nearby walls ──
+	const WALL_PUSH: float = 80.0
+	const WALL_PROBE: float = 36.0
+	var space_state := get_world_2d().direct_space_state
+	for ang_deg in [0.0, 90.0, 180.0, 270.0]:
+		var dir := Vector2.from_angle(deg_to_rad(ang_deg))
+		var query := PhysicsRayQueryParameters2D.create(global_position, global_position + dir * WALL_PROBE)
+		query.collision_mask = 4  # walls layer
+		query.exclude = [self]
+		var result: Dictionary = space_state.intersect_ray(query)
+		if not result.is_empty():
+			var wall_dist: float = global_position.distance_to(result.position)
+			if wall_dist < WALL_PROBE:
+				var strength: float = (1.0 - wall_dist / WALL_PROBE) * WALL_PUSH
+				sep += -dir * strength
+	
 	return sep
 
 
