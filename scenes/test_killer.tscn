@@ -1,0 +1,131 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/characters/test_killer_controller.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/walk directions/VIOLENTGRASS ---- Killer/Walk DOWN/Walk_DOWN_frame-1.png" id="2_d0"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/walk directions/VIOLENTGRASS ---- Killer/Walk DOWN/Walk_DOWN_frame-2.png" id="2_d1"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/walk directions/VIOLENTGRASS ---- Killer/Walk LEFT/Walk_LEFT_frame-1.png" id="3_l0"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/walk directions/VIOLENTGRASS ---- Killer/Walk LEFT/Walk_LEFT_frame-2.png" id="3_l1"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/walk directions/VIOLENTGRASS ---- Killer/Walk RIGHT/Walk_RIGHT_frame-1.png" id="4_r0"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/walk directions/VIOLENTGRASS ---- Killer/Walk RIGHT/Walk_RIGHT_frame-2.png" id="4_r1"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/walk directions/VIOLENTGRASS ---- Killer/Walk UP/Walk_UP_frame-1.png" id="5_u0"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/walk directions/VIOLENTGRASS ---- Killer/Walk UP/Walk_UP_frame-2.png" id="5_u1"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-1.png" id="10_h0"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-2.png" id="11_h1"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-3.png" id="12_h2"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-4.png" id="13_h3"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-5.png" id="14_h4"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-6.png" id="15_h5"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-7.png" id="16_h6"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-8.png" id="17_h7"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-9.png" id="18_h8"]
+[ext_resource type="Texture2D" path="res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Hit MB1/Hit_MB1_frame-10.png" id="19_h9"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_tk"]
+animations = [{
+"frames": [{"duration": 1.0, "texture": ExtResource("2_d0")}],
+"loop": 0,
+"name": &"idle_down",
+"speed": 5.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("3_l0")}],
+"loop": 0,
+"name": &"idle_left",
+"speed": 5.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("4_r0")}],
+"loop": 0,
+"name": &"idle_right",
+"speed": 5.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("5_u0")}],
+"loop": 0,
+"name": &"idle_up",
+"speed": 5.0
+}, {
+"frames": [
+{"duration": 1.0, "texture": ExtResource("2_d0")},
+{"duration": 1.0, "texture": ExtResource("2_d1")}
+],
+"loop": 1,
+"name": &"walk_down",
+"speed": 8.0
+}, {
+"frames": [
+{"duration": 1.0, "texture": ExtResource("3_l0")},
+{"duration": 1.0, "texture": ExtResource("3_l1")}
+],
+"loop": 1,
+"name": &"walk_left",
+"speed": 8.0
+}, {
+"frames": [
+{"duration": 1.0, "texture": ExtResource("4_r0")},
+{"duration": 1.0, "texture": ExtResource("4_r1")}
+],
+"loop": 1,
+"name": &"walk_right",
+"speed": 8.0
+}, {
+"frames": [
+{"duration": 1.0, "texture": ExtResource("5_u0")},
+{"duration": 1.0, "texture": ExtResource("5_u1")}
+],
+"loop": 1,
+"name": &"walk_up",
+"speed": 8.0
+}]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_hit"]
+animations = [{
+"frames": [
+{"duration": 1.0, "texture": ExtResource("10_h0")},
+{"duration": 1.0, "texture": ExtResource("11_h1")},
+{"duration": 1.0, "texture": ExtResource("12_h2")},
+{"duration": 1.0, "texture": ExtResource("13_h3")},
+{"duration": 1.0, "texture": ExtResource("14_h4")},
+{"duration": 1.0, "texture": ExtResource("15_h5")},
+{"duration": 1.0, "texture": ExtResource("16_h6")},
+{"duration": 1.0, "texture": ExtResource("17_h7")},
+{"duration": 1.0, "texture": ExtResource("18_h8")},
+{"duration": 1.0, "texture": ExtResource("19_h9")}
+],
+"loop": 0,
+"name": &"hit_down",
+"speed": 12.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_tk"]
+size = Vector2(11.947801, 10.401165)
+
+[node name="TestKiller" type="CharacterBody2D"]
+script = ExtResource("1_script")
+sprint_speed = 500.0
+size_mult = 1.5
+chase_in_chase = 1000.0
+chase_out_chase = 1500.0
+chase_fade_in_duration = 1000.0
+chase_fade_out_duration = 1000.0
+collision_layer = 2
+collision_mask = 4
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+scale = Vector2(0.25, 0.25)
+sprite_frames = SubResource("SpriteFrames_tk")
+animation = &"walk_down"
+autoplay = "walk_down"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(-13.5, 7.0)
+scale = Vector2(2.26, 2.31)
+shape = SubResource("RectangleShape2D_tk")
+
+[node name="StateTimer" type="Timer" parent="."]
+one_shot = true
+
+[node name="AbilityVFX" type="AnimatedSprite2D" parent="."]
+z_index = 100
+scale = Vector2(0.25, 0.25)
+sprite_frames = SubResource("SpriteFrames_hit")
+animation = &"hit_down"
+
+[node name="HitSound" type="AudioStreamPlayer2D" parent="."]

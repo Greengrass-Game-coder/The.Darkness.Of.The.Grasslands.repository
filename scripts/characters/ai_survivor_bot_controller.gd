@@ -939,22 +939,23 @@ func _avoid_walls(move_dir: Vector2) -> Vector2:
 
 func _apply_separation_and_move() -> void:
 	"""Add a separation force (push apart from nearby bots) then move_and_slide.
-	Also pushes the bot away from walls if it's getting too close."""
+	After moving, corrects any wall overlap by probing in 4 directions."""
 	var sep: Vector2 = _compute_separation()
 	if sep.length_squared() > 0.1:
 		velocity += sep
 	
-	# ── Wall push: if we're already overlapping a wall, shove out ──
-	# Test a tiny motion in 4 directions; if blocked, push opposite.
-	const WALL_NUDGE: float = 4.0
-	for ang in [0.0, PI/2, PI, PI*3/2]:
-		var probe := Vector2.from_angle(ang) * WALL_NUDGE
-		if test_move(transform, probe):
-			# Moving toward this direction hits a wall — push away from it.
-			global_position -= probe * 2.0
-			velocity += Vector2.from_angle(ang + PI) * 200.0
-	
 	move_and_slide()
+	
+	# ── Post-move wall correction: if we're still overlapping a wall, shove out ──
+	# move_and_collide with zero motion detects existing overlaps.
+	for i in range(4):
+		var collision: KinematicCollision2D = move_and_collide(Vector2.ZERO, true)
+		if not collision:
+			break  # No overlap — we're clear
+		var n: Vector2 = collision.get_normal()
+		# Push out along the collision normal
+		global_position += n * 6.0
+		velocity += n * 150.0
 
 
 func _compute_separation() -> Vector2:

@@ -120,6 +120,9 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# Dead players cannot use abilities.
+	if current_hp <= 0.0:
+		return
 	# Don't fire abilities while standing inside a puzzle/generator activation
 	# zone — they'd go off when the player doesn't want them to (e.g. while
 	# interacting with the puzzle). Bots call abilities directly, so this only
@@ -146,6 +149,9 @@ func _near_puzzle_or_generator() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	# Dead — no movement, no abilities, no state processing.
+	if current_hp <= 0.0:
+		return
 	if _slow_active:
 		_slow_timer -= delta
 		if _slow_timer <= 0.0:

@@ -21,6 +21,7 @@ const MATCH_DURATION: float = 240.0  # 4 minutes
 @onready var timer_label: Label = $HUD/TimerLabel
 const GREENGRASS_SCENE: PackedScene = preload("res://scenes/greengrass.tscn")
 const VIOLENTGRASS_SCENE: PackedScene = preload("res://scenes/violentgrass.tscn")
+const TEST_KILLER_SCENE: PackedScene = preload("res://scenes/test_killer.tscn")
 const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller_test.gd")
 const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_survivor_bot_controller_test.gd")
 const LMS_AURA_SHADER: Shader = preload("res://shaders/player_aura.gdshader")
@@ -554,6 +555,12 @@ func _survivor_scene_for(survivor_name: String) -> PackedScene:
 	return GREENGRASS_SCENE
 
 
+func _killer_scene_for(killer_name: String) -> PackedScene:
+	match killer_name:
+		"Test Killer": return TEST_KILLER_SCENE
+		_: return VIOLENTGRASS_SCENE
+
+
 func spawn_player(spawn_as_killer: bool = false) -> void:
 	"""Spawn the player character at the appropriate spawn point."""
 	var gs_sp = get_node("/root/GameState")
@@ -563,7 +570,10 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	var player_scene: PackedScene
 	var character_name: String = "Violentgrass"
 	if is_killer_player:
-		player_scene = VIOLENTGRASS_SCENE
+		character_name = "Violentgrass"
+		if gs_sp != null and gs_sp.selected_killer != "":
+			character_name = gs_sp.selected_killer
+		player_scene = _killer_scene_for(character_name)
 	else:
 		# Spawn the player's equipped survivor (Greengrass by default).
 		character_name = "Greengrass"
@@ -3777,27 +3787,52 @@ func _on_player_attacked(_stunned: bool) -> void:
 # ---------- DEATH SEQUENCE ----------
 
 func _start_death_sequence() -> void:
-	"""Start the 5-second death fade-out sequence."""
+	"""Start the death fling + fade-out sequence."""
 	if _death_active:
 		return
 	_death_active = true
 	_death_fade_progress = 0.0
 	
-	# Disable player physics (can't move)
+	# ── Death fling: launch the player away from the killer ──
 	if is_instance_valid(_player):
-		_player.set_physics_process(false)
-		# Greying out the player
-		_player.modulate = Color(0.6, 0.6, 0.6, 1.0)
+		# Find the killer to fling away from
+		var killer_pos: Vector2 = _player.global_position
+		if is_instance_valid(_killer_bot):
+			killer_pos = _killer_bot.global_position
+		var fling_dir: Vector2 = (_player.global_position - killer_pos).normalized()
+		if fling_dir.length_squared() < 0.01:
+			fling_dir = Vector2(randf() - 0.5, -1.0).normalized()
+		fling_dir = fling_dir.rotated(randf_range(-0.6, 0.6))
+		
+		var speed: float = randf_range(300.0, 500.0)
+		var fling_vel: Vector2 = fling_dir * speed
+		var ragdoll_mult: float = 2.0 if GameState.ragdoll else 1.0
+		fling_vel *= ragdoll_mult
+		
+		_player.modulate = Color(0.5, 0.5, 0.5, 1.0)
+		var target_pos: Vector2 = _player.global_position + fling_vel * 1.5
+		var spin: float = randf_range(-4.0, 4.0)
+		
+		var t := _player.create_tween()
+		t.set_parallel(true)
+		t.tween_property(_player, "global_position", target_pos, 1.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+		t.tween_property(_player, "rotation", _player.rotation + spin * 3.0, 1.5)
+		
+		var ft := _player.create_tween()
+		ft.tween_interval(9.4)
+		ft.tween_property(_player, "modulate:a", 0.0, 0.6)
+		ft.tween_callback(_player.queue_free)
+		_player = null
 	
 	# Create fade overlay on top of everything
 	_death_overlay = ColorRect.new()
 	_death_overlay.name = "DeathOverlay"
-	_death_overlay.color = Color(0.15, 0.15, 0.15, 0.0)  # Start transparent
+	_death_overlay.color = Color(0.15, 0.15, 0.15, 0.0)
 	_death_overlay.size = get_viewport().get_visible_rect().size
 	_death_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	$HUD.add_child(_death_overlay)
 	
-	print("GameMap: Death sequence started — fading out over 5 seconds")
+	print("GameMapTest: Death sequence started — player flung, fading over 5 seconds")
 
 
 func _update_death_fade(delta: float) -> void:

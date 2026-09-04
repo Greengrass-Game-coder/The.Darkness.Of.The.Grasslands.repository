@@ -35,12 +35,13 @@ var selected_killer: String = "Violentgrass"  # Will be set from CharacterData
 const CHARACTER_CATALOG: Dictionary = {
 	"Greengrass": {"kind": "survivor", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Greengrass - survivor icon.png"},
 	"Violentgrass": {"kind": "killer", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png"},
+	"Test Killer": {"kind": "killer", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png"},
 }
 
 ## Ownership: which characters the player has bought. Starters are owned by
 ## default. Keyed by character name -> true.
 var owned_survivors: Dictionary = {"Greengrass": true}
-var owned_killers: Dictionary = {"Violentgrass": true}
+var owned_killers: Dictionary = {"Violentgrass": true, "Test Killer": true}
 
 ## Character helper methods ------------------------------------------------
 
