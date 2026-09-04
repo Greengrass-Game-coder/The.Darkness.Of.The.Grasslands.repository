@@ -159,6 +159,7 @@ static func autosave(username: String) -> bool:
 		"owned_killers": GameState.owned_killers.duplicate(true),
 		"hide_leaderboard": GameState.hide_leaderboard,
 		"epilepsy_safe_mode": GameState.epilepsy_safe_mode,
+		"ragdoll": GameState.ragdoll,
 		"is_admin": GameState.is_admin,
 		"tetrivo_coins_earned": GameState.tetrivo_coins_earned,
 		"tetrivo_last_coin_time": GameState.tetrivo_last_coin_time,
@@ -209,6 +210,8 @@ static func autoload(username: String) -> bool:
 		GameState.hide_leaderboard = data.hide_leaderboard
 	if data.has("epilepsy_safe_mode"):
 		GameState.epilepsy_safe_mode = data.epilepsy_safe_mode
+	if data.has("ragdoll"):
+		GameState.ragdoll = data.ragdoll
 	if data.has("is_admin"):
 		GameState.is_admin = data.is_admin
 	if data.has("tetrivo_coins_earned"):

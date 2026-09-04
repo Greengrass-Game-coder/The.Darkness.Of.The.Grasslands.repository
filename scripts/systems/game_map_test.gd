@@ -2911,8 +2911,10 @@ func _on_bot_hp_changed(current_hp: float, _max_hp: float, bot: Node2D) -> void:
 	if fling_dir == Vector2.ZERO:
 		fling_dir = Vector2.RIGHT.rotated(randf() * TAU)
 	fling_dir = fling_dir.rotated(randf_range(-0.6, 0.6))
+	# Funny Ragdoll setting doubles the fling strength (exactly 100% stronger).
+	var fling_mult: float = 2.0 if (GameState != null and GameState.ragdoll) else 1.0
 	if bot.has_method("play_death_fling"):
-		bot.play_death_fling(fling_dir)
+		bot.play_death_fling(fling_dir, fling_mult)
 	
 	print("GameMap: Survivor bot eliminated — %d bot(s) remaining" % _alive_survivor_bot_count)
 	_on_survivor_eliminated("SurvivorBot")

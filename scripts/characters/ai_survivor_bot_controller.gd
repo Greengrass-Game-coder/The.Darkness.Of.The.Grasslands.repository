@@ -242,14 +242,15 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
-func play_death_fling(dir: Vector2) -> void:
+func play_death_fling(dir: Vector2, multiplier: float = 1.0) -> void:
 	"""Knock the dead body around the map, then fade it out and remove it after
-	DEATH_FLING_DURATION seconds."""
+	DEATH_FLING_DURATION seconds. `multiplier` scales launch strength (the funny
+	Ragdoll setting passes 2.0 for exactly 100% stronger flings)."""
 	_dead = true
 	# Stop the AI's own state/animations from fighting the corpse tumble.
 	_death_timer = 0.0
 	_spin_speed = randf_range(-4.0, 4.0)
-	var speed: float = randf_range(FLING_START_SPEED_MIN, FLING_START_SPEED_MAX)
+	var speed: float = randf_range(FLING_START_SPEED_MIN, FLING_START_SPEED_MAX) * maxf(multiplier, 1.0)
 	_fling_velocity = dir.normalized() * speed
 	# Visible grey corpse (fully opaque so it reads clearly during the fling).
 	modulate = Color(0.5, 0.5, 0.5, 1.0)

@@ -59,6 +59,7 @@ const SECTIONS: Array[Dictionary] = [
 		"title": "GAMEPLAY",
 		"items": [
 			{"label": "Hide Leaderboard", "type": "toggle", "var": "hide_leaderboard", "default": false},
+			{"label": "Ragdoll", "type": "toggle", "var": "ragdoll", "default": false},
 		]
 	},
 	{

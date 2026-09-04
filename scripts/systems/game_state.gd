@@ -76,6 +76,9 @@ func equip_character(kind: String, name: String) -> bool:
 var hide_leaderboard: bool = false
 var epilepsy_safe_mode: bool = true
 var vibration_enabled: bool = true
+## "Ragdoll" (funny) setting: makes survivor death-flings exactly 100% stronger
+## (double launch strength, no more than that). Off by default.
+var ragdoll: bool = false
 
 ## Console (arcade room) theme: "system", "light", or "dark". Console-only —
 ## only changeable inside the arcade console, never in normal settings.
