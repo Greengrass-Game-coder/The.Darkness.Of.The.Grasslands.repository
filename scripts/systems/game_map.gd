@@ -1253,6 +1253,7 @@ func _bots_create_survivor(spawn_pos: Vector2, name_str: String) -> void:
 	# Track bot HP to detect elimination
 	if bot.has_signal("hp_changed"):
 		bot.hp_changed.connect(_on_bot_hp_changed.bind(bot))
+	bot.add_to_group("survivor_bots")
 	_survivor_bots.append(bot)
 	_alive_survivor_bot_count += 1
 

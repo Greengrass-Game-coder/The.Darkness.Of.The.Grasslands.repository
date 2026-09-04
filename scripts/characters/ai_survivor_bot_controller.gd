@@ -94,6 +94,26 @@ const AVOID_RAY_LENGTH: float = 34.0          # how far ahead we probe for walls
 const AVOID_RAY_COUNT: int = 5                # fan of rays around the heading
 const AVOID_FOV_DEG: float = 70.0             # half-angle of the probe fan
 
+# ── Separation: push apart from other survivor bots so they don't clump ──
+const SEPARATION_RADIUS: float = 52.0          # push apart when closer than this
+const SEPARATION_STRENGTH: float = 200.0        # strength of the repulsion push
+
+# ── Fake-out juke: a hard direction change to shake the killer ──
+var _fake_out_active: bool = false
+var _fake_out_timer: float = 0.0
+var _fake_out_dir: Vector2 = Vector2.ZERO
+var _fake_out_cooldown_timer: float = 0.0
+const FAKE_OUT_DURATION: float = 0.35
+const FAKE_OUT_COOLDOWN: float = 1.8
+const FAKE_OUT_CHANCE: float = 0.18           # per-second chance when killer is close
+
+# ── Dead-stop dodge: briefly freeze then dash perpendicular when killer lunges ──
+var _dead_stop_active: bool = false
+var _dead_stop_timer: float = 0.0
+var _dead_stop_dir: Vector2 = Vector2.ZERO
+const DEAD_STOP_FREEZE: float = 0.10
+const DEAD_STOP_DASH: float = 0.25
+
 
 func _ready() -> void:
 	super()
@@ -108,8 +128,8 @@ func _ready() -> void:
 	# Create NavigationAgent2D for pathfinding
 	_navigation_agent = NavigationAgent2D.new()
 	_navigation_agent.name = "NavigationAgent"
-	_navigation_agent.path_desired_distance = 8.0
-	_navigation_agent.target_desired_distance = 8.0
+	_navigation_agent.path_desired_distance = 4.0
+	_navigation_agent.target_desired_distance = 4.0
 	add_child(_navigation_agent)
 	
 	var label := BitmapLabel.new()
@@ -180,10 +200,12 @@ func _physics_process(delta: float) -> void:
 		_solving = false
 		_current_target_puzzle = null
 		_ai_flee(delta)
-		move_and_slide()
+		_apply_separation_and_move()
 		return
 	else:
 		_fleeing = false
+		_dead_stop_active = false
+		_fake_out_active = false
 	
 	# PRIORITY 1.5: Heal when low HP
 	if current_hp > 0.0 and not flower_on_cooldown and not _fleeing:
@@ -224,22 +246,22 @@ func _physics_process(delta: float) -> void:
 		# actively chasing THIS bot (killer right on top of us).
 		if is_instance_valid(_target_killer) and _is_killer_near_puzzle(_target_puzzle, dist_to_killer):
 			_ai_patrol(delta)
-			move_and_slide()
+			_apply_separation_and_move()
 			return
 		# SMART PACE: if the killer is clearly busy chasing another survivor far
 		# away, this bot keeps solving instead of scattering — a "teamwork"
 		# behavior real players rely on.
 		if is_instance_valid(_target_killer) and _is_killer_busy_with_other(dist_to_killer):
 			_ai_go_to_puzzle(delta)
-			move_and_slide()
+			_apply_separation_and_move()
 			return
 		_ai_go_to_puzzle(delta)
-		move_and_slide()
+		_apply_separation_and_move()
 		return
 	
 	# PRIORITY 4: Patrol
 	_ai_patrol(delta)
-	move_and_slide()
+	_apply_separation_and_move()
 
 
 func play_death_fling(dir: Vector2, multiplier: float = 1.0) -> void:
@@ -445,7 +467,7 @@ func _ai_flee(delta: float) -> void:
 			velocity = Vector2.ZERO
 			_change_state(State.IDLE)
 			_play_animation("idle")
-			move_and_slide()
+			_apply_separation_and_move()
 			return
 	# Reset the hide timer whenever the killer actually sees/approaches us again.
 	if _has_los_to_killer and dist_from_killer < safe_los_distance:
@@ -514,17 +536,64 @@ func _ai_flee(delta: float) -> void:
 	if nav_dir.length_squared() > 0.01:
 		move_dir = nav_dir.normalized()
 	
-	# ── 4. Deliberate juke only when the killer is about to hit ──
-	# Instead of randomly strafing every 0.5-1.5s (which reads as chaotic), only
-	# reverse direction when the killer is genuinely close — that reads as a real
-	# dodge, not a dumb zig-zag.
+	# ── 4. Smart jukes ──
+	# Multi-layered evasion: fake-out jukes commit to a hard perpendicular burst,
+	# dead-stop dodges freeze-then-dash when the killer lunges, and the standard
+	# strafe-juke weaves at close range.
+
+	# Tick cooldowns.
+	if _fake_out_cooldown_timer > 0.0:
+		_fake_out_cooldown_timer -= delta
+
+	# ── 4a. Dead-stop dodge: killer right on top of us ──
+	# Freeze for a split second (the killer overshoots their lunge), then burst
+	# perpendicular to escape.
+	if dist_from_killer < 120.0 and _has_los_to_killer and not _dead_stop_active:
+		_dead_stop_active = true
+		_dead_stop_timer = 0.0
+		_dead_stop_dir = perpendicular * (1.0 if randf() > 0.5 else -1.0)
+
+	if _dead_stop_active:
+		_dead_stop_timer += delta
+		if _dead_stop_timer < DEAD_STOP_FREEZE:
+			velocity = Vector2.ZERO
+			_change_state(State.IDLE)
+			_play_animation("idle")
+			return
+		elif _dead_stop_timer < DEAD_STOP_FREEZE + DEAD_STOP_DASH:
+			velocity = _dead_stop_dir * sprint_speed * 1.1
+			_update_direction(velocity)
+			_play_animation("walk")
+			_change_state(State.WALKING)
+			return
+		else:
+			_dead_stop_active = false
+
+	# ── 4b. Fake-out juke: hard commit to a perpendicular direction, then snap ──
+	if not _fake_out_active and _fake_out_cooldown_timer <= 0.0 \
+		and dist_from_killer < 280.0 and _has_los_to_killer:
+		if randf() < FAKE_OUT_CHANCE:
+			_fake_out_active = true
+			_fake_out_timer = 0.0
+			_fake_out_dir = perpendicular * (1.0 if randf() > 0.5 else -1.0)
+			_fake_out_cooldown_timer = FAKE_OUT_COOLDOWN
+
+	if _fake_out_active:
+		_fake_out_timer += delta
+		if _fake_out_timer < FAKE_OUT_DURATION:
+			move_dir = (_fake_out_dir + away_dir * 0.2).normalized()
+		else:
+			_fake_out_active = false
+			_strafe_dir *= -1.0  # snap back — the real juke
+
+	# ── 4c. Standard strafe juke (faster direction changes) ──
 	var juke: Vector2 = Vector2.ZERO
-	if dist_from_killer < 200.0:
+	if dist_from_killer < 200.0 and not _fake_out_active:
 		_strafe_change_timer -= delta
 		if _strafe_change_timer <= 0.0:
 			_strafe_dir *= -1.0
-			_strafe_change_timer = randf_range(0.3, 0.6)
-		juke = perpendicular * _strafe_dir * 0.5
+			_strafe_change_timer = randf_range(0.25, 0.5)
+		juke = perpendicular * _strafe_dir * 0.6
 	move_dir = (move_dir + juke).normalized()
 
 	# ── 5b. Anti-stuck: scrape off walls the bot is pushing into ──
@@ -859,6 +928,32 @@ func _avoid_walls(move_dir: Vector2) -> Vector2:
 		_avoid_cooldown = 0.15
 		return Vector2.from_angle(best_open_angle)
 	return move_dir
+
+
+func _apply_separation_and_move() -> void:
+	"""Add a separation force (push apart from nearby bots) then move_and_slide."""
+	var sep: Vector2 = _compute_separation()
+	if sep.length_squared() > 0.1:
+		velocity += sep
+	move_and_slide()
+
+
+func _compute_separation() -> Vector2:
+	"""Return a repulsion vector that pushes this bot away from nearby survivor
+	bots so they don't clump together. Force scales up the closer they are."""
+	var sep: Vector2 = Vector2.ZERO
+	var bots: Array[Node] = get_tree().get_nodes_in_group("survivor_bots")
+	for other: Node in bots:
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.get("_dead") == true:
+			continue
+		var dist: float = global_position.distance_to(other.global_position)
+		if dist < SEPARATION_RADIUS and dist > 0.5:
+			var away: Vector2 = (global_position - other.global_position).normalized()
+			var strength: float = (1.0 - dist / SEPARATION_RADIUS) * SEPARATION_STRENGTH
+			sep += away * strength
+	return sep
 
 
 func _set_nav_target(target_pos: Vector2) -> void:
