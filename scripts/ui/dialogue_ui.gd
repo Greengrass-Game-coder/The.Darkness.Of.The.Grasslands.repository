@@ -40,6 +40,62 @@ const SPEAKER_COLORS: Dictionary = {
 
 # Seconds between each character revealed by the typewriter.
 const TYPE_CHAR_INTERVAL: float = 0.045
+# Undertale-style pauses: after revealing one of these characters, the typewriter
+# waits extra before showing the next letter — so punctuation "breathes."
+const CHAR_PAUSE: Dictionary = {
+	".": 0.14,
+	",": 0.08,
+	"!": 0.14,
+	"?": 0.14,
+	":": 0.06,
+	";": 0.06,
+	"—": 0.06,
+	"…": 0.22,
+}
+# Current per-character delay; changes dynamically when a special char is hit.
+var _typing_current_delay: float = TYPE_CHAR_INTERVAL
+
+# ── Per-speaker dialogue-box border styling ──
+# Each speaker gets a distinctive border (width, color, corner shape, shadow)
+# so you can tell who's talking just by looking at the box.
+const SPEAKER_BORDER_STYLES: Dictionary = {
+	"Browngrass": {
+		"border_color": Color(0.55, 0.35, 0.15, 1),
+		"border_width": 5,
+		"corner_radius": 10,
+		"bg_color": Color(0.1, 0.07, 0.03, 0.94),
+		"shadow_size": 6,
+		"text_color": Color(0.92, 0.85, 0.7, 1),
+		"speaker_color": Color(0.7, 0.5, 0.2, 1),
+	},
+	"Evil Potato": {
+		"border_color": Color(0.65, 0.15, 0.75, 1),
+		"border_width": 5,
+		"corner_radius": 2,
+		"bg_color": Color(0.07, 0.03, 0.12, 0.94),
+		"shadow_size": 8,
+		"text_color": Color(0.92, 0.75, 0.95, 1),
+		"speaker_color": Color(0.85, 0.35, 0.95, 1),
+	},
+	"Narration": {
+		"border_color": Color(0.35, 0.35, 0.4, 0.5),
+		"border_width": 2,
+		"corner_radius": 4,
+		"bg_color": Color(0.03, 0.03, 0.05, 0.85),
+		"shadow_size": 2,
+		"text_color": Color(0.7, 0.7, 0.7, 1),
+		"speaker_color": Color(0.55, 0.55, 0.55, 1),
+	},
+	"Lobby": {
+		"border_color": Color(0.25, 0.55, 0.15, 1),
+		"border_width": 4,
+		"corner_radius": 8,
+		"bg_color": Color(0.05, 0.1, 0.03, 0.92),
+		"shadow_size": 4,
+		"text_color": Color(0.82, 0.92, 0.7, 1),
+		"speaker_color": Color(0.45, 0.7, 0.25, 1),
+	},
+}
 # Per-speaker "blip" sound path played once per character while typing. Loaded
 # lazily (see _apply_speaker_blip) so a not-yet-imported sound just types
 # silently instead of breaking the whole dialogue script. Only speakers listed
@@ -63,12 +119,19 @@ func _process(delta: float) -> void:
 	if not _typing:
 		return
 	_typing_accum += delta
-	while _typing_accum >= TYPE_CHAR_INTERVAL and _typing_visible_chars < _typing_full_text.length():
-		_typing_accum -= TYPE_CHAR_INTERVAL
+	if _typing_accum >= _typing_current_delay and _typing_visible_chars < _typing_full_text.length():
+		_typing_accum -= _typing_current_delay
 		_typing_visible_chars += 1
 		label.text = _typing_full_text.substr(0, _typing_visible_chars)
 		_play_blip()
-	if _typing_visible_chars >= _typing_full_text.length():
+		# Set the delay for the NEXT character based on the one we just revealed.
+		# Punctuation like . , ! ? pauses the typewriter (Undertale-style).
+		if _typing_visible_chars < _typing_full_text.length():
+			var just_revealed: String = _typing_full_text[_typing_visible_chars - 1]
+			_typing_current_delay = TYPE_CHAR_INTERVAL + CHAR_PAUSE.get(just_revealed, 0.0)
+		else:
+			_finish_typewriter()
+	elif _typing_visible_chars >= _typing_full_text.length():
 		_finish_typewriter()
 
 
@@ -175,6 +238,9 @@ func _show_line() -> void:
 		else:
 			label.add_theme_color_override("default_color", Color(1, 1, 1, 1))
 	
+	# ── Per-character panel styling ──
+	_apply_speaker_style(speaker_name)
+	
 	_apply_speaker_blip(speaker_name)
 	_start_typewriter(display_text)
 
@@ -184,6 +250,7 @@ func _start_typewriter(text: String) -> void:
 	_typing_full_text = text
 	_typing_visible_chars = 0
 	_typing_accum = 0.0
+	_typing_current_delay = TYPE_CHAR_INTERVAL
 	label.text = ""
 	if text.is_empty():
 		_typing = false
@@ -226,6 +293,54 @@ func _apply_speaker_blip(speaker: String) -> void:
 		_blip_player.stream = _blip_streams[speaker]
 	else:
 		_blip_player.stream = null
+
+
+func _apply_speaker_style(speaker: String) -> void:
+	"""Build a distinctive border + background for the dialogue panel matching
+	who is speaking — different border widths, corner shapes, and shadow sizes
+	per character so the box itself tells you who's talking."""
+	var s: Dictionary = SPEAKER_BORDER_STYLES.get(speaker, {})
+	
+	# ── Build a StyleBoxFlat with the speaker's border ──
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = s.get("bg_color", Color(0.06, 0.06, 0.08, 0.92))
+	sb.border_width_left   = s.get("border_width", 3)
+	sb.border_width_right  = s.get("border_width", 3)
+	sb.border_width_top    = s.get("border_width", 3)
+	sb.border_width_bottom = s.get("border_width", 3)
+	sb.border_color = s.get("border_color", Color(0.4, 0.4, 0.45, 0.8))
+	var cr: int = s.get("corner_radius", 6)
+	sb.corner_radius_top_left = cr
+	sb.corner_radius_top_right = cr
+	sb.corner_radius_bottom_left = cr
+	sb.corner_radius_bottom_right = cr
+	sb.shadow_size = s.get("shadow_size", 4)
+	sb.shadow_color = Color(0, 0, 0, 0.5)
+	sb.shadow_offset = Vector2(2, 3)
+	# Give Evil Potato sharp bottom corners for a sinister look.
+	if speaker == "Evil Potato":
+		sb.corner_radius_bottom_left = 0
+		sb.corner_radius_bottom_right = 0
+		sb.border_width_bottom = s.get("border_width", 5) + 3
+	panel.add_theme_stylebox_override("panel", sb)
+	
+	# ── Text / speaker colors ──
+	if s.has("text_color"):
+		label.add_theme_color_override("default_color", s["text_color"])
+	if s.has("speaker_color"):
+		speaker_label.add_theme_color_override("font_color", s["speaker_color"])
+	
+	# ── "Alive" animation: the box bounces + border briefly glows on each new line ──
+	var t := create_tween().set_parallel(true)
+	t.set_ease(Tween.EASE_OUT)
+	t.tween_property(panel, "scale", Vector2(1.02, 1.02), 0.04)
+	t.tween_property(panel, "scale", Vector2(1.0, 1.0), 0.1).set_delay(0.04)
+	# Flash the border brighter for a moment, then settle back.
+	var flash: Color = s.get("border_color", Color.WHITE)
+	flash = flash.lightened(0.4)
+	sb.border_color = flash
+	var settle := create_tween()
+	settle.tween_property(sb, "border_color", s.get("border_color", Color.WHITE), 0.3).set_delay(0.08)
 
 
 func _play_blip() -> void:

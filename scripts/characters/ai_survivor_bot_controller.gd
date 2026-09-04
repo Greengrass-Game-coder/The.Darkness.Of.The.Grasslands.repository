@@ -58,7 +58,7 @@ var _fling_velocity: Vector2 = Vector2.ZERO
 var _death_timer: float = 0.0
 var _spin_speed: float = 0.0
 const DEATH_FLING_DURATION: float = 10.0       # seconds before the body disappears
-const FLING_FRICTION: float = 0.90              # per-frame velocity damping (slides to a stop)
+const FLING_FRICTION: float = 0.975             # per-frame velocity damping (gentle slide)
 const FLING_BOUNCE_RESTITUTION: float = 0.6     # energy kept when bouncing off a wall
 const FLING_START_SPEED_MIN: float = 250.0
 const FLING_START_SPEED_MAX: float = 420.0
@@ -90,7 +90,7 @@ var _stuck_nudge_dir: float = 1.0             # which way to scrape off the wall
 # Wall-avoidance steering: raycasts ahead of the bot and steers around obstacles
 # so it doesn't run head-on into walls while pathing or patrolling.
 var _avoid_cooldown: float = 0.0
-const AVOID_RAY_LENGTH: float = 34.0          # how far ahead we probe for walls
+const AVOID_RAY_LENGTH: float = 60.0          # how far ahead we probe for walls
 const AVOID_RAY_COUNT: int = 5                # fan of rays around the heading
 const AVOID_FOV_DEG: float = 70.0             # half-angle of the probe fan
 
@@ -128,8 +128,8 @@ func _ready() -> void:
 	# Create NavigationAgent2D for pathfinding
 	_navigation_agent = NavigationAgent2D.new()
 	_navigation_agent.name = "NavigationAgent"
-	_navigation_agent.path_desired_distance = 4.0
-	_navigation_agent.target_desired_distance = 4.0
+	_navigation_agent.path_desired_distance = 36.0
+	_navigation_agent.target_desired_distance = 36.0
 	add_child(_navigation_agent)
 	
 	var label := BitmapLabel.new()
@@ -273,6 +273,7 @@ func play_death_fling(dir: Vector2, multiplier: float = 1.0) -> void:
 	_death_timer = 0.0
 	_spin_speed = randf_range(-4.0, 4.0)
 	var speed: float = randf_range(FLING_START_SPEED_MIN, FLING_START_SPEED_MAX) * maxf(multiplier, 1.0)
+	print(name, " play_death_fling: speed=", speed, " dir=", dir, " mult=", multiplier)
 	_fling_velocity = dir.normalized() * speed
 	# Visible grey corpse (fully opaque so it reads clearly during the fling).
 	modulate = Color(0.5, 0.5, 0.5, 1.0)
@@ -925,7 +926,7 @@ func _avoid_walls(move_dir: Vector2) -> Vector2:
 				best_open_angle = ang
 
 	if front_blocked and best_open > 0.0:
-		_avoid_cooldown = 0.15
+		_avoid_cooldown = 0.08
 		return Vector2.from_angle(best_open_angle)
 	return move_dir
 
