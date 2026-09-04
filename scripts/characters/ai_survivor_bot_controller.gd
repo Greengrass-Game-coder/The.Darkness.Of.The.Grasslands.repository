@@ -128,8 +128,8 @@ func _ready() -> void:
 	# Create NavigationAgent2D for pathfinding
 	_navigation_agent = NavigationAgent2D.new()
 	_navigation_agent.name = "NavigationAgent"
-	_navigation_agent.path_desired_distance = 36.0
-	_navigation_agent.target_desired_distance = 36.0
+	_navigation_agent.path_desired_distance = 40.0
+	_navigation_agent.target_desired_distance = 40.0
 	add_child(_navigation_agent)
 	
 	var label := BitmapLabel.new()
@@ -267,53 +267,47 @@ func _physics_process(delta: float) -> void:
 func play_death_fling(dir: Vector2, multiplier: float = 1.0) -> void:
 	"""Knock the dead body around the map, then fade it out and remove it after
 	DEATH_FLING_DURATION seconds. `multiplier` scales launch strength (the funny
-	Ragdoll setting passes 2.0 for exactly 100% stronger flings)."""
+	Ragdoll setting passes 2.0 for exactly 100% stronger flings).
+	
+	Uses a Tween for movement so it works regardless of physics state."""
 	_dead = true
-	# Stop the AI's own state/animations from fighting the corpse tumble.
 	_death_timer = 0.0
 	_spin_speed = randf_range(-4.0, 4.0)
 	var speed: float = randf_range(FLING_START_SPEED_MIN, FLING_START_SPEED_MAX) * maxf(multiplier, 1.0)
-	print(name, " play_death_fling: speed=", speed, " dir=", dir, " mult=", multiplier)
 	_fling_velocity = dir.normalized() * speed
 	# Visible grey corpse (fully opaque so it reads clearly during the fling).
 	modulate = Color(0.5, 0.5, 0.5, 1.0)
+	
+	# ── Tween-based fling: animate position directly, no physics needed ──
+	# Compute the full trajectory: launch, slow down, settle.
+	var total_frames: int = 120  # ~2 seconds of visible motion
+	var tween := create_tween()
+	tween.set_parallel(true)
+	
+	# Slide the body outward, decelerating
+	var target_pos: Vector2 = global_position + _fling_velocity * 1.5  # overshoot target
+	tween.tween_property(self, "global_position", target_pos, 1.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	
+	# Spin while sliding
+	tween.tween_property(self, "rotation", rotation + _spin_speed * 3.0, 1.5)
+	
+	# Fade out after 9.4s and free at 10s
+	var fade_tween := create_tween()
+	fade_tween.tween_interval(DEATH_FLING_DURATION - 0.6)
+	fade_tween.tween_property(self, "modulate:a", 0.0, 0.6)
+	fade_tween.tween_callback(queue_free)
 
 
 func _physics_process_dead(delta: float) -> void:
-	"""Drive the dead body with direct position manipulation — no move_and_slide()
-	(which can silently eat velocity when the body is pinned against a wall).
-	Bounces off walls via a short raycast, spins, then fades out."""
-	_fling_velocity *= FLING_FRICTION
-	if _fling_velocity.length() < 2.0:
-		_fling_velocity = Vector2.ZERO
-	
-	# Move the body directly, then check for wall penetration and bounce.
-	var motion: Vector2 = _fling_velocity * delta
-	var collision := move_and_collide(motion, true)  # true = test only, don't move yet
-	if collision:
-		# Hit a wall — slide along it, then bounce.
-		var n: Vector2 = collision.get_normal()
-		var remaining := motion - collision.get_travel()
-		# Project remaining motion along the wall surface.
-		var tangent := Vector2(-n.y, n.x) if abs(n.x) > 0.01 else Vector2(1, 0)
-		var slide := tangent * remaining.dot(tangent)
-		global_position += collision.get_travel() + slide
-		if _fling_velocity.length() > 60.0:
-			_fling_velocity = _fling_velocity.bounce(n) * FLING_BOUNCE_RESTITUTION
-	else:
-		global_position += motion
-	
-	# Tumble the body and slow the spin down as it settles.
+	"""Dead body: the Tween from play_death_fling handles the position slide.
+	Here we just spin the body and track the fade timer."""
+	# Spin decay
 	rotation += _spin_speed * delta
 	_spin_speed = move_toward(_spin_speed, 0.0, 3.0 * delta)
 	
+	# Fade timer: the Tween already handles the actual fade+free at 10s,
+	# but we track _death_timer for the debug print window.
 	_death_timer += delta
-	if _death_timer >= DEATH_FLING_DURATION - 0.6:
-		# Fade out, then remove the body.
-		_death_timer = INF  # only fade once
-		var t := create_tween()
-		t.tween_property(self, "modulate:a", 0.0, 0.6)
-		t.tween_callback(queue_free)
 
 
 func _is_killer_near_puzzle(puzzle: Area2D, killer_dist: float) -> bool:
@@ -944,16 +938,28 @@ func _avoid_walls(move_dir: Vector2) -> Vector2:
 
 
 func _apply_separation_and_move() -> void:
-	"""Add a separation force (push apart from nearby bots) then move_and_slide."""
+	"""Add a separation force (push apart from nearby bots) then move_and_slide.
+	Also pushes the bot away from walls if it's getting too close."""
 	var sep: Vector2 = _compute_separation()
 	if sep.length_squared() > 0.1:
 		velocity += sep
+	
+	# ── Wall push: if we're already overlapping a wall, shove out ──
+	# Test a tiny motion in 4 directions; if blocked, push opposite.
+	const WALL_NUDGE: float = 4.0
+	for ang in [0.0, PI/2, PI, PI*3/2]:
+		var probe := Vector2.from_angle(ang) * WALL_NUDGE
+		if test_move(transform, probe):
+			# Moving toward this direction hits a wall — push away from it.
+			global_position -= probe * 2.0
+			velocity += Vector2.from_angle(ang + PI) * 200.0
+	
 	move_and_slide()
 
 
 func _compute_separation() -> Vector2:
 	"""Return a repulsion vector that pushes this bot away from nearby survivor
-	bots AND nearby walls so they don't clump or stick to edges."""
+	bots so they don't clump or overlap. Also hard-nudges overlapping bots apart."""
 	var sep: Vector2 = Vector2.ZERO
 	var bots: Array[Node] = get_tree().get_nodes_in_group("survivor_bots")
 	for other: Node in bots:
@@ -970,23 +976,6 @@ func _compute_separation() -> Vector2:
 		if dist < 16.0 and dist > 0.1:
 			var nudge: Vector2 = (global_position - other.global_position).normalized()
 			global_position += nudge * (16.0 - dist) * 0.5
-	
-	# ── Wall repulsion: probe in 4 cardinal directions and push away from nearby walls ──
-	const WALL_PUSH: float = 80.0
-	const WALL_PROBE: float = 36.0
-	var space_state := get_world_2d().direct_space_state
-	for ang_deg in [0.0, 90.0, 180.0, 270.0]:
-		var dir := Vector2.from_angle(deg_to_rad(ang_deg))
-		var query := PhysicsRayQueryParameters2D.create(global_position, global_position + dir * WALL_PROBE)
-		query.collision_mask = 4  # walls layer
-		query.exclude = [self]
-		var result: Dictionary = space_state.intersect_ray(query)
-		if not result.is_empty():
-			var wall_dist: float = global_position.distance_to(result.position)
-			if wall_dist < WALL_PROBE:
-				var strength: float = (1.0 - wall_dist / WALL_PROBE) * WALL_PUSH
-				sep += -dir * strength
-	
 	return sep
 
 
