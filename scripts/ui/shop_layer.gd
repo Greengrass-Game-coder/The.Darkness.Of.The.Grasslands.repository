@@ -15,12 +15,23 @@ enum Tab { KILLERS, SURVIVORS }
 @onready var _card_list: VBoxContainer = $UILayer/Panel/CharacterContainer/CardList
 
 var _current_tab: Tab = Tab.KILLERS
+var _side_panel: Control = null
+var _side_icon: TextureRect = null
+var _side_name: BitmapLabel = null
+var _side_status: BitmapLabel = null
+var _side_buttons: VBoxContainer = null
+var _selected_name: String = ""
+var _selected_kind: String = ""
+var _selected_def: Dictionary = {}
+var _side_open: bool = false
+var _side_tween: Tween = null
 
 
 func _ready() -> void:
 	hide()
 	_sync_visibility()
 	_setup_signals()
+	_create_side_panel()
 	_switch_tab(Tab.KILLERS)
 
 
@@ -28,6 +39,7 @@ func open() -> void:
 	_play_zoom_animation()
 	show()
 	_sync_visibility()
+	_close_side_panel(true)
 
 
 func _sync_visibility() -> void:
@@ -37,6 +49,7 @@ func _sync_visibility() -> void:
 func close() -> void:
 	visible = false
 	_sync_visibility()
+	_close_side_panel(true)
 	shop_closed.emit()
 
 
@@ -50,8 +63,200 @@ func _switch_tab(tab: Tab) -> void:
 	_current_tab = tab
 	tab_killers.disabled = (tab != Tab.KILLERS)
 	tab_survivors.disabled = (tab != Tab.SURVIVORS)
+	_close_side_panel(true)
 	_build_character_cards()
 
+
+# ═══════════════ SIDE PANEL ═══════════════
+
+func _create_side_panel() -> void:
+	_side_panel = Control.new()
+	_side_panel.name = "SidePanel"
+	_side_panel.size = Vector2(220, 500)
+	_side_panel.position = Vector2(-220, 80)  # Hidden off-screen left
+	_ui_layer.add_child(_side_panel)
+
+	# Dark backdrop
+	var side_bg := ColorRect.new()
+	side_bg.name = "SideBg"
+	side_bg.size = _side_panel.size
+	side_bg.color = Color(0.06, 0.06, 0.1, 0.95)
+	_side_panel.add_child(side_bg)
+
+	# Gold left border
+	var border := ColorRect.new()
+	border.name = "SideBorder"
+	border.size = Vector2(3, _side_panel.size.y)
+	border.color = Color(1, 0.85, 0.2, 0.7)
+	_side_panel.add_child(border)
+
+	# Tab that sticks out on the right edge (always visible when collapsed)
+	var tab := Button.new()
+	tab.name = "SideTab"
+	tab.text = "▶"
+	tab.flat = true
+	tab.position = Vector2(220, 0)
+	tab.size = Vector2(28, 60)
+	tab.add_theme_color_override("font_color", Color(1, 0.85, 0.2, 1))
+	tab.add_theme_font_size_override("font_size", 14)
+	tab.pressed.connect(_toggle_side_panel)
+	_side_panel.add_child(tab)
+
+	# ── Content area (padding from left edge) ──
+	var content_margin: float = 16.0
+	var cy: float = 16.0
+
+	# Character icon (big)
+	_side_icon = TextureRect.new()
+	_side_icon.name = "SideIcon"
+	_side_icon.custom_minimum_size = Vector2(180, 180)
+	_side_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_side_icon.position = Vector2(content_margin, cy)
+	_side_panel.add_child(_side_icon)
+	cy += 188
+
+	# Name
+	_side_name = BitmapLabel.new()
+	_side_name.name = "SideName"
+	_side_name.font_scale = 0.17
+	_side_name.font_color = Color(1, 1, 1, 1)
+	_side_name.position = Vector2(content_margin, cy)
+	_side_name.size = Vector2(188, 26)
+	_side_panel.add_child(_side_name)
+	cy += 28
+
+	# Status
+	_side_status = BitmapLabel.new()
+	_side_status.name = "SideStatus"
+	_side_status.font_scale = 0.11
+	_side_status.position = Vector2(content_margin, cy)
+	_side_status.size = Vector2(188, 20)
+	_side_panel.add_child(_side_status)
+	cy += 28
+
+	# Separator
+	var sep := ColorRect.new()
+	sep.position = Vector2(content_margin, cy)
+	sep.size = Vector2(188, 1)
+	sep.color = Color(1, 1, 1, 0.15)
+	_side_panel.add_child(sep)
+	cy += 12
+
+	# Buttons container
+	_side_buttons = VBoxContainer.new()
+	_side_buttons.name = "SideButtons"
+	_side_buttons.position = Vector2(content_margin, cy)
+	_side_buttons.size = Vector2(188, 120)
+	_side_buttons.add_theme_constant_override("separation", 6)
+	_side_panel.add_child(_side_buttons)
+
+
+func _populate_side_panel(name_text: String, kind: String, def: Dictionary) -> void:
+	_selected_name = name_text
+	_selected_kind = kind
+	_selected_def = def
+
+	if not _side_panel:
+		return
+
+	var icon_path: String = def.get("icon", "")
+	if icon_path.is_empty():
+		_side_icon.texture = null
+	else:
+		_side_icon.texture = load(icon_path)
+
+	_side_name.label_text = name_text
+
+	var owned: bool = GameState.is_character_owned(kind, name_text)
+	var equipped: bool = GameState.get_equipped_character(kind) == name_text
+	var cost: int = int(def.get("cost", 0))
+
+	if equipped:
+		_side_status.label_text = "★ EQUIPPED"
+		_side_status.font_color = Color(0.5, 1, 0.5, 1)
+	elif owned:
+		_side_status.label_text = "OWNED"
+		_side_status.font_color = Color(0.5, 1, 0.5, 1)
+	else:
+		_side_status.label_text = "PRICE: $%d" % cost
+		_side_status.font_color = Color(1, 0.85, 0.2, 1)
+
+	# Clear old buttons
+	for c in _side_buttons.get_children():
+		c.queue_free()
+
+	# DETAILS button
+	var details_btn := _make_side_button("DETAILS")
+	details_btn.pressed.connect(_show_details.bind(name_text, kind, def))
+	_side_buttons.add_child(details_btn)
+
+	# SKINS button
+	var skins_btn := _make_side_button("SKINS")
+	skins_btn.pressed.connect(_open_lms_linking.bind(name_text))
+	_side_buttons.add_child(skins_btn)
+
+	# EQUIP button (owned but not equipped)
+	if owned and not equipped:
+		var equip_btn := _make_side_button("EQUIP")
+		equip_btn.pressed.connect(_equip_character.bind(kind, name_text))
+		_side_buttons.add_child(equip_btn)
+
+	# BUY button (not owned)
+	if not owned:
+		var buy_btn := _make_side_button("BUY — $%d" % cost)
+		buy_btn.add_theme_color_override("font_color", Color(1, 0.85, 0.2, 1))
+		buy_btn.pressed.connect(_buy_character.bind(kind, name_text, cost))
+		_side_buttons.add_child(buy_btn)
+
+	_open_side_panel()
+
+
+func _make_side_button(label: String) -> Button:
+	var btn := Button.new()
+	btn.text = label
+	btn.custom_minimum_size = Vector2(180, 30)
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	return btn
+
+
+func _open_side_panel() -> void:
+	if _side_open:
+		return
+	_side_open = true
+	if _side_tween and _side_tween.is_valid():
+		_side_tween.kill()
+	_side_tween = create_tween()
+	_side_tween.tween_property(_side_panel, "position:x", -16.0, 0.25).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	# Flip tab arrow
+	var tab: Button = _side_panel.get_node_or_null("SideTab")
+	if tab:
+		tab.text = "◀"
+
+
+func _close_side_panel(instant: bool = false) -> void:
+	if not _side_open and instant:
+		return
+	_side_open = false
+	if _side_tween and _side_tween.is_valid():
+		_side_tween.kill()
+	if instant:
+		_side_panel.position.x = -220.0
+	else:
+		_side_tween = create_tween()
+		_side_tween.tween_property(_side_panel, "position:x", -220.0, 0.25).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
+	var tab: Button = _side_panel.get_node_or_null("SideTab")
+	if tab:
+		tab.text = "▶"
+
+
+func _toggle_side_panel() -> void:
+	if _side_open:
+		_close_side_panel()
+	else:
+		_open_side_panel()
+
+
+# ═══════════════ CHARACTER CARDS ═══════════════
 
 func _build_character_cards() -> void:
 	for c in _card_list.get_children():
@@ -66,42 +271,59 @@ func _build_character_cards() -> void:
 
 
 func _add_character_card(name_text: String, def: Dictionary, kind: String) -> void:
-	# ── Card container (horizontal layout: icon left, info right) ──
-	var card := Panel.new()
-	card.custom_minimum_size = Vector2(460, 160)
+	var card := Button.new()
+	card.custom_minimum_size = Vector2(440, 100)
 	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	card.clip_contents = true
+	card.flat = false
+	card.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
-	# ── Icon (left side) ──
-	var icon := TextureRect.new()
-	icon.texture = load(def.get("icon", ""))
-	icon.custom_minimum_size = Vector2(100, 100)
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.position = Vector2(20, 30)
-	icon.modulate = Color(1, 1, 1, 1)
-	card.add_child(icon)
+	# Highlight style when selected
+	var normal_style := StyleBoxFlat.new()
+	normal_style.bg_color = Color(0.08, 0.08, 0.12, 0.85)
+	normal_style.border_width_left = 2
+	normal_style.border_width_right = 2
+	normal_style.border_width_top = 2
+	normal_style.border_width_bottom = 2
+	normal_style.border_color = Color(1, 1, 1, 0.1)
+	card.add_theme_stylebox_override("normal", normal_style)
 
-	# ── Info column (right of icon) ──
-	var info_x: float = 135.0
+	var hover_style := StyleBoxFlat.new()
+	hover_style.bg_color = Color(0.12, 0.12, 0.18, 0.9)
+	hover_style.border_width_left = 2
+	hover_style.border_width_right = 2
+	hover_style.border_width_top = 2
+	hover_style.border_width_bottom = 2
+	hover_style.border_color = Color(1, 0.85, 0.2, 0.4)
+	card.add_theme_stylebox_override("hover", hover_style)
+
+	# ── Content: name, description, status (no icon — icon is in sidebar) ──
+	var info_x: float = 12.0
 
 	# Name
 	var name_lbl := BitmapLabel.new()
 	name_lbl.label_text = name_text
-	name_lbl.font_scale = 0.17
+	name_lbl.font_scale = 0.16
 	name_lbl.font_color = Color(1, 1, 1, 1)
-	name_lbl.position = Vector2(info_x, 20)
-	name_lbl.size = Vector2(310, 26)
+	name_lbl.position = Vector2(info_x, 12)
+	name_lbl.size = Vector2(410, 24)
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(name_lbl)
 
 	var owned: bool = GameState.is_character_owned(kind, name_text)
 	var cost: int = int(def.get("cost", 0))
+	var equipped: bool = GameState.get_equipped_character(kind) == name_text
 
 	# Status / price
 	var status_lbl := BitmapLabel.new()
-	status_lbl.font_scale = 0.12
-	status_lbl.position = Vector2(info_x, 50)
-	status_lbl.size = Vector2(310, 20)
-	if owned:
+	status_lbl.font_scale = 0.10
+	status_lbl.position = Vector2(info_x, 38)
+	status_lbl.size = Vector2(410, 16)
+	status_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if equipped:
+		status_lbl.label_text = "★ EQUIPPED"
+		status_lbl.font_color = Color(0.5, 1, 0.5, 1)
+	elif owned:
 		status_lbl.label_text = "OWNED"
 		status_lbl.font_color = Color(0.5, 1, 0.5, 1)
 	else:
@@ -112,45 +334,21 @@ func _add_character_card(name_text: String, def: Dictionary, kind: String) -> vo
 	# Brief description
 	var desc_lbl := Label.new()
 	desc_lbl.text = def.get("description", "")
-	desc_lbl.position = Vector2(info_x, 74)
-	desc_lbl.size = Vector2(310, 36)
+	desc_lbl.position = Vector2(info_x, 56)
+	desc_lbl.size = Vector2(410, 32)
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
-	desc_lbl.add_theme_font_size_override("font_size", 11)
+	desc_lbl.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65, 1))
+	desc_lbl.add_theme_font_size_override("font_size", 10)
+	desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(desc_lbl)
 
-	# ── Buttons row (below info) ──
-	var btn_y: float = 118.0
-
-	# DETAILS button (always visible)
-	var details_btn := Button.new()
-	details_btn.text = "DETAILS"
-	details_btn.position = Vector2(info_x, btn_y)
-	details_btn.size = Vector2(90, 28)
-	details_btn.pressed.connect(_show_details.bind(name_text, kind, def))
-	card.add_child(details_btn)
-
-	# SKINS button
-	var skins_btn := Button.new()
-	skins_btn.text = "SKINS"
-	skins_btn.position = Vector2(info_x + 98, btn_y)
-	skins_btn.size = Vector2(90, 28)
-	skins_btn.pressed.connect(_open_lms_linking.bind(name_text))
-	card.add_child(skins_btn)
-
-	# BUY button (only if not owned)
-	if not owned:
-		var buy_btn := Button.new()
-		buy_btn.text = "BUY — $%d" % cost
-		buy_btn.position = Vector2(info_x + 196, btn_y)
-		buy_btn.size = Vector2(114, 28)
-		buy_btn.pressed.connect(_buy_character.bind(kind, name_text, cost))
-		card.add_child(buy_btn)
+	# Click card → populate sidebar
+	card.pressed.connect(_populate_side_panel.bind(name_text, kind, def))
 
 	_card_list.add_child(card)
 
 
-# ═══════════════ BUY ═══════════════
+# ═══════════════ BUY / EQUIP ═══════════════
 
 func _buy_character(kind: String, name_text: String, cost: int) -> void:
 	if GameState.is_character_owned(kind, name_text):
@@ -163,6 +361,15 @@ func _buy_character(kind: String, name_text: String, cost: int) -> void:
 	if SaveManager and SaveManager.has_method("autosave"):
 		SaveManager.autosave(GameState.logged_in_username)
 	_build_character_cards()
+	_populate_side_panel(name_text, kind, GameState.CHARACTER_CATALOG[name_text])
+
+
+func _equip_character(kind: String, name_text: String) -> void:
+	if GameState.equip_character(kind, name_text):
+		if SaveManager and SaveManager.has_method("autosave"):
+			SaveManager.autosave(GameState.logged_in_username)
+		_build_character_cards()
+		_populate_side_panel(name_text, kind, GameState.CHARACTER_CATALOG[name_text])
 
 
 # ═══════════════ DETAILS POPUP ═══════════════
@@ -194,7 +401,6 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 
 	var y: float = 10.0
 
-	# Title
 	var title := BitmapLabel.new()
 	title.label_text = name_text + " (" + kind.capitalize() + ")"
 	title.font_scale = 0.18
@@ -204,7 +410,6 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 	popup.add_child(title)
 	y += 30
 
-	# Cost / value line
 	var cost: int = int(def.get("cost", 0))
 	var owned: bool = GameState.is_character_owned(kind, name_text)
 	var value_lbl := BitmapLabel.new()
@@ -216,7 +421,6 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 	popup.add_child(value_lbl)
 	y += 22
 
-	# EXP for this character
 	var character_exp: int = GameState.get_character_exp(name_text)
 	var exp_lbl := BitmapLabel.new()
 	exp_lbl.label_text = "CHARACTER EXP: %d" % character_exp
@@ -227,7 +431,6 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 	popup.add_child(exp_lbl)
 	y += 22
 
-	# Separator
 	var sep := ColorRect.new()
 	sep.position = Vector2(14, y)
 	sep.size = Vector2(370, 1)
@@ -235,7 +438,6 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 	popup.add_child(sep)
 	y += 10
 
-	# ── Stats ──
 	var stats_header := BitmapLabel.new()
 	stats_header.label_text = "STATS"
 	stats_header.font_scale = 0.13
@@ -258,7 +460,6 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 
 	y += 4
 
-	# ── Abilities ──
 	var ab_header := BitmapLabel.new()
 	ab_header.label_text = "ABILITIES"
 	ab_header.font_scale = 0.13
@@ -289,7 +490,6 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 		popup.add_child(ab_desc)
 		y += 26
 
-	# Close button
 	var close_btn := Button.new()
 	close_btn.text = "CLOSE"
 	close_btn.position = Vector2(popup.size.x - 100, popup.size.y - 36)
@@ -297,7 +497,6 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 	close_btn.pressed.connect(popup.queue_free)
 	popup.add_child(close_btn)
 
-	# Click background to close
 	var dismiss_area := Button.new()
 	dismiss_area.flat = true
 	dismiss_area.size = popup.size
