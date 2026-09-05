@@ -1528,10 +1528,11 @@ func _enforce_single_killer() -> void:
 func _chase_theme_folder() -> String:
 	"""Pick the chase-music theme folder matching whichever killer is in the match."""
 	var killer_name: String = "Violentgrass"
-	if is_instance_valid(_killer_bot) and _killer_character_name != "":
-		killer_name = _killer_character_name
-	elif _character_name == "Test Killer" or _character_name == "Violentgrass":
+	if _character_name == "Test Killer" or _character_name == "Violentgrass":
+		# Human is the killer -> use THEIR theme (don't let a bot override).
 		killer_name = _character_name
+	elif is_instance_valid(_killer_bot) and _killer_character_name != "":
+		killer_name = _killer_character_name
 	if killer_name == "Test Killer":
 		return "Test Killer (Originally Monster Greengrass, but used for tests for now.)"
 	return "Violentgrass"

@@ -50,10 +50,10 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var tentacle_cooldown_cancel: float = 12.0
 
 # ── The Rage (information trap) ──
-@export var rage_max_traps: int = 10
+@export var rage_max_traps: int = 5
 @export var rage_cooldown: float = 5.0
 @export var rage_reveal_duration: float = 10.0
-@export var rage_trap_radius: float = 44.0
+@export var rage_trap_radius: float = 88.0
 
 # ── Better Sight (tracking / chase) ──
 @export var better_sight_cooldown: float = 8.0
@@ -142,6 +142,8 @@ func _ready() -> void:
 	_apply_size()
 	# Set up tentacle SFX players (stretch/retract loop while active).
 	_tentacle_stretch_audio = _make_audio_player(TENTACLE_STRETCH_SOUND, true)
+	if _tentacle_stretch_audio:
+		_tentacle_stretch_audio.volume_db = -20.0  # ~10% volume
 	_tentacle_catch_audio = _make_audio_player(TENTACLE_CATCH_SOUND, false)
 	_tentacle_stop_audio = _make_audio_player(TENTACLE_STOP_SOUND, false)
 	_tentacle_retract_audio = _make_audio_player(TENTACLE_RETRACT_SOUND, true)
@@ -392,9 +394,9 @@ func _make_audio_player(path: String, looped: bool) -> AudioStreamPlayer2D:
 	var s: AudioStream = load(path)
 	if s is AudioStreamWAV and looped:
 		var w := s as AudioStreamWAV
-		var bytes_per_sample: int = 1 if w.format == AudioStreamWAV.FORMAT_8_BITS else 2
-		var channels: int = 2 if w.stereo else 1
-		var frames: int = w.data.size() / (bytes_per_sample * channels)
+		# Compute the real frame count from the stream's own length (the wavs
+		# import as QOA, so data.size() does NOT map to PCM frames).
+		var frames: int = int(w.get_length() * w.mix_rate)
 		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		w.loop_begin = 0
 		w.loop_end = frames
