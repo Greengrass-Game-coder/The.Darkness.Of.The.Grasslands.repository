@@ -305,28 +305,47 @@ func _perform_hit() -> void:
 		Direction.RIGHT: hit_dir = Vector2.RIGHT
 		Direction.UP: hit_dir = Vector2.UP
 	
-	var space := get_world_2d().direct_space_state
-	var query := PhysicsRayQueryParameters2D.create(global_position, global_position + hit_dir * hit_range)
-	query.collision_mask = 1  # Survivors layer
-	query.exclude = [get_rid()]
-	var result: Dictionary = space.intersect_ray(query)
-	
-	if not result.is_empty():
-		var target: Node = result.collider
-		if is_instance_valid(target) and target.has_method("take_damage"):
-			var dmg: float = hit_damage
-			# Tentacle follow-up: boosted M1 after a successful snatch
-			if _tentacle_caught_survivor and target == _tentacle_caught_survivor:
-				dmg = tentacle_m1_damage
-				_tentacle_caught_survivor = null
-			target.take_damage(dmg)
-			hit_landed.emit(target, dmg)
-			# M1 unstuns the grabbed/stunned survivor so they can run away.
-			if target.has_method("clear_stun"):
-				target.clear_stun()
+	# Damage the nearest living survivor in front of the killer. Uses group
+	# lookup instead of a physics ray so hits reliably land on survivor bots
+	# regardless of collision-layer quirks (bots were taking no damage from M1).
+	var target: Node2D = _find_survivor_in_hit_range(hit_dir)
+	if is_instance_valid(target):
+		var dmg: float = hit_damage
+		# Tentacle follow-up: boosted M1 after a successful snatch
+		if _tentacle_caught_survivor and target == _tentacle_caught_survivor:
+			dmg = tentacle_m1_damage
+			_tentacle_caught_survivor = null
+		target.take_damage(dmg)
+		hit_landed.emit(target, dmg)
+		# M1 unstuns the grabbed/stunned survivor so they can run away.
+		if target.has_method("clear_stun"):
+			target.clear_stun()
 	
 	if hit_sound:
 		hit_sound.play()
+
+
+func _find_survivor_in_hit_range(hit_dir: Vector2) -> Node2D:
+	"""Return the nearest living survivor (player or bot) within hit range that is
+	roughly in front of the killer (matching the old forward-ray cone)."""
+	var best: Node2D = null
+	var best_dist: float = hit_range
+	for group_name in ["survivors", "survivor_bots"]:
+		for s in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(s) or not s.has_method("take_damage"):
+				continue
+			if s.get("current_hp") != null and float(s.get("current_hp")) <= 0.0:
+				continue
+			var to_s: Vector2 = s.global_position - global_position
+			var dist: float = to_s.length()
+			if dist > hit_range or dist <= 0.0:
+				continue
+			if hit_dir != Vector2.ZERO and to_s.normalized().dot(hit_dir) < 0.5:
+				continue  # behind the killer
+			if dist < best_dist:
+				best_dist = dist
+				best = s as Node2D
+	return best
 
 
 # ═══════════════ STUNNED ═══════════════
