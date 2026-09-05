@@ -274,6 +274,9 @@ func _start_hit() -> void:
 	if hit_on_cooldown:
 		return
 	if current_state == State.TENTACLE_SNATCH:
+		# M1 during the tentacle releases the grabbed survivor so they can run.
+		_release_tentacle_target()
+		_deactivate_tentacle(false, true)
 		return
 	current_state = State.HITTING
 	hit_on_cooldown = true
@@ -413,10 +416,11 @@ func _handle_tentacle_snatch(delta: float) -> void:
 		_retract_tentacle(delta)
 		return
 	
-	# Control the tentacle toward the mouse/aim position
+	# Control the tentacle with WASD — it only extends while steered and holds
+	# still when no direction is held (it no longer auto-stretches downward).
 	var aim_dir: Vector2 = _get_aim_direction()
 	if aim_dir.length_squared() < 0.01:
-		aim_dir = Vector2.DOWN
+		return
 	
 	var tentacle_speed: float = move_speed * tentacle_speed_mult
 	var target_pos: Vector2 = _tentacle_node.position + aim_dir * tentacle_speed * delta
@@ -436,13 +440,11 @@ func _handle_tentacle_snatch(delta: float) -> void:
 
 
 func _get_aim_direction() -> Vector2:
-	"""Get the direction from the tentacle using WASD input."""
+	"""Get the direction from the tentacle using WASD input (ZERO = hold still)."""
 	var raw_dir := Vector2(
 		Input.get_axis("move_left", "move_right"),
 		Input.get_axis("move_up", "move_down")
 	)
-	if raw_dir.length_squared() < 0.01:
-		raw_dir = Vector2.DOWN
 	return raw_dir.normalized()
 
 
@@ -516,6 +518,15 @@ func _finish_tentacle_catch() -> void:
 			_tentacle_caught_survivor.set("current_state", 6)  # STUNNED enum value
 	
 	_deactivate_tentacle(true, false)
+
+
+func _release_tentacle_target() -> void:
+	"""Release a grabbed survivor from the tentacle so they can move again."""
+	if is_instance_valid(_tentacle_caught_survivor):
+		if _tentacle_caught_survivor.has_method("clear_stun"):
+			_tentacle_caught_survivor.clear_stun()
+	_tentacle_caught_survivor = null
+	_tentacle_retracting = false
 
 
 func _apply_tentacle_stretch() -> void:
