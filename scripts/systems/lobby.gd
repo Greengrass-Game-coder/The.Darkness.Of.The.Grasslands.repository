@@ -102,6 +102,12 @@ const NOTIF_FOCUS_IN = NOTIFICATION_WM_WINDOW_FOCUS_IN
 
 
 func _ready() -> void:
+	# Subtle idle motion for static lobby elements (intensity follows the setting).
+	if has_node("../EvilPotato/Visual"):
+		SubtleMotion.attach($"../EvilPotato/Visual", SubtleMotion.Mode.FLY, 6.0, 1.3)
+	if has_node("../MapBackground"):
+		SubtleMotion.attach($"../MapBackground", SubtleMotion.Mode.BREATHE, 0.02, 0.7, 1.2)
+
 	# The intermission countdown lives in the IntermissionTimer autoload so it
 	# keeps ticking while the player steps into the arcade room (a scene change)
 	# instead of silently resetting. Only start it when no intermission is

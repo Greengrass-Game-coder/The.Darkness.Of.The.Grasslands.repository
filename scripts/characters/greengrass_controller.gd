@@ -943,6 +943,7 @@ func _spawn_qte_marker() -> void:
 	marker.z_index = 210
 	add_child(marker)
 	_qte_marker = marker
+	SubtleMotion.attach(marker, SubtleMotion.Mode.PULSE, 0.06, 2.0)
 
 
 func _update_qte_marker() -> void:

@@ -640,6 +640,7 @@ func _reveal_survivor(body: Node2D) -> void:
 	marker.add_child(lbl)
 	body.add_child(marker)
 	_reveal_marker = marker
+	SubtleMotion.attach(marker, SubtleMotion.Mode.PULSE, 0.06, 2.0)
 	rage_triggered.emit(body)
 	print("TestKiller: SURVIVOR REVEALED at ", body.global_position, " for ", rage_reveal_duration, "s")
 
@@ -762,6 +763,7 @@ func _show_better_sight_marker(target: Node2D) -> void:
 	marker.z_index = 200
 	target.add_child(marker)
 	_better_sight_marker = marker
+	SubtleMotion.attach(marker, SubtleMotion.Mode.PULSE, 0.05, 2.2, 0.5)
 
 func _make_circle_polygon(radius: float, color: Color, points: int = 32) -> Polygon2D:
 	"""Build a filled-circle Polygon2D for the Rage trap visual."""

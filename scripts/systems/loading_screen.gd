@@ -36,6 +36,8 @@ var _load_progress: float = 0.0
 
 
 func _ready() -> void:
+	if is_instance_valid(tex_rect):
+		SubtleMotion.attach(tex_rect, SubtleMotion.Mode.BREATHE, 0.025, 0.7, 1.0)
 	# SMART LOADING: if the heavy scene we would pre-load (game_map) is ALREADY
 	# in the resource cache (e.g. the player played a match earlier this session),
 	# there's nothing to load — so skip the loading screen entirely and go

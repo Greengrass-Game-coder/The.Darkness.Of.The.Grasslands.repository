@@ -28,9 +28,10 @@ var _side_tween: Tween = null
 
 func _sync_visibility() -> void:
 	if is_instance_valid(_ui_layer):
-		_ui_layer.visible = visible
-
-func _ready() -> void:
+		func _ready() -> void:
+	if has_node("UILayer/Panel/Background"):
+		SubtleMotion.attach($UILayer/Panel/Background, SubtleMotion.Mode.BREATHE, 0.02, 0.8, 0.5)
+	hide()nc _ready() -> void:
 	hide()
 	_sync_visibility()
 	_setup_signals()

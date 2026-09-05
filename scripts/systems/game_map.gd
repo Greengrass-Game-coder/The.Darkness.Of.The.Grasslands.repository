@@ -327,7 +327,20 @@ func _ready() -> void:
 	_initialize_multiplayer()
 	
 	# Play killer intro cutscene after spawns are complete
+	_setup_vignette()
 	call_deferred("_play_killer_cutscene")
+
+
+func _setup_vignette() -> void:
+	"""Add the circular faded-center HUD vignette (persists through LMS)."""
+	var scene: PackedScene = load("res://scenes/vignette_overlay.tscn")
+	if scene == null:
+		return
+	if not is_instance_valid($HUD):
+		return
+	var v: ColorRect = scene.instantiate()
+	$HUD.add_child(v)
+	print("GameMap: vignette overlay added")
 
 
 func _replace_hud_labels() -> void:

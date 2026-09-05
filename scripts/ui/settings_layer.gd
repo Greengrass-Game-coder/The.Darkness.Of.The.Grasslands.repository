@@ -80,6 +80,12 @@ const SECTIONS: Array[Dictionary] = [
 		]
 	},
 	{
+		"title": "ANIMATION",
+		"items": [
+			{"type": "gstate_slider", "label": "Motion Intensity", "var": "motion_intensity", "default": 1.0},
+		]
+	},
+	{
 		"title": "ACCESSIBILITY",
 		"items": [
 			{"label": "Epilepsy Safe Mode", "type": "toggle", "var": "epilepsy_safe_mode", "default": true},
@@ -167,6 +173,8 @@ func _build_sections() -> void:
 						_add_toggle_item(item_data, section)
 					"slider":
 						_add_slider_item(item_data, section)
+					"gstate_slider":
+						_add_game_state_slider_item(item_data, section)
 					"bus_mute":
 						_add_bus_mute_item(item_data, section)
 					"action":
@@ -496,6 +504,62 @@ func _on_action_toggled(value: bool, action_name: String) -> void:
 			DisplayServer.window_set_vsync_mode(
 				DisplayServer.VSYNC_ENABLED if value else DisplayServer.VSYNC_DISABLED
 			)
+
+
+func _add_game_state_slider_item(item_data: Dictionary, section: VBoxContainer) -> void:
+	"""Add an HSlider bound to a GameState float (0..1)."""
+	var var_name: String = item_data.get("var", "")
+	var label_text: String = item_data.get("label", "Value")
+	var default_val: float = item_data.get("default", 1.0)
+
+	var vbox := VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var label_row := HBoxContainer.new()
+	label_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label_row.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var name_label := Label.new()
+	name_label.text = "  " + label_text
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.add_theme_font_size_override("font_size", 16)
+	name_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9, 1))
+	label_row.add_child(name_label)
+
+	var value_label := Label.new()
+	value_label.name = "ValueLabel"
+	value_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value_label.add_theme_font_size_override("font_size", 14)
+	value_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
+	label_row.add_child(value_label)
+	vbox.add_child(label_row)
+
+	var slider := HSlider.new()
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+
+	var current: float = default_val
+	if var_name != "" and var_name in GameState:
+		var existing = GameState.get(var_name)
+		if existing != null:
+			current = float(existing)
+	slider.value = current
+	value_label.text = "%d%%" % int(current * 100.0)
+
+	slider.value_changed.connect(_on_game_state_slider.bind(var_name, value_label))
+	vbox.add_child(slider)
+	section.add_child(vbox)
+
+
+func _on_game_state_slider(value: float, var_name: String, value_label: Label) -> void:
+	"""Update a GameState float slider (0..1)."""
+	value_label.text = "%d%%" % int(value * 100.0)
+	if var_name != "" and var_name in GameState:
+		GameState.set(var_name, value)
+		_save_settings()
 
 
 func _play_zoom_animation() -> void:

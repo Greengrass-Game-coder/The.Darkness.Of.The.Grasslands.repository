@@ -107,6 +107,9 @@ var vibration_enabled: bool = true
 ## "Ragdoll" (funny) setting: makes survivor death-flings exactly 100% stronger
 ## (double launch strength, no more than that). Off by default.
 var ragdoll: bool = false
+## Global subtle-motion intensity (0..1): how strong idle animations are.
+## 0 turns all subtle motion off; 1 is full intensity.
+var motion_intensity: float = 1.0
 
 ## Console (arcade room) theme: "system", "light", or "dark". Console-only —
 ## only changeable inside the arcade console, never in normal settings.

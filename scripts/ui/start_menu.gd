@@ -23,6 +23,8 @@ const BUILTIN_AVATARS: Array[String] = [
 
 
 func _ready() -> void:
+	if has_node("TitleLabel"):
+		SubtleMotion.attach($TitleLabel, SubtleMotion.Mode.BOB, 6.0, 0.9)
 	_setup_buttons()
 	_setup_account_panel()
 	_load_current_settings()

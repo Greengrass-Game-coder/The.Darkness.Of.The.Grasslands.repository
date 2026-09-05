@@ -24,10 +24,10 @@ var _selected_name: String = ""
 var _selected_kind: String = ""
 var _selected_def: Dictionary = {}
 var _side_open: bool = false
-var _side_tween: Tween = null
-
-
-func _ready() -> void:
+var _sfunc _ready() -> void:
+	if is_instance_valid(background):
+		SubtleMotion.attach(background, SubtleMotion.Mode.BREATHE, 0.02, 0.8, 0.5)
+	hide() _ready() -> void:
 	hide()
 	_sync_visibility()
 	_setup_signals()
