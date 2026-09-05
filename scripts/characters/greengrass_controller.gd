@@ -646,11 +646,15 @@ func _setup_heal_progress_bar() -> void:
 
 
 func _update_held_item_visual() -> void:
-	"""Show/hide the held item and point it the way the survivor is going."""
+	"""Show/hide the held item and point it the way the survivor is going.
+	While carrying, the holding frame replaces the normal animated body so only
+	one clear visual (Greengrass holding the flower) is shown."""
 	if not is_instance_valid(_held_item_sprite):
 		return
 	var holding: bool = _is_holding_item() and _heal_channel_slot == -1
 	_held_item_sprite.visible = holding
+	if is_instance_valid(animated_sprite):
+		animated_sprite.visible = not holding
 	if holding:
 		# Mirror the held-flower frame to face the direction of travel.
 		_held_item_sprite.flip_h = (current_direction == Direction.LEFT)
