@@ -758,6 +758,8 @@ func _update_better_sight(_delta: float) -> void:
 	if target.get("current_hp") != null and float(target.get("current_hp")) <= 0.0:
 		_end_better_sight()
 		return
+	# Keep the on-screen arrow pointed at the tracked survivor.
+	_update_better_sight_arrow(target)
 	var dist: float = global_position.distance_to(target.global_position)
 	if dist <= better_sight_reach_distance:
 		print("TestKiller: Better Sight reached ", target.name, " — speed boost ended")
@@ -773,28 +775,29 @@ func _end_better_sight() -> void:
 
 
 func _show_better_sight_marker(target: Node2D) -> void:
-	"""Draw a red ring + downward arrow on the tracked survivor so the killer can reach them."""
+	"""Put an arrow over the killer's head that points toward the tracked survivor."""
 	if is_instance_valid(_better_sight_marker):
 		_better_sight_marker.queue_free()
 	var marker := Node2D.new()
 	marker.name = "BetterSightMarker"
-	var ring := _make_circle_polygon(30.0, Color(1.0, 0.15, 0.15, 0.55))
-	ring.name = "Ring"
-	marker.add_child(ring)
-	var lbl := Label.new()
-	lbl.text = "▼"
-	lbl.add_theme_font_size_override("font_size", 30)
-	lbl.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2, 1.0))
-	lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
-	lbl.add_theme_constant_override("shadow_offset_x", 2)
-	lbl.add_theme_constant_override("shadow_offset_y", 2)
-	lbl.position = Vector2(-10, -48)
-	marker.add_child(lbl)
-	marker.position = Vector2(0, -8)
+	var arrow := _make_arrow_polygon(Color(1.0, 0.85, 0.2, 1.0))
+	arrow.name = "Arrow"
+	marker.add_child(arrow)
+	marker.position = Vector2(0, -70)
 	marker.z_index = 200
-	target.add_child(marker)
+	add_child(marker)
 	_better_sight_marker = marker
-	SubtleMotion.attach(marker, SubtleMotion.Mode.PULSE, 0.05, 2.2, 0.5)
+	_update_better_sight_arrow(target)
+
+
+func _update_better_sight_arrow(target: Node2D) -> void:
+	"""Rotate the arrow over the killer's head toward the tracked survivor."""
+	if not is_instance_valid(_better_sight_marker) or not is_instance_valid(target):
+		return
+	var dir: Vector2 = target.global_position - global_position
+	if dir.length_squared() < 0.01:
+		return
+	_better_sight_marker.rotation = dir.angle()
 
 func _make_circle_polygon(radius: float, color: Color, points: int = 32) -> Polygon2D:
 	"""Build a filled-circle Polygon2D for the Rage trap visual."""
@@ -805,6 +808,18 @@ func _make_circle_polygon(radius: float, color: Color, points: int = 32) -> Poly
 		var a: float = TAU * float(i) / float(points)
 		pts.append(Vector2(cos(a), sin(a)) * radius)
 	p.polygon = pts
+	return p
+
+
+func _make_arrow_polygon(color: Color) -> Polygon2D:
+	"""Build a triangle arrow Polygon2D pointing along +X (rotated toward the target)."""
+	var p := Polygon2D.new()
+	p.color = color
+	p.polygon = PackedVector2Array([
+		Vector2(0, 0),
+		Vector2(-22, -13),
+		Vector2(-22, 13),
+	])
 	return p
 
 
