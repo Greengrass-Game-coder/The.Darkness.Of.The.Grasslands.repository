@@ -33,9 +33,36 @@ var selected_killer: String = "Violentgrass"  # Will be set from CharacterData
 ## Add a new survivor/killer here and it automatically appears in the lobby
 ## Shop (BUY) and Inventory (EQUIP). `cost` 0 means it's a free starter.
 const CHARACTER_CATALOG: Dictionary = {
-	"Greengrass": {"kind": "survivor", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Greengrass - survivor icon.png"},
-	"Violentgrass": {"kind": "killer", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png"},
-	"Test Killer": {"kind": "killer", "cost": 200, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png"},
+	"Greengrass": {
+		"kind": "survivor", "cost": 0,
+		"icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Greengrass - survivor icon.png",
+		"description": "A gentle grass spirit who heals allies with Spare Flower and blocks attacks with a sturdy punch.",
+		"stats": {"HP": "100", "Speed": "160", "Sprint": "250", "Stamina": "100"},
+		"abilities": [
+			{"name": "Punch (M1)", "desc": "Block incoming attacks and push back enemies"},
+			{"name": "Spare Flower (M2)", "desc": "Heal 70 HP — 45s cooldown"}
+		]
+	},
+	"Violentgrass": {
+		"kind": "killer", "cost": 0,
+		"icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png",
+		"description": "A ruthless grass killer who teleports through shadows and strikes from unexpected angles.",
+		"stats": {"HP": "6666", "Speed": "240", "Sprint": "350", "Stamina": "110", "M1 Damage": "25", "M1 Range": "120px"},
+		"abilities": [
+			{"name": "Scythe Strike (M1)", "desc": "25 dmg, 120px range — 2.5s cooldown"},
+			{"name": "Shadow Teleport (M2)", "desc": "Teleport up to 350px — 45s cooldown"}
+		]
+	},
+	"Test Killer": {
+		"kind": "killer", "cost": 200,
+		"icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png",
+		"description": "An experimental monster that ensnares survivors with a long-range tentacle, dragging them through walls.",
+		"stats": {"HP": "6666", "Speed": "240", "Sprint": "350", "Stamina": "110", "M1 Damage": "25", "M1 Range": "120px"},
+		"abilities": [
+			{"name": "Scythe Strike (M1)", "desc": "25 dmg, 120px range — 2.5s cooldown (10 dmg follow-up after snatch)"},
+			{"name": "Tentacle Snatch (M2)", "desc": "Remote tentacle — 500px range, 15 catch dmg, wall-hit 2 dmg, 1s stun. 28s/18s/12s cooldown"}
+		]
+	},
 }
 
 ## Ownership: which characters the player has bought. Starters are owned by
