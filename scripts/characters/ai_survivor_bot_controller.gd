@@ -264,12 +264,36 @@ func _physics_process(delta: float) -> void:
 	_apply_separation_and_move()
 
 
+func take_damage(amount: float) -> void:
+	"""Override so a bot that reaches 0 HP reliably dies (flings + frees itself),
+	even if the map's elimination wiring doesn't fire. If the map's
+	_on_bot_hp_changed already flung it (setting _dead), we skip our fallback."""
+	super(amount)
+	if current_hp <= 0.0 and not _dead:
+		_auto_death_fling()
+
+
+func _auto_death_fling() -> void:
+	# Fling away from whoever killed it (fallback if the map didn't).
+	var killer_pos := Vector2.ZERO
+	for k in get_tree().get_nodes_in_group("killers"):
+		if is_instance_valid(k):
+			killer_pos = (k as Node2D).global_position
+			break
+	var dir := (global_position - killer_pos).normalized()
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT.rotated(randf() * TAU)
+	play_death_fling(dir, 1.0)
+
+
 func play_death_fling(dir: Vector2, multiplier: float = 1.0) -> void:
 	"""Knock the dead body around the map, then fade it out and remove it after
 	DEATH_FLING_DURATION seconds. `multiplier` scales launch strength (the funny
 	Ragdoll setting passes 2.0 for exactly 100% stronger flings).
 	
 	Uses a Tween for movement so it works regardless of physics state."""
+	if _dead:
+		return  # already dying — keep the first fling
 	_dead = true
 	_death_timer = 0.0
 	_spin_speed = randf_range(-4.0, 4.0)
