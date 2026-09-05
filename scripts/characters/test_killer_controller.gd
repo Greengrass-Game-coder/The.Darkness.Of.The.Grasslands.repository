@@ -31,7 +31,7 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var hit_range: float = 120.0
 
 # ── Tentacle Snatch ──
-@export var tentacle_max_range: float = 500.0
+@export var tentacle_max_range: float = 1000.0
 @export var tentacle_speed_mult: float = 2.0
 @export var tentacle_catch_damage: float = 15.0
 @export var tentacle_wall_damage: float = 2.0
@@ -300,7 +300,7 @@ func _activate_tentacle_snatch() -> void:
 	# Spawn tentacle tip at killer position
 	_tentacle_node = Sprite2D.new()
 	_tentacle_node.name = "TentacleTip"
-	_tentacle_node.texture = load("res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Tentacle UI/tentacle_vertical.png")
+	# No texture: the static tip PNG is removed - only the stretching body is shown
 	_tentacle_node.position = Vector2.ZERO
 	_tentacle_node.z_index = 200
 	add_child(_tentacle_node)
@@ -473,7 +473,8 @@ func _apply_tentacle_stretch() -> void:
 		tex_h = float(_tentacle_body.texture.get_height())
 	_tentacle_body.position = tip * 0.5
 	_tentacle_body.rotation = tip.angle() + PI / 2
-	_tentacle_body.scale = Vector2(1.0, dist / tex_h)
+	# Neutral body size: thin it out from the full texture width (was 1.0 = 169px thick)
+	_tentacle_body.scale = Vector2(0.25, dist / tex_h)
 
 
 func _follow_tentacle_with_camera() -> void:
