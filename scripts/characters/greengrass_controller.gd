@@ -253,6 +253,20 @@ func _use_item_in_slot(slot: int) -> void:
 func _apply_flower_use() -> void:
 	_change_state(State.HEALING)
 	_play_animation("heal")
+	if red_sickness:
+		# Infected survivor: the flower ONLY cures your own sickness — it does
+		# NOT heal HP, and it does not cure a nearby ally either.
+		cure_red_sickness()
+		_flower_infected_cures += 1
+		print("Greengrass: Flower cured self (infected cures=", _flower_infected_cures, ")")
+		if _flower_infected_cures >= FLOWER_CURE_REVEAL_THRESHOLD:
+			print("Greengrass: cured ", _flower_infected_cures, " infected — REVEALED to killer")
+			_reveal_self_to_killer()
+			_flower_infected_cures = 0
+		await get_tree().create_timer(0.9).timeout
+		if current_state == State.HEALING:
+			_change_state(State.IDLE)
+		return
 	_apply_heal(FlowerItem.HEAL_AMOUNT, "self")
 	_apply_flower_cure()
 	var ally := _find_nearest_ally()
