@@ -722,11 +722,11 @@ func _place_rage_trap() -> void:
 	trap.z_index = -50  # Render the trap BEHIND player/killer sprites (z 0), above the ground (z -100)
 	trap.set_meta("born", _rage_elapsed)
 	# Outer red ring (pulses brighter)
-	var ring := _make_circle_polygon(rage_trap_radius, Color(0.9, 0.05, 0.05, 0.8))
+	var ring := _make_circle_polygon(rage_trap_radius, Color(0.9, 0.05, 0.05, 0.1))
 	ring.name = "Ring"
 	trap.add_child(ring)
 	# Dark inner circle (black core)
-	var inner := _make_circle_polygon(rage_trap_radius * 0.7, Color(0.06, 0.02, 0.02, 0.9))
+	var inner := _make_circle_polygon(rage_trap_radius * 0.7, Color(0.06, 0.02, 0.02, 0.1))
 	inner.name = "Inner"
 	trap.add_child(inner)
 	# Detection area
@@ -845,11 +845,11 @@ func _update_rage(delta: float) -> void:
 		trap.scale = Vector2(1.0 + 0.12 * sin(t * 4.0), 1.0 + 0.12 * sin(t * 4.0))
 		var ring: Polygon2D = trap.get_node_or_null("Ring") as Polygon2D
 		if ring:
-			# Red grows more prominent as it pulses
-			ring.color = Color(0.9, 0.05 * (1.0 - pulse), 0.05 * (1.0 - pulse), 0.6 + 0.4 * pulse)
+			# Barely-visible pulsing red (kept at 10% opacity)
+			ring.color = Color(0.9, 0.05 * (1.0 - pulse), 0.05 * (1.0 - pulse), 0.1)
 		var inner: Polygon2D = trap.get_node_or_null("Inner") as Polygon2D
 		if inner:
-			inner.color = Color(0.06, 0.02, 0.02, 0.85 + 0.1 * pulse)
+			inner.color = Color(0.06, 0.02, 0.02, 0.1)
 	# Survivor reveal expiry
 	if is_instance_valid(_revealed_survivor):
 		_reveal_timer -= delta
