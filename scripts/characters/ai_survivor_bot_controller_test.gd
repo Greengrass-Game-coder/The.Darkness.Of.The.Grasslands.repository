@@ -81,6 +81,19 @@ const AVOID_RAY_LENGTH: float = 34.0          # how far ahead we probe for walls
 const AVOID_RAY_COUNT: int = 5                # fan of rays around the heading
 const AVOID_FOV_DEG: float = 70.0             # half-angle of the probe fan
 
+# --- Death fling: when a survivor bot is killed, its body gets knocked around
+# the map (bounces off walls, spins, slides to a stop), then fades out and is
+# removed within DEATH_FLING_DURATION seconds. ---
+var _dead: bool = false
+var _fling_velocity: Vector2 = Vector2.ZERO
+var _death_timer: float = 0.0
+var _spin_speed: float = 0.0
+const DEATH_FLING_DURATION: float = 10.0       # seconds before the body disappears
+const FLING_FRICTION: float = 0.975             # per-frame velocity damping (gentle slide)
+const FLING_BOUNCE_RESTITUTION: float = 0.6     # energy kept when bouncing off a wall
+const FLING_START_SPEED_MIN: float = 350.0
+const FLING_START_SPEED_MAX: float = 600.0
+
 
 func _ready() -> void:
 	super()
@@ -113,6 +126,11 @@ func _input(_event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# A dead body is no longer an AI survivor — just tumble around and vanish.
+	if _dead:
+		_physics_process_dead(delta)
+		return
+
 	if current_state == State.STUNNED:
 		velocity = Vector2.ZERO
 		move_and_slide()
@@ -151,8 +169,19 @@ func _physics_process(delta: float) -> void:
 	# (Only when not already fleeing — prevents interrupting a retreat)
 	if is_instance_valid(_target_killer) and current_hp > 0.0 and not block_on_cooldown:
 		if dist_to_killer <= block_threshold and not _fleeing:
-			var killer_dir: Vector2 = _target_killer.get("facing_direction") if "facing_direction" in _target_killer else Vector2.DOWN
 			var to_bot: Vector2 = (global_position - _target_killer.global_position).normalized()
+			# facing_direction/current_direction is an int enum (DOWN,LEFT,RIGHT,UP),
+			# not a Vector2 — convert it so we can check whether the killer faces this
+			# bot (fixed the runtime error that fired every physics frame).
+			var facing_val: Variant = _target_killer.get("facing_direction")
+			if facing_val == null:
+				facing_val = _target_killer.get("current_direction")
+			var killer_facing: int = int(facing_val)
+			var killer_dir: Vector2 = Vector2.DOWN
+			match killer_facing:
+				Direction.UP: killer_dir = Vector2.UP
+				Direction.LEFT: killer_dir = Vector2.LEFT
+				Direction.RIGHT: killer_dir = Vector2.RIGHT
 			if killer_dir.dot(to_bot) > 0.3:
 				use_block()
 	
@@ -222,6 +251,74 @@ func _physics_process(delta: float) -> void:
 	# PRIORITY 4: Patrol
 	_ai_patrol(delta)
 	move_and_slide()
+
+
+func take_damage(amount: float) -> void:
+	"""Override so a bot that reaches 0 HP reliably dies (flings + frees itself),
+	even if the map's elimination wiring doesn't fire. If the map's
+	_on_bot_hp_changed already flung it (setting _dead), we skip our fallback."""
+	super(amount)
+	if current_hp <= 0.0 and not _dead:
+		_auto_death_fling()
+
+
+func _auto_death_fling() -> void:
+	# Fling away from whoever killed it (fallback if the map didn't).
+	var killer_pos := Vector2.ZERO
+	for k in get_tree().get_nodes_in_group("killers"):
+		if is_instance_valid(k):
+			killer_pos = (k as Node2D).global_position
+			break
+	var dir := (global_position - killer_pos).normalized()
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT.rotated(randf() * TAU)
+	play_death_fling(dir, 1.0)
+
+
+func play_death_fling(dir: Vector2, multiplier: float = 1.0) -> void:
+	"""Knock the dead body around the map, then fade it out and remove it after
+	DEATH_FLING_DURATION seconds. `multiplier` scales launch strength (the funny
+	Ragdoll setting passes 2.0 for exactly 100% stronger flings).
+
+	Uses a Tween for movement so it works regardless of physics state."""
+	if _dead:
+		return  # already dying — keep the first fling
+	_dead = true
+	_death_timer = 0.0
+	_spin_speed = randf_range(-4.0, 4.0)
+	var speed: float = randf_range(FLING_START_SPEED_MIN, FLING_START_SPEED_MAX) * maxf(multiplier, 1.0)
+	_fling_velocity = dir.normalized() * speed
+	# Visible grey corpse (fully opaque so it reads clearly during the fling).
+	modulate = Color(0.5, 0.5, 0.5, 1.0)
+
+	# ── Tween-based fling: animate position directly, no physics needed ──
+	var tween := create_tween()
+	tween.set_parallel(true)
+
+	# Slide the body outward, decelerating
+	var target_pos: Vector2 = global_position + _fling_velocity * 1.5  # overshoot target
+	tween.tween_property(self, "global_position", target_pos, 1.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+
+	# Spin while sliding
+	tween.tween_property(self, "rotation", rotation + _spin_speed * 3.0, 1.5)
+
+	# Fade out after 9.4s and free at 10s
+	var fade_tween := create_tween()
+	fade_tween.tween_interval(DEATH_FLING_DURATION - 0.6)
+	fade_tween.tween_property(self, "modulate:a", 0.0, 0.6)
+	fade_tween.tween_callback(queue_free)
+
+
+func _physics_process_dead(delta: float) -> void:
+	"""Dead body: the Tween from play_death_fling handles the position slide.
+	Here we just spin the body and track the fade timer."""
+	# Spin decay
+	rotation += _spin_speed * delta
+	_spin_speed = move_toward(_spin_speed, 0.0, 3.0 * delta)
+
+	# Fade timer: the Tween already handles the actual fade+free at 10s,
+	# but we track _death_timer for the debug print window.
+	_death_timer += delta
 
 
 func _is_killer_near_puzzle(puzzle: Area2D, killer_dist: float) -> bool:
