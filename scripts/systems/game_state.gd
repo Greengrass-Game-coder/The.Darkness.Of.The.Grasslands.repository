@@ -54,7 +54,7 @@ const CHARACTER_CATALOG: Dictionary = {
 		]
 	},
 	"Test Killer": {
-		"kind": "killer", "cost": 200,
+		"kind": "killer", "cost": 1500,
 		"icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png",
 		"description": "An experimental monster that ensnares survivors with a long-range tentacle, dragging them through walls.",
 		"stats": {"HP": "6666", "Speed": "240", "Sprint": "350", "Stamina": "110", "M1 Damage": "25", "M1 Range": "120px"},
