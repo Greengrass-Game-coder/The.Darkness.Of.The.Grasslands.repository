@@ -105,6 +105,16 @@ var _tentacle_retracting: bool = false
 var _tentacle_was_cancelled: bool = false
 var _tentacle_expired: bool = false
 var _tentacle_body: Sprite2D = null  # Stretchable tentacle body (killer -> tip)
+
+# Tentacle SFX (user-provided, in Sound/Sfx/Abilities/Test Killer/)
+const TENTACLE_STRETCH_SOUND := "res://The Darkness Of The Grasslands assets/Sound/Sfx/Abilities/Test Killer/tentacle_stretch_looped.wav"
+const TENTACLE_CATCH_SOUND := "res://The Darkness Of The Grasslands assets/Sound/Sfx/Abilities/Test Killer/tentacle_catch_notlooped.wav"
+const TENTACLE_STOP_SOUND := "res://The Darkness Of The Grasslands assets/Sound/Sfx/Abilities/Test Killer/tentacle_stops_stretch_notlooped.wav"
+const TENTACLE_RETRACT_SOUND := "res://The Darkness Of The Grasslands assets/Sound/Sfx/Abilities/Test Killer/tentacle_retract_looped.wav"
+var _tentacle_stretch_audio: AudioStreamPlayer2D = null
+var _tentacle_catch_audio: AudioStreamPlayer2D = null
+var _tentacle_stop_audio: AudioStreamPlayer2D = null
+var _tentacle_retract_audio: AudioStreamPlayer2D = null
 var rage_on_cooldown: bool = false
 var rage_cooldown_timer: float = 0.0
 var _rage_traps: Array = []
@@ -130,6 +140,11 @@ func _ready() -> void:
 	_base_sprite_scale = animated_sprite.scale.x if animated_sprite else 1.0
 	_base_col_scale = $CollisionShape2D.scale.x if has_node("CollisionShape2D") else 1.0
 	_apply_size()
+	# Set up tentacle SFX players (stretch/retract loop while active).
+	_tentacle_stretch_audio = _make_audio_player(TENTACLE_STRETCH_SOUND, true)
+	_tentacle_catch_audio = _make_audio_player(TENTACLE_CATCH_SOUND, false)
+	_tentacle_stop_audio = _make_audio_player(TENTACLE_STOP_SOUND, false)
+	_tentacle_retract_audio = _make_audio_player(TENTACLE_RETRACT_SOUND, true)
 
 
 func _physics_process(delta: float) -> void:
@@ -371,6 +386,36 @@ func _handle_stunned(_delta: float) -> void:
 
 # ═══════════════ TENTACLE SNATCH ═══════════════
 
+func _make_audio_player(path: String, looped: bool) -> AudioStreamPlayer2D:
+	"""Create a positional audio player for a tentacle SFX (optionally looped)."""
+	var p := AudioStreamPlayer2D.new()
+	var s: AudioStream = load(path)
+	if s is AudioStreamWAV and looped:
+		var w := s as AudioStreamWAV
+		var bytes_per_sample: int = 1 if w.format == AudioStreamWAV.FORMAT_8_BITS else 2
+		var channels: int = 2 if w.stereo else 1
+		var frames: int = w.data.size() / (bytes_per_sample * channels)
+		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		w.loop_begin = 0
+		w.loop_end = frames
+	p.stream = s
+	p.bus = "SFX"
+	add_child(p)
+	return p
+
+
+func _play_tentacle_stretch_sound() -> void:
+	if _tentacle_stretch_audio and not _tentacle_stretch_audio.playing:
+		_tentacle_stretch_audio.play()
+
+
+func _stop_tentacle_stretch_sound() -> void:
+	if _tentacle_stretch_audio and _tentacle_stretch_audio.playing:
+		_tentacle_stretch_audio.stop()
+		if _tentacle_stop_audio:
+			_tentacle_stop_audio.play()
+
+
 func _activate_tentacle_snatch() -> void:
 	"""Player pressed ability_2 — activate or deactivate Tentacle Snatch."""
 	if tentacle_on_cooldown:
@@ -462,7 +507,12 @@ func _handle_tentacle_snatch(delta: float) -> void:
 	# still when no direction is held (it no longer auto-stretches downward).
 	var aim_dir: Vector2 = _get_aim_direction()
 	if aim_dir.length_squared() < 0.01:
+		# Holding still — stop the stretch hum.
+		_stop_tentacle_stretch_sound()
 		return
+	
+	# Extending — hum the stretch loop.
+	_play_tentacle_stretch_sound()
 	
 	var tentacle_speed: float = move_speed * tentacle_speed_mult
 	var target_pos: Vector2 = _tentacle_node.position + aim_dir * tentacle_speed * delta
@@ -510,6 +560,13 @@ func _on_tentacle_catch(body: Node2D) -> void:
 		(body as CharacterBody2D).velocity = Vector2.ZERO
 	
 	print("TestKiller: Tentacle caught ", body.name, " — ", tentacle_catch_damage, " dmg")
+	# SFX: catch thunk, stop the stretch hum, start the retract loop.
+	if _tentacle_catch_audio:
+		_tentacle_catch_audio.play()
+	if _tentacle_stretch_audio:
+		_tentacle_stretch_audio.stop()
+	if _tentacle_retract_audio and not _tentacle_retract_audio.playing:
+		_tentacle_retract_audio.play()
 
 
 func _retract_tentacle(delta: float) -> void:
@@ -518,6 +575,8 @@ func _retract_tentacle(delta: float) -> void:
 		_deactivate_tentacle(true, false)
 		return
 	
+	if _tentacle_retract_audio and not _tentacle_retract_audio.playing:
+		_tentacle_retract_audio.play()
 	var retract_speed: float = move_speed * tentacle_speed_mult * 1.5  # Faster retraction
 	var dir_to_killer: Vector2 = -_tentacle_node.position.normalized()
 	if _tentacle_node.position.length() < 10.0:
@@ -607,6 +666,14 @@ func _restore_camera_to_killer() -> void:
 func _deactivate_tentacle(success: bool, cancelled: bool) -> void:
 	"""Clean up tentacle and set cooldown."""
 	_tentacle_active = false
+	
+	# Stop tentacle SFX: snap-back "stop" if the stretch hum was still going.
+	if _tentacle_stretch_audio and _tentacle_stretch_audio.playing:
+		_tentacle_stretch_audio.stop()
+		if _tentacle_stop_audio:
+			_tentacle_stop_audio.play()
+	if _tentacle_retract_audio:
+		_tentacle_retract_audio.stop()
 	
 	if is_instance_valid(_tentacle_node):
 		_tentacle_node.queue_free()
