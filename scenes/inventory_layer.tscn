@@ -86,9 +86,17 @@ theme_override_colors/font_color = Color(0.3, 1, 0.3, 1)
 theme_override_font_sizes/font_size = 18
 text = "SURVIVORS"
 
-[node name="CharacterContainer" type="Control" parent="UILayer/Panel" unique_id=674315176]
+[node name="CharacterContainer" type="ScrollContainer" parent="UILayer/Panel" unique_id=674315176]
 anchors_preset = 0
 offset_left = 140.0
 offset_top = 140.0
 offset_right = 1140.0
 offset_bottom = 660.0
+horizontal_scroll_mode = 0
+follow_focus = true
+
+[node name="CardList" type="VBoxContainer" parent="UILayer/Panel/CharacterContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 8

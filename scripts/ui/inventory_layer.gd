@@ -10,7 +10,8 @@ enum Tab { KILLERS, SURVIVORS }
 @onready var close_button: Button = $UILayer/Panel/CloseButton
 @onready var tab_killers: Button = $UILayer/Panel/TabButtons/KillersTab
 @onready var tab_survivors: Button = $UILayer/Panel/TabButtons/SurvivorsTab
-@onready var character_container: Control = $UILayer/Panel/CharacterContainer
+@onready var character_container: ScrollContainer = $UILayer/Panel/CharacterContainer
+@onready var _card_list: VBoxContainer = $UILayer/Panel/CharacterContainer/CardList
 
 var _current_tab: Tab = Tab.KILLERS
 
@@ -43,13 +44,13 @@ func _setup_signals() -> void:
 
 func _switch_tab(tab: Tab) -> void:
 	_current_tab = tab
-	tab_killers.disabled = (tab == Tab.KILLERS)
-	tab_survivors.disabled = (tab == Tab.SURVIVORS)
+	tab_killers.disabled = (tab != Tab.KILLERS)
+	tab_survivors.disabled = (tab != Tab.SURVIVORS)
 	_build_character_cards()
 
 
 func _build_character_cards() -> void:
-	for c in character_container.get_children():
+	for c in _card_list.get_children():
 		c.queue_free()
 
 	var kind: String = "killer" if _current_tab == Tab.KILLERS else "survivor"
@@ -63,15 +64,16 @@ func _build_character_cards() -> void:
 func _add_character_card(name_text: String, def: Dictionary, kind: String) -> void:
 	# ── Card container (horizontal layout: icon left, info right) ──
 	var card := Panel.new()
-	card.custom_minimum_size = Vector2(480, 160)
+	card.custom_minimum_size = Vector2(460, 160)
 	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	card.clip_contents = true
 
 	# ── Icon (left side) ──
 	var icon := TextureRect.new()
 	icon.texture = load(def.get("icon", ""))
-	icon.custom_minimum_size = Vector2(120, 120)
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
-	icon.position = Vector2(14, 20)
+	icon.custom_minimum_size = Vector2(100, 100)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.position = Vector2(20, 30)
 	card.add_child(icon)
 
 	var owned: bool = GameState.is_character_owned(kind, name_text)
@@ -82,7 +84,7 @@ func _add_character_card(name_text: String, def: Dictionary, kind: String) -> vo
 		icon.modulate = Color(0.4, 0.4, 0.4, 1)
 
 	# ── Info column (right of icon) ──
-	var info_x: float = 150.0
+	var info_x: float = 135.0
 
 	# Name
 	var name_lbl := BitmapLabel.new()
@@ -147,7 +149,7 @@ func _add_character_card(name_text: String, def: Dictionary, kind: String) -> vo
 		equip_btn.pressed.connect(_equip_character.bind(kind, name_text))
 		card.add_child(equip_btn)
 
-	character_container.add_child(card)
+	_card_list.add_child(card)
 
 
 # ═══════════════ EQUIP ═══════════════
@@ -219,9 +221,9 @@ func _show_details(name_text: String, kind: String, def: Dictionary) -> void:
 	y += 22
 
 	# EXP for this character
-	var exp: int = GameState.get_character_exp(name_text)
+	var character_exp: int = GameState.get_character_exp(name_text)
 	var exp_lbl := BitmapLabel.new()
-	exp_lbl.label_text = "CHARACTER EXP: %d" % exp
+	exp_lbl.label_text = "CHARACTER EXP: %d" % character_exp
 	exp_lbl.font_scale = 0.11
 	exp_lbl.font_color = Color(0.6, 0.9, 1, 1)
 	exp_lbl.position = Vector2(14, y)
