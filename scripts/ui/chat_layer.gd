@@ -13,9 +13,9 @@ signal chat_opened()
 signal chat_closed()
 
 @export var panel_position: Vector2 = Vector2(20, 80)
-@export var panel_size: Vector2 = Vector2(600, 340)
-@export var input_position: Vector2 = Vector2(20, 425)
-@export var input_size: Vector2 = Vector2(600, 42)
+@export var panel_size: Vector2 = Vector2(520, 240)
+@export var input_position: Vector2 = Vector2(20, 324)
+@export var input_size: Vector2 = Vector2(520, 34)
 @export var max_messages: int = 50
 
 # Reserved username tag colors (lowercase keys)
@@ -132,6 +132,7 @@ func _build_ui() -> void:
 	input.placeholder_text = "Press T to chat... | G for admin"
 	input.editable = false
 	input.text_submitted.connect(_on_text_submitted)
+	input.add_theme_font_size_override("font_size", 14)
 	root.add_child(input)
 	_chat_input = input
 	
@@ -280,9 +281,9 @@ func _add_message_label(msg: String) -> void:
 	
 	var label := BitmapLabel.new()
 	label.label_text = msg
-	label.font_scale = 0.16
+	label.font_scale = 0.10
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.size.y = 30  # Slightly taller for visual breathing room
+	label.size.y = 20  # Compact row height
 	
 	# Determine sender color for tag formatting
 	if msg.begins_with("["):
