@@ -142,8 +142,8 @@ func _ready() -> void:
 	_apply_size()
 	# Set up tentacle SFX players (stretch/retract loop while active).
 	_tentacle_stretch_audio = _make_audio_player(TENTACLE_STRETCH_SOUND, true)
-	if _tentacle_stretch_audio:
-		_tentacle_stretch_audio.volume_db = -20.0  # ~10% volume
+		if _tentacle_stretch_audio:
+			_tentacle_stretch_audio.volume_db = linear_to_db(1.1)  # +10% louder
 	_tentacle_catch_audio = _make_audio_player(TENTACLE_CATCH_SOUND, false)
 	_tentacle_stop_audio = _make_audio_player(TENTACLE_STOP_SOUND, false)
 	_tentacle_retract_audio = _make_audio_player(TENTACLE_RETRACT_SOUND, true)
