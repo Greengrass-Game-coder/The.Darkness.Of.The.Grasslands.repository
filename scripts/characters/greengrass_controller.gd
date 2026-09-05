@@ -83,6 +83,15 @@ var heal_over_time_active: bool = false
 var heal_tick_timer: float = 0.0
 var heal_ticks_remaining: int = 7
 
+# --- Held item + 7s self-heal channel ---
+var _held_item_sprite: Sprite2D = null
+var _heal_bar: ColorRect = null
+const HELD_ITEM_HEAL_DURATION: float = 7.0    # seconds to channel a flower heal
+const HEAL_WALK_SPEED: float = 80.0           # slow walk while channeling
+const HEAL_BAR_WIDTH: float = 60.0
+var _heal_channel_slot: int = -1              # slot currently channeling, -1 = none
+var _heal_channel_timer: float = 0.0
+
 var _slow_active: bool = false
 var _slow_timer: float = 0.0
 
@@ -141,6 +150,8 @@ func _ready() -> void:
 	hp_changed.emit(current_hp, max_hp)
 	stamina_changed.emit(current_stamina, max_stamina)
 	_setup_ability_vfx_frames()
+	_setup_held_item_sprite()
+	_setup_heal_progress_bar()
 	if not ability_vfx.animation_finished.is_connected(_on_ability_vfx_finished):
 		ability_vfx.animation_finished.connect(_on_ability_vfx_finished)
 
@@ -174,6 +185,14 @@ func _input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("item_2"):
 		_use_item_in_slot(1)
+		return
+	# Use the held item with M1 (left click). While channeling a heal, M1
+	# cancels it (same as pressing its inventory slot).
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _heal_channel_slot >= 0:
+			_use_item_in_slot(_heal_channel_slot)
+		elif _is_holding_item():
+			_use_held_item_m1()
 		return
 	# Can't use abilities while carrying an item.
 	if _is_holding_item():
@@ -232,23 +251,91 @@ func _try_pickup_item() -> bool:
 		_item_slots[slot] = FlowerItem.FLOWER_ITEM
 		item_slot_changed.emit(slot, FlowerItem.FLOWER_ITEM)
 		print("Greengrass: picked up Flower into slot ", slot + 1)
+		_update_held_item_visual()
 		return true
 	return false
 
 
+func _use_held_item_m1() -> void:
+	"""Use the first carried item with M1 (left click)."""
+	for i in range(ITEM_SLOT_COUNT):
+		if _item_slots[i] != null:
+			_use_item_in_slot(i)
+			return
+
+
 func _use_item_in_slot(slot: int) -> void:
+	if slot < 0 or slot >= _item_slots.size():
+		return
+	# Pressing the slot that's currently channeling cancels the heal (the
+	# flower is unequipped back into that slot).
+	if _heal_channel_slot == slot:
+		_cancel_heal_channel()
+		return
+	# Can't start another use while a channel is already running.
+	if _heal_channel_slot >= 0:
+		return
 	if current_state != State.IDLE and current_state != State.WALKING:
 		return
-	if slot < 0 or slot >= _item_slots.size() or _item_slots[slot] == null:
-		# Empty slot → nothing to use (was crashing before).
+	if _item_slots[slot] == null:
 		return
 	var itype: String = _item_slots[slot]
 	if itype != FlowerItem.FLOWER_ITEM:
 		return
-	_item_slots[slot] = null
-	item_slot_changed.emit(slot, "")
-	_apply_flower_use()
-	print("Greengrass: used Flower from slot ", slot + 1)
+	# Infected survivors: the flower instantly cures (no heal, no channel).
+	if red_sickness:
+		_item_slots[slot] = null
+		item_slot_changed.emit(slot, "")
+		_apply_flower_use()
+		_update_held_item_visual()
+		return
+	# Healthy survivor: start the 7-second self-heal channel. The flower stays
+	# in the slot until the channel completes.
+	_start_heal_channel(slot)
+
+
+func _start_heal_channel(slot: int) -> void:
+	_heal_channel_slot = slot
+	_heal_channel_timer = HELD_ITEM_HEAL_DURATION
+	_change_state(State.HEALING)
+	_play_animation("heal")
+	_update_held_item_visual()
+	if _heal_bar:
+		_heal_bar.visible = true
+		_heal_bar.size.x = 0.0
+	print("Greengrass: healing with Flower (7s channel) from slot ", slot + 1)
+
+
+func _finish_heal_channel() -> void:
+	"""Channel completed: consume the flower and apply the heal."""
+	if _heal_channel_slot < 0:
+		return
+	var slot: int = _heal_channel_slot
+	_heal_channel_slot = -1
+	if slot < _item_slots.size():
+		_item_slots[slot] = null
+		item_slot_changed.emit(slot, "")
+	_apply_heal(FlowerItem.HEAL_AMOUNT, "self")
+	_apply_flower_cure()
+	_update_held_item_visual()
+	if _heal_bar:
+		_heal_bar.visible = false
+	_change_state(State.IDLE)
+	_play_animation("idle")
+	print("Greengrass: Flower heal complete (+", FlowerItem.HEAL_AMOUNT, " HP)")
+
+
+func _cancel_heal_channel() -> void:
+	"""Cancel a flower heal mid-channel; the flower returns to its slot."""
+	if _heal_channel_slot < 0:
+		return
+	_heal_channel_slot = -1
+	_update_held_item_visual()
+	if _heal_bar:
+		_heal_bar.visible = false
+	_change_state(State.IDLE)
+	_play_animation("idle")
+	print("Greengrass: cancelled Flower heal — flower back in hand")
 
 
 func _apply_flower_use() -> void:
@@ -433,9 +520,29 @@ func _handle_punching(delta: float) -> void:
 	move_and_slide()
 
 
-func _handle_healing(_delta: float) -> void:
-	velocity = Vector2.ZERO
-	_play_animation("heal")
+func _handle_healing(delta: float) -> void:
+	# Slow walk while channeling a flower heal; no sprint, no abilities.
+	var input_dir := Vector2.ZERO
+	input_dir.x = Input.get_axis("move_left", "move_right")
+	input_dir.y = Input.get_axis("move_up", "move_down")
+	if input_dir != Vector2.ZERO:
+		input_dir = input_dir.normalized()
+		velocity = input_dir * HEAL_WALK_SPEED
+		_update_direction(input_dir)
+		_play_animation("walk")
+	else:
+		velocity = Vector2.ZERO
+		_play_animation("heal")
+	move_and_slide()
+
+	# Count down the channel and fill the progress bar.
+	if _heal_channel_slot >= 0:
+		_heal_channel_timer -= delta
+		if _heal_bar:
+			var frac: float = clampf(1.0 - (_heal_channel_timer / HELD_ITEM_HEAL_DURATION), 0.0, 1.0)
+			_heal_bar.size.x = HEAL_BAR_WIDTH * frac
+		if _heal_channel_timer <= 0.0:
+			_finish_heal_channel()
 
 
 func _handle_stunned(delta: float) -> void:
@@ -465,6 +572,7 @@ func _update_direction(input_dir: Vector2) -> void:
 		current_direction = Direction.RIGHT if input_dir.x > 0 else Direction.LEFT
 	else:
 		current_direction = Direction.DOWN if input_dir.y > 0 else Direction.UP
+	_update_held_item_visual()
 
 
 func _play_animation(anim: String) -> void:
@@ -510,6 +618,43 @@ func _change_state(new_state: State) -> void:
 
 
 # ---------- ABILITY VFX ----------
+
+func _setup_held_item_sprite() -> void:
+	"""Create the visual of the item held in hand (Greengrass holding a flower)."""
+	_held_item_sprite = Sprite2D.new()
+	_held_item_sprite.name = "HeldItem"
+	var tex: Texture2D = load("res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Greengrass_holding_flower.png")
+	if tex:
+		_held_item_sprite.texture = tex
+	_held_item_sprite.scale = Vector2(0.25, 0.25)
+	_held_item_sprite.z_index = 5
+	_held_item_sprite.visible = false
+	add_child(_held_item_sprite)
+	_update_held_item_visual()
+
+
+func _setup_heal_progress_bar() -> void:
+	"""Small progress bar above the survivor shown while a flower heal channels."""
+	_heal_bar = ColorRect.new()
+	_heal_bar.name = "HealProgressBar"
+	_heal_bar.position = Vector2(-HEAL_BAR_WIDTH * 0.5, -72.0)
+	_heal_bar.size = Vector2(HEAL_BAR_WIDTH, 6.0)
+	_heal_bar.color = Color(0.2, 0.95, 0.3, 0.95)
+	_heal_bar.visible = false
+	_heal_bar.z_index = 20
+	add_child(_heal_bar)
+
+
+func _update_held_item_visual() -> void:
+	"""Show/hide the held item and point it the way the survivor is going."""
+	if not is_instance_valid(_held_item_sprite):
+		return
+	var holding: bool = _is_holding_item() and _heal_channel_slot == -1
+	_held_item_sprite.visible = holding
+	if holding:
+		# Mirror the held-flower frame to face the direction of travel.
+		_held_item_sprite.flip_h = (current_direction == Direction.LEFT)
+
 
 func _setup_ability_vfx_frames() -> void:
 	var vfx_sf := SpriteFrames.new()
