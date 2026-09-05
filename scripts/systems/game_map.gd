@@ -43,7 +43,7 @@ const KILLER_CHASE_EXIT: Array[float]  = [0.0, 0.0, 0.0, 700.0]
 const SURVIVOR_CHASE_ENTER: Array[float] = [1500.0, 1000.0, 500.0, 250.0]
 # Exit is just past each enter step so the chase MUTES as soon as the killer
 # moves away (no endless lingering build-up once the threat is far).
-const SURVIVOR_CHASE_EXIT: Array[float]  = [1520.0, 1030.0, 530.0, 1000.0]
+const SURVIVOR_CHASE_EXIT: Array[float]  = [1520.0, 1030.0, 530.0, 2000.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
 const CHASE_MAP_DUCK_DB: float = -80.0  # Background music FULLY muted while chase is active (restore only when killer is far)
@@ -1810,7 +1810,7 @@ func _update_chase_music(_delta: float) -> void:
 				break
 		
 		# Hysteresis on the way OUT: hold a more intense layer until it exits its
-		# own range, so the full Chase stays on until the survivor runs 1000px away.
+		# own range, so the full Chase stays on until the survivor runs 2000px away.
 		if target_layer < _chase_active_layer:
 			if dist <= SURVIVOR_CHASE_EXIT[_chase_active_layer]:
 				target_layer = _chase_active_layer
@@ -1851,6 +1851,10 @@ func _update_chase_music(_delta: float) -> void:
 				var vol: float = CHASE_LAYER_VOLUME[i] if i == target_layer else -80.0
 				_kill_chase_tween(i)
 				_start_chase_tween(i, vol)
+				# Each layer starts from its beginning the moment it becomes the
+				# active (audible) layer, instead of resuming mid-track.
+				if i == target_layer:
+					_chase_players[i].play(0.0)
 		
 		# Mute/restore background map music based on whether a chase is active.
 		# A chase layer playing → map music is FULLY muted (CHASE_MAP_DUCK_DB).

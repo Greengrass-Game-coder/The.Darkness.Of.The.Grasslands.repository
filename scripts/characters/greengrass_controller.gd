@@ -238,6 +238,9 @@ func _try_pickup_item() -> bool:
 func _use_item_in_slot(slot: int) -> void:
 	if current_state != State.IDLE and current_state != State.WALKING:
 		return
+	if slot < 0 or slot >= _item_slots.size() or _item_slots[slot] == null:
+		# Empty slot → nothing to use (was crashing before).
+		return
 	var itype: String = _item_slots[slot]
 	if itype != FlowerItem.FLOWER_ITEM:
 		return
