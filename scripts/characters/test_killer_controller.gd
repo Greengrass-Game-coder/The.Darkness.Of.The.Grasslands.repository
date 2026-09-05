@@ -57,6 +57,7 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var better_sight_cooldown: float = 8.0
 @export var better_sight_speed_mult: float = 1.5
 @export var better_sight_reach_distance: float = 120.0
+@export var better_sight_arrow_radius: float = 60.0
 
 # ── Size ──
 @export var size_mult: float = 1.0:
@@ -783,7 +784,7 @@ func _show_better_sight_marker(target: Node2D) -> void:
 	var arrow := _make_arrow_polygon(Color(1.0, 0.85, 0.2, 1.0))
 	arrow.name = "Arrow"
 	marker.add_child(arrow)
-	marker.position = Vector2(0, -70)
+	marker.position = Vector2.ZERO
 	marker.z_index = 200
 	add_child(marker)
 	_better_sight_marker = marker
@@ -791,12 +792,14 @@ func _show_better_sight_marker(target: Node2D) -> void:
 
 
 func _update_better_sight_arrow(target: Node2D) -> void:
-	"""Rotate the arrow over the killer's head toward the tracked survivor."""
+	"""Orbit the arrow around the killer on the side facing the tracked survivor."""
 	if not is_instance_valid(_better_sight_marker) or not is_instance_valid(target):
 		return
 	var dir: Vector2 = target.global_position - global_position
 	if dir.length_squared() < 0.01:
 		return
+	dir = dir.normalized()
+	_better_sight_marker.position = dir * better_sight_arrow_radius
 	_better_sight_marker.rotation = dir.angle()
 
 func _make_circle_polygon(radius: float, color: Color, points: int = 32) -> Polygon2D:
