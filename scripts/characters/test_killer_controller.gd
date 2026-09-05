@@ -577,9 +577,8 @@ func _deactivate_tentacle(success: bool, cancelled: bool) -> void:
 
 # ═══════════════ THE RAGE (INFORMATION TRAP) ═══════════════
 
-func _place_rage_trap(place_pos: Vector2 = Vector2.INF) -> void:
-	"""Place a pulsing black/red trap (ability_3 / R).
-	Defaults to the killer's position; the AI passes a strategic spot (e.g. ahead of a survivor)."""
+func _place_rage_trap() -> void:
+	"""Place a pulsing black/red trap at the killer's own position (ability_3 / R)."""
 	if rage_on_cooldown:
 		return
 	if current_state == State.TENTACLE_SNATCH or current_state == State.HITTING:
@@ -592,7 +591,7 @@ func _place_rage_trap(place_pos: Vector2 = Vector2.INF) -> void:
 
 	var trap := Node2D.new()
 	trap.name = "RageTrap"
-	trap.global_position = place_pos if place_pos.is_finite() else global_position
+	trap.global_position = global_position
 	trap.z_index = 150
 	trap.set_meta("born", _rage_elapsed)
 	# Outer red ring (pulses brighter)
@@ -623,8 +622,12 @@ func _place_rage_trap(place_pos: Vector2 = Vector2.INF) -> void:
 
 
 func _on_rage_triggered(body: Node2D, trap: Node2D) -> void:
-	"""A survivor stepped on a trap - it vanishes and the survivor is revealed."""
+	"""A survivor stepped on a trap - it vanishes and the survivor is revealed.
+	An already-infected survivor does NOT trigger the trap, and it stays put."""
 	if not is_instance_valid(body) or not body.has_method("take_damage"):
+		return
+	# An infected survivor walking over the trap triggers nothing and the trap stays.
+	if body.get("red_sickness") == true:
 		return
 	# Trap disappears
 	if is_instance_valid(trap):

@@ -1116,13 +1116,13 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 
 
 func _create_item_slot_icons(_player_node: Node2D) -> void:
-	"""Create 3 item slots (keys 1/2/3) to the left of the ability bar for survivors."""
+	"""Create 2 item slots (keys 1/2) to the left of the ability bar for survivors."""
 	var container := Control.new()
 	container.name = "ItemSlots"
 	container.position = Vector2(240, ability_icons_pos.y)
-	container.size = Vector2(200, 56)
+	container.size = Vector2(130, 56)
 	$HUD.add_child(container)
-	for i in range(3):
+	for i in range(2):
 		var slot := Control.new()
 		slot.name = "ItemSlot%d" % i
 		slot.position = Vector2(i * 62.0, 0)

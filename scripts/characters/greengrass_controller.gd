@@ -117,8 +117,8 @@ var _qte_progress: int = 0
 var _qte_timer: float = 0.0
 var _qte_marker: Node2D = null
 # ── Item Slots (1/2/3) ──
-const ITEM_SLOT_COUNT: int = 3
-var _item_slots: Array = [null, null, null]
+const ITEM_SLOT_COUNT: int = 2
+var _item_slots: Array = [null, null]
 
 
 func _ready() -> void:
@@ -163,15 +163,16 @@ func _input(event: InputEvent) -> void:
 			if _qte_active and event.keycode != KEY_F:
 				_handle_qte_keypress(event.keycode)
 				return
-	# Item slots (1/2/3): use an item in a slot, or pick one up if empty.
+	# Pick up a nearby Flower with the Interact key into the first empty slot.
+	if event.is_action_pressed("interact"):
+		if _try_pickup_item():
+			return
+	# Item slots (1/2): use the item held in that slot.
 	if event.is_action_pressed("item_1"):
-		_handle_item_slot(0)
+		_use_item_in_slot(0)
 		return
 	if event.is_action_pressed("item_2"):
-		_handle_item_slot(1)
-		return
-	if event.is_action_pressed("item_3"):
-		_handle_item_slot(2)
+		_use_item_in_slot(1)
 		return
 	# Can't use abilities while carrying an item.
 	if _is_holding_item():
@@ -202,16 +203,8 @@ func _is_holding_item() -> bool:
 	return false
 
 
-func _handle_item_slot(slot: int) -> void:
-	if slot < 0 or slot >= ITEM_SLOT_COUNT:
-		return
-	if _item_slots[slot] != null:
-		_use_item_in_slot(slot)
-	else:
-		_try_pickup_item(slot)
-
-
-func _try_pickup_item(slot: int) -> void:
+func _try_pickup_item() -> bool:
+	"""Pick up the nearest Flower into the first empty item slot. Returns true if picked up."""
 	var best: Node2D = null
 	var best_dist: float = FlowerItem.PICKUP_RADIUS
 	for item in get_tree().get_nodes_in_group("flower_items"):
@@ -225,11 +218,21 @@ func _try_pickup_item(slot: int) -> void:
 			best = f
 			best_dist = d
 	if best == null:
-		return
+		return false
+	# First empty slot (only pick up if there is room to carry).
+	var slot: int = -1
+	for i in range(ITEM_SLOT_COUNT):
+		if _item_slots[i] == null:
+			slot = i
+			break
+	if slot < 0:
+		return false
 	if (best as FlowerItem).try_pickup(self):
 		_item_slots[slot] = FlowerItem.FLOWER_ITEM
 		item_slot_changed.emit(slot, FlowerItem.FLOWER_ITEM)
 		print("Greengrass: picked up Flower into slot ", slot + 1)
+		return true
+	return false
 
 
 func _use_item_in_slot(slot: int) -> void:

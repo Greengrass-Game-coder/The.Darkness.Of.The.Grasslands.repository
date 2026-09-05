@@ -14,6 +14,10 @@ var _ai_rage_timer: float = 3.0
 var _ai_better_sight_timer: float = 5.0
 
 
+func _input(_event: InputEvent) -> void:
+	pass
+
+
 func _physics_process(delta: float) -> void:
 	if current_hp <= 0.0:
 		return
@@ -57,23 +61,6 @@ func _physics_process(delta: float) -> void:
 		_exhaustion_timer -= delta
 		if _exhaustion_timer <= 0.0:
 			_stamina_exhausted = false
-
-
-func _place_rage_trap(place_pos: Vector2 = Vector2.INF) -> void:
-	"""Strategically place The Rage near the target survivor's predicted position."""
-	if rage_on_cooldown:
-		return
-	_ai_find_target()
-	if not is_instance_valid(_target):
-		super._place_rage_trap()
-		return
-	var aim: Vector2 = _target.global_position
-	# Lead the survivor's movement slightly so the trap catches them mid-path.
-	if "velocity" in _target:
-		aim += (_target.velocity as Vector2) * 0.6
-	# Small jitter so the trap isn't pixel-perfect and can be dodged.
-	aim += Vector2(randf_range(-45.0, 45.0), randf_range(-45.0, 45.0))
-	super._place_rage_trap(aim)
 
 
 func _ai_find_target() -> void:
