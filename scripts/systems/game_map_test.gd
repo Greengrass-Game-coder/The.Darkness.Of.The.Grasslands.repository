@@ -43,7 +43,7 @@ const KILLER_CHASE_EXIT: Array[float]  = [0.0, 0.0, 0.0, 700.0]
 const SURVIVOR_CHASE_ENTER: Array[float] = [500.0, 300.0, 150.0, 80.0]
 # Exit is just past each enter step so the chase MUTES as soon as the killer
 # moves away (no endless lingering build-up once the threat is far).
-const SURVIVOR_CHASE_EXIT: Array[float]  = [520.0, 330.0, 180.0, 110.0]
+const SURVIVOR_CHASE_EXIT: Array[float]  = [520.0, 330.0, 180.0, 1000.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
 const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
@@ -1875,7 +1875,7 @@ func _update_chase_music(_delta: float) -> void:
 			_silence_all_chase()
 		return
 	
-	var is_killer: bool = _character_name == "Violentgrass"
+	var is_killer: bool = _is_killer_character(_character_name)
 	var chase_source: Node2D = null
 	var dist: float = INF
 	
@@ -3131,7 +3131,7 @@ func _on_bot_hp_changed(current_hp: float, _max_hp: float, bot: Node2D) -> void:
 
 func _check_all_survivors_eliminated() -> void:
 	"""End the match when all survivors (human + AI bots) are eliminated."""
-	var is_killer: bool = _character_name == "Violentgrass"
+	var is_killer: bool = _is_killer_character(_character_name)
 	if is_killer:
 		# The human IS the killer — survivors are only the bots.
 		# The killer wins as soon as all bot survivors are eliminated.
@@ -3182,7 +3182,7 @@ func _check_everyone_dead() -> void:
 	  dead → round ends (also handled by the death sequence)."""
 	if _round_ended or not _match_live:
 		return
-	var is_killer: bool = _character_name == "Violentgrass"
+	var is_killer: bool = _is_killer_character(_character_name)
 	if is_killer:
 		if _alive_survivor_bot_count <= 0:
 			print("GameMap: (guaranteed) All survivors eliminated — ending match")
