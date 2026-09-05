@@ -537,7 +537,7 @@ func _place_markers() -> void:
 		# Interact prompt label
 		var prompt := Label.new()
 		prompt.name = "InteractPrompt"
-		prompt.text = "[E] Activate"
+		prompt.text = "[%s] Activate" % InputSystem.prompt_for("interact", "E")
 		prompt.position = Vector2(-50, -40)
 		prompt.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 		prompt.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
@@ -1079,7 +1079,7 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		# Key label
 		var key_label := Label.new()
 		key_label.name = "KeyLabel"
-		key_label.text = data["key"]
+		key_label.text = InputSystem.prompt_for({"Q":"ability_1","E":"ability_2","R":"ability_3","T":"ability_4"}.get(data["key"],""), data["key"])
 		key_label.position = Vector2(2, 34)
 		key_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
 		key_label.add_theme_font_size_override("font_size", 14)
@@ -2093,7 +2093,7 @@ func _show_teleport_circles() -> void:
 	# Cancel hint at top of screen
 	var hint := Label.new()
 	hint.name = "TeleportCancelHint"
-	hint.text = "[E] to cancel"
+	hint.text = "[%s] to cancel" % InputSystem.prompt_for("interact", "E")
 	hint.add_theme_color_override("font_color", Color(1, 0.6, 0.6, 0.9))
 	hint.add_theme_font_size_override("font_size", 14)
 	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
@@ -3300,7 +3300,7 @@ func _rearm_puzzle(area: Area2D, area_name: String) -> void:
 	_solved_puzzles.erase(area_name)
 	var prompt: Label = area.get_node_or_null("InteractPrompt")
 	if prompt:
-		prompt.text = "Press E to solve"
+		prompt.text = "Press %s to solve" % InputSystem.prompt_for("interact", "E")
 		prompt.visible = false
 	if area.has_node("ColorRect"):
 		var rect: ColorRect = area.get_node("ColorRect")
