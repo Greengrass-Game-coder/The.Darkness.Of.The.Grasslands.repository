@@ -9,6 +9,7 @@ signal stamina_changed(current: float, max_stamina: float)
 signal slowed(duration: float)
 signal hp_changed(current_hp: float, max_hp: float)
 signal red_sickness_changed(infected: bool)
+signal item_slot_changed(slot: int, item: String)
 
 enum State { IDLE, WALKING, BLOCKING, DASH_BLOCKING, PUNCHING, PUNCH_CHARGING, HEALING, STUNNED, SLOWED }
 
@@ -115,6 +116,9 @@ var _qte_keycode: int = KEY_E
 var _qte_progress: int = 0
 var _qte_timer: float = 0.0
 var _qte_marker: Node2D = null
+# ── Item Slots (1/2/3) ──
+const ITEM_SLOT_COUNT: int = 3
+var _item_slots: Array = [null, null, null]
 
 
 func _ready() -> void:
@@ -159,6 +163,19 @@ func _input(event: InputEvent) -> void:
 			if _qte_active and event.keycode != KEY_F:
 				_handle_qte_keypress(event.keycode)
 				return
+	# Item slots (1/2/3): use an item in a slot, or pick one up if empty.
+	if event.is_action_pressed("item_1"):
+		_handle_item_slot(0)
+		return
+	if event.is_action_pressed("item_2"):
+		_handle_item_slot(1)
+		return
+	if event.is_action_pressed("item_3"):
+		_handle_item_slot(2)
+		return
+	# Can't use abilities while carrying an item.
+	if _is_holding_item():
+		return
 	if event.is_action_pressed("ability_1"):
 		use_block()
 	elif event.is_action_pressed("ability_2"):
@@ -176,6 +193,71 @@ func _near_puzzle_or_generator() -> bool:
 			if (area as Area2D).get_overlapping_bodies().has(self):
 				return true
 	return false
+
+
+func _is_holding_item() -> bool:
+	for s in _item_slots:
+		if s != null:
+			return true
+	return false
+
+
+func _handle_item_slot(slot: int) -> void:
+	if slot < 0 or slot >= ITEM_SLOT_COUNT:
+		return
+	if _item_slots[slot] != null:
+		_use_item_in_slot(slot)
+	else:
+		_try_pickup_item(slot)
+
+
+func _try_pickup_item(slot: int) -> void:
+	var best: Node2D = null
+	var best_dist: float = FlowerItem.PICKUP_RADIUS
+	for item in get_tree().get_nodes_in_group("flower_items"):
+		if not is_instance_valid(item):
+			continue
+		var f := item as FlowerItem
+		if f == null or f.is_consumed():
+			continue
+		var d: float = global_position.distance_to(f.global_position)
+		if d <= best_dist:
+			best = f
+			best_dist = d
+	if best == null:
+		return
+	if (best as FlowerItem).try_pickup(self):
+		_item_slots[slot] = FlowerItem.FLOWER_ITEM
+		item_slot_changed.emit(slot, FlowerItem.FLOWER_ITEM)
+		print("Greengrass: picked up Flower into slot ", slot + 1)
+
+
+func _use_item_in_slot(slot: int) -> void:
+	if current_state != State.IDLE and current_state != State.WALKING:
+		return
+	var itype: String = _item_slots[slot]
+	if itype != FlowerItem.FLOWER_ITEM:
+		return
+	_item_slots[slot] = null
+	item_slot_changed.emit(slot, "")
+	_apply_flower_use()
+	print("Greengrass: used Flower from slot ", slot + 1)
+
+
+func _apply_flower_use() -> void:
+	_change_state(State.HEALING)
+	_play_animation("heal")
+	_apply_heal(FlowerItem.HEAL_AMOUNT, "self")
+	_apply_flower_cure()
+	var ally := _find_nearest_ally()
+	if ally != null:
+		healing_ally = ally
+		heal_over_time_active = true
+		heal_ticks_remaining = 7
+		heal_tick_timer = 1.0
+	await get_tree().create_timer(0.9).timeout
+	if current_state == State.HEALING:
+		_change_state(State.IDLE)
 
 
 func _physics_process(delta: float) -> void:
@@ -839,7 +921,9 @@ func _update_cooldowns(delta: float) -> void:
 # ═══════════════ RED SICKNESS ═══════════════
 
 func inflict_red_sickness() -> void:
-	"""Apply (or refresh) Red Sickness. Does NOT stack — refreshing re-arms the tick."""
+	"""Apply Red Sickness. Already-infected survivors can't refresh/reset it by re-stepping a Rage trap."""
+	if red_sickness:
+		return
 	red_sickness = true
 	red_sickness_tick_timer = RED_SICKNESS_TICK_INTERVAL
 	red_sickness_changed.emit(true)

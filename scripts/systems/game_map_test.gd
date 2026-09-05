@@ -1111,6 +1111,64 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		# Store reference for cooldown tracking
 		slot.set_meta("cooldown_var", data["cooldown_var"])
 
+	if not is_killer:
+		_create_item_slot_icons(_player_node)
+
+
+func _create_item_slot_icons(_player_node: Node2D) -> void:
+	"""Create 3 item slots (keys 1/2/3) to the left of the ability bar for survivors."""
+	var container := Control.new()
+	container.name = "ItemSlots"
+	container.position = Vector2(240, ability_icons_pos.y)
+	container.size = Vector2(200, 56)
+	$HUD.add_child(container)
+	for i in range(3):
+		var slot := Control.new()
+		slot.name = "ItemSlot%d" % i
+		slot.position = Vector2(i * 62.0, 0)
+		slot.size = Vector2(56, 56)
+		container.add_child(slot)
+
+		var bg := ColorRect.new()
+		bg.size = Vector2(56, 56)
+		bg.color = Color(0, 0, 0, 0.5)
+		slot.add_child(bg)
+
+		var key_label := Label.new()
+		key_label.name = "KeyLabel"
+		key_label.text = str(i + 1)
+		key_label.position = Vector2(2, 34)
+		key_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+		key_label.add_theme_font_size_override("font_size", 14)
+		key_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		key_label.add_theme_constant_override("shadow_offset_x", 1)
+		key_label.add_theme_constant_override("shadow_offset_y", 1)
+		slot.add_child(key_label)
+
+		var icon := TextureRect.new()
+		icon.name = "Icon"
+		icon.texture = load("res://assets/generated/icon_ability_spare_flower.png")
+		icon.size = Vector2(50, 50)
+		icon.position = Vector2(3, 3)
+		icon.visible = false
+		slot.add_child(icon)
+
+	if _player_node != null and _player_node.has_signal("item_slot_changed"):
+		_player_node.item_slot_changed.connect(_on_item_slot_changed)
+
+
+func _on_item_slot_changed(slot: int, item: String) -> void:
+	var container: Control = $HUD.get_node_or_null("ItemSlots")
+	if container == null:
+		return
+	var slot_node: Control = container.get_node_or_null("ItemSlot%d" % slot)
+	if slot_node == null:
+		return
+	var icon: TextureRect = slot_node.get_node_or_null("Icon")
+	if icon == null:
+		return
+	icon.visible = (item != "")
+
 
 func _update_ability_cooldowns() -> void:
 	"""Update cooldown overlays with countdown numbers."""

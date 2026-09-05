@@ -1,9 +1,13 @@
 class_name FlowerItem
 extends Area2D
 
-## A map pickup that heals a survivor who walks over it, then disappears.
+## A manual pickup item that a survivor grabs (press 1/2/3) and later uses to
+## heal/cure. Only survivors can pick it up; killers can't grab items. It no
+## longer heals on contact; the survivor must grab it and then use it.
 
+const FLOWER_ITEM := "flower"
 const HEAL_AMOUNT: float = 90.0
+const PICKUP_RADIUS: float = 70.0
 
 var _consumed: bool = false
 
@@ -13,6 +17,7 @@ func _ready() -> void:
 	collision_mask = 1  # Detect survivor bodies (layer 1)
 	monitoring = true
 	monitorable = false
+	add_to_group("flower_items")
 
 	# Sprite
 	var sprite := Sprite2D.new()
@@ -31,24 +36,27 @@ func _ready() -> void:
 	col.shape = shape
 	add_child(col)
 
-	body_entered.connect(_on_body_entered)
+
+func is_consumed() -> bool:
+	return _consumed
 
 
-func _on_body_entered(body: Node2D) -> void:
+func _is_survivor(body: Node2D) -> bool:
+	return body.is_in_group("survivors") or body.is_in_group("survivor_bots")
+
+
+func in_pickup_range(body: Node2D) -> bool:
+	return global_position.distance_to(body.global_position) <= PICKUP_RADIUS
+
+
+## Only a nearby survivor can grab this flower. Killers are never accepted.
+func try_pickup(body: Node2D) -> bool:
 	if _consumed:
-		return
-	if not (body.is_in_group("survivors") or body.is_in_group("survivor_bots")):
-		return
-	if not body.has_method("take_damage"):
-		return
+		return false
+	if not _is_survivor(body):
+		return false
+	if not in_pickup_range(body):
+		return false
 	_consumed = true
-
-	# Heal the survivor
-	if "max_hp" in body and "current_hp" in body:
-		var maxhp: float = float(body.get("max_hp"))
-		var new_hp: float = min(float(body.get("current_hp")) + HEAL_AMOUNT, maxhp)
-		body.set("current_hp", new_hp)
-		if body.has_signal("hp_changed"):
-			body.hp_changed.emit(new_hp, maxhp)
-		print("FlowerItem: healed ", body.name, " +", HEAL_AMOUNT, " HP")
 	queue_free()
+	return true

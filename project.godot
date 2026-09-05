@@ -63,6 +63,9 @@ ability_1="[{\"type\": \"key\", \"keycode\": \"Q\"}]"
 ability_2="[{\"type\": \"key\", \"keycode\": \"E\"}]"
 ability_3="[{\"type\": \"key\", \"keycode\": \"R\"}]"
 ability_4="[{\"type\": \"key\", \"keycode\": \"T\"}]"
+item_1="[{\"type\": \"key\", \"keycode\": \"1\"}]"
+item_2="[{\"type\": \"key\", \"keycode\": \"2\"}]"
+item_3="[{\"type\": \"key\", \"keycode\": \"3\"}]"
 
 [limbo_ai]
 
