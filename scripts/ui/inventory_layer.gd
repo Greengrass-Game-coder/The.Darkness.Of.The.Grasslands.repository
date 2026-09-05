@@ -68,8 +68,8 @@ func _switch_tab(tab: Tab) -> void:
 func _create_side_panel() -> void:
 	_side_panel = Control.new()
 	_side_panel.name = "SidePanel"
-	_side_panel.size = Vector2(220, 500)
-	_side_panel.position = Vector2(-220, 80)
+	_side_panel.size = Vector2(280, 520)
+	_side_panel.position = Vector2(-280, 80)
 	_ui_layer.add_child(_side_panel)
 
 	var side_bg := ColorRect.new()
@@ -88,7 +88,7 @@ func _create_side_panel() -> void:
 	tab.name = "SideTab"
 	tab.text = "▶"
 	tab.flat = true
-	tab.position = Vector2(220, 0)
+	tab.position = Vector2(280, 0)
 	tab.size = Vector2(28, 60)
 	tab.add_theme_color_override("font_color", Color(1, 0.85, 0.2, 1))
 	tab.add_theme_font_size_override("font_size", 14)
@@ -100,18 +100,19 @@ func _create_side_panel() -> void:
 
 	_side_icon = TextureRect.new()
 	_side_icon.name = "SideIcon"
-	_side_icon.custom_minimum_size = Vector2(180, 180)
+	_side_icon.custom_minimum_size = Vector2(200, 200)
+	_side_icon.size = Vector2(200, 200)
 	_side_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_side_icon.position = Vector2(content_margin, cy)
 	_side_panel.add_child(_side_icon)
-	cy += 188
+	cy += 208
 
 	_side_name = BitmapLabel.new()
 	_side_name.name = "SideName"
 	_side_name.font_scale = 0.17
 	_side_name.font_color = Color(1, 1, 1, 1)
 	_side_name.position = Vector2(content_margin, cy)
-	_side_name.size = Vector2(188, 26)
+	_side_name.size = Vector2(240, 26)
 	_side_panel.add_child(_side_name)
 	cy += 28
 
@@ -119,13 +120,13 @@ func _create_side_panel() -> void:
 	_side_status.name = "SideStatus"
 	_side_status.font_scale = 0.11
 	_side_status.position = Vector2(content_margin, cy)
-	_side_status.size = Vector2(188, 20)
+	_side_status.size = Vector2(240, 20)
 	_side_panel.add_child(_side_status)
 	cy += 28
 
 	var sep := ColorRect.new()
 	sep.position = Vector2(content_margin, cy)
-	sep.size = Vector2(188, 1)
+	sep.size = Vector2(240, 1)
 	sep.color = Color(1, 1, 1, 0.15)
 	_side_panel.add_child(sep)
 	cy += 12
@@ -133,7 +134,7 @@ func _create_side_panel() -> void:
 	_side_buttons = VBoxContainer.new()
 	_side_buttons.name = "SideButtons"
 	_side_buttons.position = Vector2(content_margin, cy)
-	_side_buttons.size = Vector2(188, 120)
+	_side_buttons.size = Vector2(240, 130)
 	_side_buttons.add_theme_constant_override("separation", 6)
 	_side_panel.add_child(_side_buttons)
 
@@ -189,7 +190,7 @@ func _populate_side_panel(name_text: String, kind: String, def: Dictionary) -> v
 func _make_side_button(label: String) -> Button:
 	var btn := Button.new()
 	btn.text = label
-	btn.custom_minimum_size = Vector2(180, 30)
+	btn.custom_minimum_size = Vector2(220, 30)
 	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	return btn
 
@@ -201,7 +202,7 @@ func _open_side_panel() -> void:
 	if _side_tween and _side_tween.is_valid():
 		_side_tween.kill()
 	_side_tween = create_tween()
-	_side_tween.tween_property(_side_panel, "position:x", -16.0, 0.25).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	_side_tween.tween_property(_side_panel, "position:x", 0.0, 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	var tab: Button = _side_panel.get_node_or_null("SideTab")
 	if tab:
 		tab.text = "◀"
@@ -214,10 +215,10 @@ func _close_side_panel(instant: bool = false) -> void:
 	if _side_tween and _side_tween.is_valid():
 		_side_tween.kill()
 	if instant:
-		_side_panel.position.x = -220.0
+		_side_panel.position.x = -280.0
 	else:
 		_side_tween = create_tween()
-		_side_tween.tween_property(_side_panel, "position:x", -220.0, 0.25).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
+		_side_tween.tween_property(_side_panel, "position:x", -280.0, 0.3).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
 	var tab: Button = _side_panel.get_node_or_null("SideTab")
 	if tab:
 		tab.text = "▶"
