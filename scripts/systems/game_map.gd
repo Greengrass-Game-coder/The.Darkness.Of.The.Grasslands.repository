@@ -24,6 +24,7 @@ const VIOLENTGRASS_SCENE: PackedScene = preload("res://scenes/violentgrass.tscn"
 const TEST_KILLER_SCENE: PackedScene = preload("res://scenes/test_killer.tscn")
 const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller.gd")
 const AI_SURVIVOR_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_survivor_bot_controller.gd")
+const AI_TEST_KILLER_SCRIPT: Script = preload("res://scripts/characters/ai_test_killer_controller.gd")
 const LMS_AURA_SHADER: Shader = preload("res://shaders/player_aura.gdshader")
 
 # Chase music — 4-layer system: Layer1, Layer2, Layer3, Chase
