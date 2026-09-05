@@ -85,6 +85,7 @@ var _tentacle_caught_survivor: Node2D = null
 var _tentacle_retracting: bool = false
 var _tentacle_was_cancelled: bool = false
 var _tentacle_expired: bool = false
+var _tentacle_body: Sprite2D = null  # Stretchable tentacle body (killer -> tip)
 
 
 # ═══════════════ LIFECYCLE ═══════════════
@@ -128,6 +129,8 @@ func _input(event: InputEvent) -> void:
 		_start_hit()
 	elif event.is_action_pressed("ability_2"):
 		_activate_tentacle_snatch()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_start_hit()
 
 
 func _update_cooldowns(delta: float) -> void:
@@ -315,6 +318,13 @@ func _activate_tentacle_snatch() -> void:
 	area.body_entered.connect(_on_tentacle_catch)
 	_tentacle_node.add_child(area)
 	
+	# Stretchable tentacle body from the killer to the tip
+	_tentacle_body = Sprite2D.new()
+	_tentacle_body.name = "TentacleBody"
+	_tentacle_body.texture = load("res://The Darkness Of The Grasslands assets/Sprites/test killer/abilities/Tentacle UI/tentacle_vertical.png")
+	_tentacle_body.z_index = 190
+	add_child(_tentacle_body)
+	
 	print("TestKiller: Tentacle Snatch ACTIVATED")
 
 
@@ -361,20 +371,21 @@ func _handle_tentacle_snatch(delta: float) -> void:
 	
 	# Rotate tentacle to face movement direction
 	_tentacle_node.rotation = aim_dir.angle() + PI / 2
+	
+	# Stretch tentacle body from killer to tip and follow with camera
+	_apply_tentacle_stretch()
+	_follow_tentacle_with_camera()
 
 
 func _get_aim_direction() -> Vector2:
-	"""Get the direction from the tentacle toward where the player is aiming."""
-	# Use mouse position relative to screen center for aiming
-	var viewport := get_viewport()
-	if not viewport:
-		return Vector2.DOWN
-	var mouse_pos: Vector2 = viewport.get_mouse_position()
-	var screen_center: Vector2 = viewport.get_visible_rect().size / 2.0
-	var raw_dir: Vector2 = (mouse_pos - screen_center).normalized()
+	"""Get the direction from the tentacle using WASD input."""
+	var raw_dir := Vector2(
+		Input.get_axis("move_left", "move_right"),
+		Input.get_axis("move_up", "move_down")
+	)
 	if raw_dir.length_squared() < 0.01:
 		raw_dir = Vector2.DOWN
-	return raw_dir
+	return raw_dir.normalized()
 
 
 func _on_tentacle_catch(body: Node2D) -> void:
@@ -414,6 +425,10 @@ func _retract_tentacle(delta: float) -> void:
 	
 	_tentacle_node.position += dir_to_killer * retract_speed * delta
 	
+	# Stretch tentacle body from killer to tip and follow with camera
+	_apply_tentacle_stretch()
+	_follow_tentacle_with_camera()
+	
 	# Move caught survivor with the tentacle
 	if is_instance_valid(_tentacle_caught_survivor):
 		var survivor_global: Vector2 = global_position + _tentacle_node.position
@@ -445,6 +460,38 @@ func _finish_tentacle_catch() -> void:
 	_deactivate_tentacle(true, false)
 
 
+func _apply_tentacle_stretch() -> void:
+	"""Stretch the tentacle body sprite from the killer (0,0) to the tip."""
+	if not is_instance_valid(_tentacle_body) or not is_instance_valid(_tentacle_node):
+		return
+	var tip: Vector2 = _tentacle_node.position
+	var dist: float = tip.length()
+	if dist < 1.0:
+		dist = 1.0
+	var tex_h: float = 128.0
+	if _tentacle_body.texture:
+		tex_h = float(_tentacle_body.texture.get_height())
+	_tentacle_body.position = tip * 0.5
+	_tentacle_body.rotation = tip.angle() + PI / 2
+	_tentacle_body.scale = Vector2(1.0, dist / tex_h)
+
+
+func _follow_tentacle_with_camera() -> void:
+	"""Move the player's camera to follow the tentacle tip."""
+	if not is_instance_valid(_tentacle_node):
+		return
+	var cam: Camera2D = get_node_or_null("Camera2D") as Camera2D
+	if cam:
+		cam.global_position = global_position + _tentacle_node.position
+
+
+func _restore_camera_to_killer() -> void:
+	"""Return the camera to following the killer."""
+	var cam: Camera2D = get_node_or_null("Camera2D") as Camera2D
+	if cam:
+		cam.global_position = global_position
+
+
 func _deactivate_tentacle(success: bool, cancelled: bool) -> void:
 	"""Clean up tentacle and set cooldown."""
 	_tentacle_active = false
@@ -452,6 +499,10 @@ func _deactivate_tentacle(success: bool, cancelled: bool) -> void:
 	if is_instance_valid(_tentacle_node):
 		_tentacle_node.queue_free()
 		_tentacle_node = null
+	if is_instance_valid(_tentacle_body):
+		_tentacle_body.queue_free()
+		_tentacle_body = null
+	_restore_camera_to_killer()
 	
 	_tentacle_caught_survivor = null
 	_tentacle_retracting = false

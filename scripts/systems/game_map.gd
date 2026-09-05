@@ -1023,7 +1023,7 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 	var abilities: Array[Dictionary] = []
 	if is_killer:
 		abilities = [
-			{"icon": "res://assets/generated/icon_ability_hit.png", "key": "Q", "cooldown_var": "hit_on_cooldown"},
+			{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "cooldown_var": "hit_on_cooldown"},
 			{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "E", "cooldown_var": "teleport_on_cooldown"},
 		]
 	else:
@@ -1131,7 +1131,7 @@ func _get_ability_data() -> Array[Dictionary]:
 	var is_killer: bool = _character_name == "Violentgrass"
 	if is_killer:
 		return [
-			{"icon": "", "key": "Q", "cooldown_var": "hit_on_cooldown"},
+			{"icon": "", "key": "M1", "cooldown_var": "hit_on_cooldown"},
 			{"icon": "", "key": "E", "cooldown_var": "teleport_on_cooldown"},
 		]
 	else:
