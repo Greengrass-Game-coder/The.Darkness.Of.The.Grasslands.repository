@@ -16,6 +16,8 @@ signal tentacle_caught(survivor: Node2D)
 signal rage_triggered(survivor: Node2D)
 ## Emitted when Better Sight locks onto the nearest survivor
 signal better_sight_triggered(survivor: Node2D)
+## Emitted when an ability is blocked by a rule (e.g. survivor too close for Tentacle Snatch)
+signal ability_blocked(message: String)
 
 enum State { IDLE, WALKING, HITTING, STUNNED, TENTACLE_SNATCH }
 enum Direction { DOWN, LEFT, RIGHT, UP }
@@ -83,6 +85,7 @@ var current_hp: float
 var current_stamina: float
 var hit_on_cooldown: bool = false
 var hit_cooldown_timer: float = 0.0
+var _hit_vfx_timer: float = 0.0
 var tentacle_on_cooldown: bool = false
 var tentacle_cooldown_timer: float = 0.0
 var is_sprinting: bool = false
@@ -137,6 +140,12 @@ func _physics_process(delta: float) -> void:
 	_update_rage(delta)
 	_update_better_sight(delta)
 	
+	# Auto-hide the non-blocking M1 swing effect.
+	if _hit_vfx_timer > 0.0:
+		_hit_vfx_timer -= delta
+		if _hit_vfx_timer <= 0.0 and is_instance_valid(ability_vfx):
+			ability_vfx.visible = false
+	
 	# Freeze in place briefly after placing The Rage.
 	if _rage_freeze_timer > 0.0:
 		_rage_freeze_timer -= delta
@@ -165,6 +174,9 @@ func _physics_process(delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	if current_hp <= 0.0:
+		return
+	# The Rage freeze locks the killer in place — no actions allowed for 2.5s.
+	if _rage_freeze_timer > 0.0:
 		return
 	
 	if event.is_action_pressed("ability_1"):
@@ -272,19 +284,21 @@ func _play_idle_animation() -> void:
 # ═══════════════ M1 HIT ═══════════════
 
 func _start_hit() -> void:
-	if hit_on_cooldown:
+	if hit_on_cooldown or _rage_freeze_timer > 0.0:
 		return
 	if current_state == State.TENTACLE_SNATCH:
 		# M1 during the tentacle releases the grabbed survivor so they can run.
 		_release_tentacle_target()
 		_deactivate_tentacle(false, true)
 		return
-	current_state = State.HITTING
+	# M1 is a quick, non-blocking swing — the killer keeps moving freely while
+	# attacking instead of being forced to stop (no HITTING state freeze).
 	hit_on_cooldown = true
 	hit_cooldown_timer = hit_cooldown
+	_perform_hit()
 	ability_vfx.play("hit_down")
 	ability_vfx.visible = true
-	state_timer.start(0.35)
+	_hit_vfx_timer = 0.35
 
 
 func _handle_hitting(_delta: float) -> void:
@@ -366,6 +380,14 @@ func _activate_tentacle_snatch() -> void:
 		_deactivate_tentacle(false, true)
 		return
 	if current_state == State.HITTING or current_state == State.STUNNED:
+		return
+	if _rage_freeze_timer > 0.0:
+		return
+	# Can't start Tentacle Snatch while a survivor is too close (within 500px).
+	if _nearest_survivor_distance() < 500.0:
+		var msg := "Can't use Tentacle Snatch — a survivor is too close!"
+		ability_blocked.emit(msg)
+		print("TestKiller: ", msg)
 		return
 	
 	# Start tentacle snatch
@@ -617,6 +639,8 @@ func _place_rage_trap() -> void:
 		return
 	if current_state == State.TENTACLE_SNATCH or current_state == State.HITTING:
 		return
+	if _rage_freeze_timer > 0.0:
+		return
 	_rage_traps = _rage_traps.filter(func(t): return is_instance_valid(t))
 	if _rage_traps.size() >= rage_max_traps:
 		return
@@ -737,6 +761,8 @@ func _activate_better_sight() -> void:
 		return
 	if current_state == State.TENTACLE_SNATCH or current_state == State.HITTING:
 		return
+	if _rage_freeze_timer > 0.0:
+		return
 	var target: Node2D = _find_nearest_survivor()
 	if not is_instance_valid(target):
 		print("TestKiller: Better Sight — no survivor to track")
@@ -748,6 +774,21 @@ func _activate_better_sight() -> void:
 	_show_better_sight_marker(target)
 	better_sight_triggered.emit(target)
 	print("TestKiller: Better Sight LOCKED ON ", target.name, " at ", target.global_position, " — speed x", better_sight_speed_mult)
+
+
+func _nearest_survivor_distance() -> float:
+	"""Smallest distance to any living survivor (player or bot); INF if none."""
+	var best: float = INF
+	for group_name in ["survivors", "survivor_bots"]:
+		for s in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(s) or not s.has_method("take_damage"):
+				continue
+			if s.get("current_hp") != null and float(s.get("current_hp")) <= 0.0:
+				continue
+			var d: float = global_position.distance_to(s.global_position)
+			if d < best:
+				best = d
+	return best
 
 
 func _find_nearest_survivor() -> Node2D:

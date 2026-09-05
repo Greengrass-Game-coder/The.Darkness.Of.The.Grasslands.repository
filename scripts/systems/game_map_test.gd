@@ -675,6 +675,10 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	if _player.has_signal("teleport_zoom_ended") and not _player.teleport_zoom_ended.is_connected(_on_teleport_zoom_ended):
 		_player.teleport_zoom_ended.connect(_on_teleport_zoom_ended)
 	
+	# Show an on-screen popup when an ability is blocked (e.g. Tentacle Snatch while a survivor is too close)
+	if _player.has_signal("ability_blocked") and not _player.ability_blocked.is_connected(_show_reward_popup):
+		_player.ability_blocked.connect(_show_reward_popup)
+	
 	# Re-assert player camera (bots spawned above may have tried to steal it)
 	if is_instance_valid(cam):
 		cam.enabled = true
@@ -985,6 +989,7 @@ func _process(delta: float) -> void:
 		match_timer.paused = true
 	
 	_update_ability_cooldowns()
+	_update_ability_limits()
 	_check_interact_input(delta)
 	_update_tutorial_dismiss(delta)
 	_check_settings_updates()
@@ -1108,6 +1113,35 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		cd_label.add_theme_constant_override("shadow_offset_y", 1)
 		cd_overlay.add_child(cd_label)
 		
+		# Ability name (bottom) + limit number (top) labels
+		var name_label := Label.new()
+		name_label.name = "NameLabel"
+		name_label.text = data.get("name", "")
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_label.position = Vector2(0, 44)
+		name_label.size = Vector2(56, 12)
+		name_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+		name_label.add_theme_font_size_override("font_size", 9)
+		name_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		name_label.add_theme_constant_override("shadow_offset_x", 1)
+		name_label.add_theme_constant_override("shadow_offset_y", 1)
+		slot.add_child(name_label)
+
+		var limit_label := Label.new()
+		limit_label.name = "LimitLabel"
+		limit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		limit_label.position = Vector2(0, 0)
+		limit_label.size = Vector2(56, 14)
+		limit_label.add_theme_color_override("font_color", Color(1, 0.85, 0.3, 0.95))
+		limit_label.add_theme_font_size_override("font_size", 12)
+		limit_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+		limit_label.add_theme_constant_override("shadow_offset_x", 1)
+		limit_label.add_theme_constant_override("shadow_offset_y", 1)
+		limit_label.text = ""
+		slot.add_child(limit_label)
+		slot.set_meta("limit_kind", data.get("limit_kind", "static"))
+		slot.set_meta("limit_value", data.get("limit", ""))
+		
 		# Store reference for cooldown tracking
 		slot.set_meta("cooldown_var", data["cooldown_var"])
 
@@ -1204,6 +1238,32 @@ func _update_ability_cooldowns() -> void:
 				cd_label.text = ""
 
 
+func _update_ability_limits() -> void:
+	"""Show each ability's set limit number; The Rage shows live trap count."""
+	var icons: Node = $HUD.get_node_or_null("AbilityIcons")
+	if not icons or not is_instance_valid(_player):
+		return
+	var data_abilities: Array[Dictionary] = _get_ability_data()
+	for i in range(icons.get_child_count()):
+		if i >= data_abilities.size():
+			continue
+		var slot: Node = icons.get_child(i)
+		var limit_label: Label = slot.get_node_or_null("LimitLabel")
+		if not limit_label:
+			continue
+		var kind: String = slot.get_meta("limit_kind", "static")
+		if kind == "rage_traps":
+			var placed: int = 0
+			var traps: Array = _player.get("_rage_traps") if _player.get("_rage_traps") != null else []
+			for t in traps:
+				if is_instance_valid(t):
+					placed += 1
+			var max_t: int = int(_player.get("rage_max_traps"))
+			limit_label.text = "%d/%d" % [placed, max_t]
+		else:
+			limit_label.text = str(slot.get_meta("limit_value", ""))
+
+
 func _get_ability_data() -> Array[Dictionary]:
 	"""Return ability data for the current player character."""
 	return _get_abilities_for(_is_killer_character(_character_name))
@@ -1222,9 +1282,9 @@ func _get_abilities_for(is_killer_player: bool) -> Array[Dictionary]:
 		if _character_name == "Test Killer":
 			# Test Killer: M1 hit + E tentacle snatch + R The Rage
 			return [
-				{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "hit_cooldown_timer"},
-				{"icon": "", "key": "E", "cooldown_var": "tentacle_on_cooldown", "cooldown_timer_var": "tentacle_cooldown_timer"},
-				{"icon": "", "key": "R", "cooldown_var": "rage_on_cooldown", "cooldown_timer_var": "rage_cooldown_timer"},
+				{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "name": "M1 HIT", "limit": "25", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "hit_cooldown_timer"},
+				{"icon": "", "key": "E", "name": "TENTACLE", "limit": "1000", "cooldown_var": "tentacle_on_cooldown", "cooldown_timer_var": "tentacle_cooldown_timer"},
+				{"icon": "", "key": "R", "name": "RAGE", "limit_kind": "rage_traps", "cooldown_var": "rage_on_cooldown", "cooldown_timer_var": "rage_cooldown_timer"},
 			]
 		# Violentgrass: M1 hit + E teleport
 		return [
