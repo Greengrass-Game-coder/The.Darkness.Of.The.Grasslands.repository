@@ -12,6 +12,8 @@ signal entered_chase()
 signal exited_chase()
 ## Emitted when Tentacle Snatch catches a survivor
 signal tentacle_caught(survivor: Node2D)
+## Emitted when a survivor steps on a Rage trap and gets revealed
+signal rage_triggered(survivor: Node2D)
 
 enum State { IDLE, WALKING, HITTING, STUNNED, TENTACLE_SNATCH }
 enum Direction { DOWN, LEFT, RIGHT, UP }
@@ -42,6 +44,12 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var tentacle_cooldown_success: float = 28.0
 @export var tentacle_cooldown_miss: float = 18.0
 @export var tentacle_cooldown_cancel: float = 12.0
+
+# ── The Rage (information trap) ──
+@export var rage_max_traps: int = 10
+@export var rage_cooldown: float = 5.0
+@export var rage_reveal_duration: float = 10.0
+@export var rage_trap_radius: float = 44.0
 
 # ── Size ──
 @export var size_mult: float = 1.0:
@@ -86,6 +94,13 @@ var _tentacle_retracting: bool = false
 var _tentacle_was_cancelled: bool = false
 var _tentacle_expired: bool = false
 var _tentacle_body: Sprite2D = null  # Stretchable tentacle body (killer -> tip)
+var rage_on_cooldown: bool = false
+var rage_cooldown_timer: float = 0.0
+var _rage_traps: Array = []
+var _rage_elapsed: float = 0.0
+var _revealed_survivor: Node2D = null
+var _reveal_marker: Node2D = null
+var _reveal_timer: float = 0.0
 
 
 # ═══════════════ LIFECYCLE ═══════════════
@@ -103,6 +118,7 @@ func _physics_process(delta: float) -> void:
 		return
 	
 	_update_cooldowns(delta)
+	_update_rage(delta)
 	
 	match current_state:
 		State.IDLE, State.WALKING:
@@ -129,6 +145,8 @@ func _input(event: InputEvent) -> void:
 		_start_hit()
 	elif event.is_action_pressed("ability_2"):
 		_activate_tentacle_snatch()
+	elif event.is_action_pressed("ability_3"):
+		_place_rage_trap()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		_start_hit()
 
@@ -142,6 +160,10 @@ func _update_cooldowns(delta: float) -> void:
 		tentacle_cooldown_timer -= delta
 		if tentacle_cooldown_timer <= 0.0:
 			tentacle_on_cooldown = false
+	if rage_on_cooldown:
+		rage_cooldown_timer -= delta
+		if rage_cooldown_timer <= 0.0:
+			rage_on_cooldown = false
 
 
 # ═══════════════ SIZE ═══════════════
@@ -518,6 +540,124 @@ func _deactivate_tentacle(success: bool, cancelled: bool) -> void:
 		tentacle_cooldown_timer = tentacle_cooldown_miss
 	
 	print("TestKiller: Tentacle Snatch DEACTIVATED (cooldown=", tentacle_cooldown_timer, "s)")
+
+
+# ═══════════════ THE RAGE (INFORMATION TRAP) ═══════════════
+
+func _place_rage_trap() -> void:
+	"""Place a pulsing black/red trap at the killer's position (ability_3 / R)."""
+	if rage_on_cooldown:
+		return
+	if current_state == State.TENTACLE_SNATCH or current_state == State.HITTING:
+		return
+	_rage_traps = _rage_traps.filter(func(t): return is_instance_valid(t))
+	if _rage_traps.size() >= rage_max_traps:
+		return
+	rage_on_cooldown = true
+	rage_cooldown_timer = rage_cooldown
+
+	var trap := Node2D.new()
+	trap.name = "RageTrap"
+	trap.global_position = global_position
+	trap.z_index = 150
+	trap.set_meta("born", _rage_elapsed)
+	# Outer red ring (pulses brighter)
+	var ring := _make_circle_polygon(rage_trap_radius, Color(0.9, 0.05, 0.05, 0.8))
+	ring.name = "Ring"
+	trap.add_child(ring)
+	# Dark inner circle (black core)
+	var inner := _make_circle_polygon(rage_trap_radius * 0.7, Color(0.06, 0.02, 0.02, 0.9))
+	inner.name = "Inner"
+	trap.add_child(inner)
+	# Detection area
+	var area := Area2D.new()
+	area.name = "TrapArea"
+	var col := CollisionShape2D.new()
+	var shape := CircleShape2D.new()
+	shape.radius = rage_trap_radius
+	col.shape = shape
+	area.add_child(col)
+	area.collision_layer = 0
+	area.collision_mask = 1  # Detect survivors
+	area.body_entered.connect(_on_rage_triggered.bind(trap))
+	trap.add_child(area)
+	# Add to the map so it stays put when the killer walks away
+	get_parent().add_child(trap)
+	_rage_traps.append(trap)
+	print("TestKiller: The Rage trap placed at ", global_position, " (", _rage_traps.size(), "/", rage_max_traps, ")")
+
+
+func _on_rage_triggered(body: Node2D, trap: Node2D) -> void:
+	"""A survivor stepped on a trap - it vanishes and the survivor is revealed."""
+	if not is_instance_valid(body) or not body.has_method("take_damage"):
+		return
+	# Trap disappears
+	if is_instance_valid(trap):
+		trap.queue_free()
+		_rage_traps = _rage_traps.filter(func(t): return t != trap and is_instance_valid(t))
+	_reveal_survivor(body)
+
+
+func _reveal_survivor(body: Node2D) -> void:
+	"""Reveal a survivor's location to the killer for rage_reveal_duration seconds."""
+	_revealed_survivor = body
+	_reveal_timer = rage_reveal_duration
+	if is_instance_valid(_reveal_marker):
+		_reveal_marker.queue_free()
+	var marker := Node2D.new()
+	marker.name = "RageRevealMarker"
+	var lbl := Label.new()
+	lbl.text = "!"
+	lbl.add_theme_font_size_override("font_size", 30)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2, 1.0))
+	lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+	lbl.add_theme_constant_override("shadow_offset_x", 2)
+	lbl.add_theme_constant_override("shadow_offset_y", 2)
+	lbl.position = Vector2(-10, -44)
+	marker.add_child(lbl)
+	body.add_child(marker)
+	_reveal_marker = marker
+	rage_triggered.emit(body)
+	print("TestKiller: SURVIVOR REVEALED at ", body.global_position, " for ", rage_reveal_duration, "s")
+
+
+func _update_rage(delta: float) -> void:
+	"""Animate trap pulses and track the survivor reveal timer."""
+	_rage_elapsed += delta
+	for trap: Node2D in _rage_traps:
+		if not is_instance_valid(trap):
+			continue
+		var born: float = trap.get_meta("born", 0.0)
+		var t: float = _rage_elapsed - born
+		var pulse: float = (sin(t * 3.0) + 1.0) / 2.0  # 0..1
+		trap.scale = Vector2(1.0 + 0.12 * sin(t * 4.0), 1.0 + 0.12 * sin(t * 4.0))
+		var ring: Polygon2D = trap.get_node_or_null("Ring") as Polygon2D
+		if ring:
+			# Red grows more prominent as it pulses
+			ring.color = Color(0.9, 0.05 * (1.0 - pulse), 0.05 * (1.0 - pulse), 0.6 + 0.4 * pulse)
+		var inner: Polygon2D = trap.get_node_or_null("Inner") as Polygon2D
+		if inner:
+			inner.color = Color(0.06, 0.02, 0.02, 0.85 + 0.1 * pulse)
+	# Survivor reveal expiry
+	if is_instance_valid(_revealed_survivor):
+		_reveal_timer -= delta
+		if _reveal_timer <= 0.0:
+			if is_instance_valid(_reveal_marker):
+				_reveal_marker.queue_free()
+			_reveal_marker = null
+			_revealed_survivor = null
+
+
+func _make_circle_polygon(radius: float, color: Color, points: int = 32) -> Polygon2D:
+	"""Build a filled-circle Polygon2D for the Rage trap visual."""
+	var p := Polygon2D.new()
+	p.color = color
+	var pts := PackedVector2Array()
+	for i: int in points:
+		var a: float = TAU * float(i) / float(points)
+		pts.append(Vector2(cos(a), sin(a)) * radius)
+	p.polygon = pts
+	return p
 
 
 # ═══════════════ DAMAGE ═══════════════

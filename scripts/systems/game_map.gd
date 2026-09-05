@@ -93,6 +93,7 @@ var _time_remaining: float = MATCH_DURATION
 var _map_manager: MapManager = null
 var _player: Node2D = null
 var _killer_bot: Node2D = null
+var _killer_character_name: String = "Violentgrass"  # Which killer the AI bot is
 var _aura_nodes: Dictionary = {}  # character Node → aura AnimatedSprite2D (for cleanup)
 # True once the killer intro finishes and the fight is live. Guards the per-frame
 # "everyone dead" round-end check from firing before anyone has even spawned.
@@ -616,12 +617,12 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 		_attach_ai_difficulty()
 		_refresh_survivor_cache()
 		# Survivor player: load all 4 chase layers from survivor's theme folder
-		_setup_chase_music(survivor_chase_folder)
+		_setup_chase_music(_chase_theme_folder())
 	else:
 		_spawn_survivor_bots()
 		_refresh_survivor_cache()
 		# Killer player: load only Chase layer from killer's theme folder
-		_setup_chase_music(killer_chase_folder)
+		_setup_chase_music(_chase_theme_folder())
 	
 	# Track damage dealt via punch signal
 	if _player.has_signal("punch_landed") and not _player.punch_landed.is_connected(_on_player_attacked):
@@ -1019,19 +1020,8 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 	container.size = Vector2(300, 60)
 	$HUD.add_child(container)
 	
-	# Define ability icon data based on character type
-	var abilities: Array[Dictionary] = []
-	if is_killer:
-		abilities = [
-			{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "cooldown_var": "hit_on_cooldown"},
-			{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "E", "cooldown_var": "teleport_on_cooldown"},
-		]
-	else:
-		abilities = [
-			{"icon": "res://assets/generated/icon_ability_block.png", "key": "Q", "cooldown_var": "block_on_cooldown"},
-			{"icon": "res://assets/generated/icon_ability_grass_punch.png", "key": "E", "cooldown_var": "punch_on_cooldown"},
-			{"icon": "res://assets/generated/icon_ability_spare_flower.png", "key": "R", "cooldown_var": "flower_on_cooldown"},
-		]
+	# Define ability icon data based on character type (single source of truth)
+	var abilities: Array[Dictionary] = _get_abilities_for(is_killer)
 	
 	for i: int in range(abilities.size()):
 		var data: Dictionary = abilities[i]
@@ -1054,13 +1044,21 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 			lock_overlay.visible = true  # Start locked
 			slot.add_child(lock_overlay)
 		
+		# Key cap background
+		var key_bg := ColorRect.new()
+		key_bg.name = "KeyBg"
+		key_bg.position = Vector2(2, 34)
+		key_bg.size = Vector2(22, 18)
+		key_bg.color = Color(0, 0, 0, 0.55)
+		slot.add_child(key_bg)
+
 		# Key label
 		var key_label := Label.new()
 		key_label.name = "KeyLabel"
 		key_label.text = data["key"]
-		key_label.position = Vector2(2, 36)
-		key_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
-		key_label.add_theme_font_size_override("font_size", 12)
+		key_label.position = Vector2(2, 34)
+		key_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+		key_label.add_theme_font_size_override("font_size", 14)
 		key_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
 		key_label.add_theme_constant_override("shadow_offset_x", 1)
 		key_label.add_theme_constant_override("shadow_offset_y", 1)
@@ -1101,44 +1099,61 @@ func _update_ability_cooldowns() -> void:
 		var slot: Node = icons.get_child(i)
 		if i >= data_abilities.size():
 			continue
-		var cooldown_var_name: String = data_abilities[i]["cooldown_var"]
+		var data: Dictionary = data_abilities[i]
+		var cd_var: String = data.get("cooldown_var", "")
 		var overlay: ColorRect = slot.get_node_or_null("CooldownOverlay")
 		if not overlay:
 			continue
 		
-		var is_on_cd: bool = cooldown_var_name in _player and _player.get(cooldown_var_name)
+		var is_on_cd: bool = cd_var in _player and bool(_player.get(cd_var))
 		overlay.visible = is_on_cd
 		
-		# Update countdown label
-		if is_on_cd:
-			var cd_label: Label = overlay.get_node_or_null("CooldownLabel")
-			if cd_label:
-				# Try to get the actual cooldown timer variable
-				var timer_var: String = "_" + cooldown_var_name.trim_suffix("_on_cooldown") + "_cd_timer"
+		# Update countdown label using each ability's own timer variable
+		var cd_label: Label = overlay.get_node_or_null("CooldownLabel")
+		if cd_label:
+			if is_on_cd:
+				var timer_var: String = data.get("cooldown_timer_var", "")
 				if timer_var in _player:
-					var remaining: float = _player.get(timer_var)
-					cd_label.text = str(ceili(remaining))
+					var remaining: float = float(_player.get(timer_var))
+					cd_label.text = str(ceili(maxf(remaining, 0.0)))
 				else:
 					cd_label.text = ""
-		else:
-			var cd_label: Label = overlay.get_node_or_null("CooldownLabel")
-			if cd_label:
+			else:
 				cd_label.text = ""
 
 
 func _get_ability_data() -> Array[Dictionary]:
 	"""Return ability data for the current player character."""
-	var is_killer: bool = _character_name == "Violentgrass"
-	if is_killer:
+	return _get_abilities_for(_is_killer_character(_character_name))
+
+
+func _is_killer_character(char_name: String) -> bool:
+	"""True if the character name is a killer (Violentgrass or Test Killer)."""
+	if char_name == "Test Killer" or char_name == "Violentgrass":
+		return true
+	return false
+
+
+func _get_abilities_for(is_killer_player: bool) -> Array[Dictionary]:
+	"""Return ability data (icon, key, cooldown bool var, cooldown timer var)."""
+	if is_killer_player:
+		if _character_name == "Test Killer":
+			# Test Killer: M1 hit + E tentacle snatch + R The Rage
+			return [
+				{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "hit_cooldown_timer"},
+				{"icon": "", "key": "E", "cooldown_var": "tentacle_on_cooldown", "cooldown_timer_var": "tentacle_cooldown_timer"},
+				{"icon": "", "key": "R", "cooldown_var": "rage_on_cooldown", "cooldown_timer_var": "rage_cooldown_timer"},
+			]
+		# Violentgrass: M1 hit + E teleport
 		return [
-			{"icon": "", "key": "M1", "cooldown_var": "hit_on_cooldown"},
-			{"icon": "", "key": "E", "cooldown_var": "teleport_on_cooldown"},
+			{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "_hit_cd_timer"},
+			{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "E", "cooldown_var": "teleport_on_cooldown", "cooldown_timer_var": "_teleport_cd_timer"},
 		]
 	else:
 		return [
-			{"icon": "", "key": "Q", "cooldown_var": "block_on_cooldown"},
-			{"icon": "", "key": "E", "cooldown_var": "punch_on_cooldown"},
-			{"icon": "", "key": "R", "cooldown_var": "flower_on_cooldown"},
+			{"icon": "res://assets/generated/icon_ability_block.png", "key": "Q", "cooldown_var": "block_on_cooldown", "cooldown_timer_var": "_block_cd_timer"},
+			{"icon": "res://assets/generated/icon_ability_grass_punch.png", "key": "E", "cooldown_var": "punch_on_cooldown", "cooldown_timer_var": "_punch_cd_timer"},
+			{"icon": "res://assets/generated/icon_ability_spare_flower.png", "key": "R", "cooldown_var": "flower_on_cooldown", "cooldown_timer_var": "_flower_cd_timer"},
 		]
 
 
@@ -1324,6 +1339,18 @@ func _enforce_single_killer() -> void:
 					_killer_bot = null
 
 
+func _chase_theme_folder() -> String:
+	"""Pick the chase-music theme folder matching whichever killer is in the match."""
+	var killer_name: String = "Violentgrass"
+	if is_instance_valid(_killer_bot) and _killer_character_name != "":
+		killer_name = _killer_character_name
+	elif _character_name == "Test Killer" or _character_name == "Violentgrass":
+		killer_name = _character_name
+	if killer_name == "Test Killer":
+		return "Test Killer (Originally Monster Greengrass, but used for tests for now.)"
+	return "Violentgrass"
+
+
 func _spawn_bot_killer() -> void:
 	"""Spawn an AI-controlled killer bot at a killer spawn point.
 	ENFORCES single-killer: if a killer bot already exists, this is a no-op."""
@@ -1332,8 +1359,12 @@ func _spawn_bot_killer() -> void:
 		return
 	var spawn_pos: Vector2 = _map_manager.get_spawn_point(true)
 	
-	var bot: Node2D = VIOLENTGRASS_SCENE.instantiate()
-	bot.set_script(AI_BOT_SCRIPT)
+	# Killer AI randomly picks Violentgrass or Test Killer.
+	var use_test: bool = randi() % 2 == 0
+	_killer_character_name = "Test Killer" if use_test else "Violentgrass"
+	var bot_scene: PackedScene = TEST_KILLER_SCENE if use_test else VIOLENTGRASS_SCENE
+	var bot: Node2D = bot_scene.instantiate()
+	bot.set_script(AI_TEST_KILLER_SCRIPT if use_test else AI_BOT_SCRIPT)
 	bot.name = "KillerBot"
 	bot.position = spawn_pos
 	add_child(bot)
