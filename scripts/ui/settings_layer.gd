@@ -60,6 +60,8 @@ const SECTIONS: Array[Dictionary] = [
 		"items": [
 			{"label": "Hide Leaderboard", "type": "toggle", "var": "hide_leaderboard", "default": false},
 			{"label": "Ragdoll", "type": "toggle", "var": "ragdoll", "default": false},
+			{"label": "Show Hitboxes (yours only)", "type": "toggle", "var": "show_hitboxes", "default": false},
+			{"label": "See Collision Hitboxes (players, not walls)", "type": "toggle", "var": "show_collision_hitboxes", "default": false},
 		]
 	},
 	{

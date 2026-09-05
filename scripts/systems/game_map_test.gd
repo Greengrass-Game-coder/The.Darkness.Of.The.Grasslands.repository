@@ -229,6 +229,8 @@ var _last_damage_time: float = -10.0  # When last damage was taken (for screen s
 
 # BitmapLabel references
 var _bitmap_timer: BitmapLabel = null
+# Debug hitbox overlays for the "Show Hitboxes" / "See Collision Hitboxes" settings
+var _hitbox_debug: Dictionary = {}
 var _timer_flash_red: float = 0.0  # Timer turns red when decreasing
 
 # Kill bonus animation state
@@ -990,6 +992,7 @@ func _process(delta: float) -> void:
 	
 	_update_ability_cooldowns()
 	_update_ability_limits()
+	_update_hitbox_debug()
 	_check_interact_input(delta)
 	_update_tutorial_dismiss(delta)
 	_check_settings_updates()
@@ -1236,6 +1239,41 @@ func _update_ability_cooldowns() -> void:
 					cd_label.text = ""
 			else:
 				cd_label.text = ""
+
+
+func _update_hitbox_debug() -> void:
+	"""Draw debug hitboxes per the two settings (own only, or all players).
+	- Show Hitboxes: only the local player's own hitbox.
+	- See Collision Hitboxes: every player body's collision box (never walls)."""
+	var show_own: bool = bool(GameState.get("show_hitboxes"))
+	var show_all: bool = bool(GameState.get("show_collision_hitboxes"))
+	if not show_own and not show_all:
+		for id: int in _hitbox_debug:
+			var d: Node = _hitbox_debug[id]
+			if is_instance_valid(d):
+				d.visible = false
+		return
+	var targets: Array = []
+	if is_instance_valid(_player):
+		targets.append(_player)
+	if show_all:
+		for group_name in ["survivors", "survivor_bots", "killers"]:
+			for n in get_tree().get_nodes_in_group(group_name):
+				if is_instance_valid(n) and n.has_node("CollisionShape2D"):
+					targets.append(n)
+	for t in targets:
+		var tid: int = t.get_instance_id()
+		var dbg: Node = _hitbox_debug.get(tid)
+		if dbg == null or not is_instance_valid(dbg):
+			dbg = HitboxDebug.new()
+			dbg.shape_owner = t
+			t.add_child(dbg)
+			_hitbox_debug[tid] = dbg
+		dbg.visible = show_all or (t == _player and show_own)
+	# Drop entries for characters that have since been freed (role switches, deaths).
+	for id: int in _hitbox_debug.keys():
+		if not is_instance_valid(_hitbox_debug[id]):
+			_hitbox_debug.erase(id)
 
 
 func _update_ability_limits() -> void:
