@@ -277,6 +277,9 @@ func _ready() -> void:
 	# Add map border walls
 	_add_map_border_walls()
 	
+	# Place Flower pickups (heal 90 HP)
+	_spawn_flower_items()
+	
 	# Place marker nodes for debugging/visualization
 	_place_markers()
 	
@@ -1150,7 +1153,6 @@ func _get_abilities_for(is_killer_player: bool) -> Array[Dictionary]:
 				{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "hit_cooldown_timer"},
 				{"icon": "", "key": "E", "cooldown_var": "tentacle_on_cooldown", "cooldown_timer_var": "tentacle_cooldown_timer"},
 				{"icon": "", "key": "R", "cooldown_var": "rage_on_cooldown", "cooldown_timer_var": "rage_cooldown_timer"},
-				{"icon": "", "key": "T", "cooldown_var": "better_sight_on_cooldown", "cooldown_timer_var": "better_sight_cooldown_timer"},
 			]
 		# Violentgrass: M1 hit + E teleport
 		return [
@@ -1363,6 +1365,24 @@ func _chase_theme_folder() -> String:
 	if killer_name == "Test Killer":
 		return "Test Killer (Originally Monster Greengrass, but used for tests for now.)"
 	return "Violentgrass"
+
+
+func _spawn_flower_items() -> void:
+	"""Place a couple of Flower pickups (heal 90 HP) randomly across the map."""
+	var flower_script: Script = load("res://scripts/items/flower_item.gd")
+	if flower_script == null:
+		return
+	var map_size: Vector2 = _map_manager.blueprint_size if _map_manager and _map_manager.blueprint_size else Vector2(2000, 1500)
+	for i in range(2):
+		var item := Area2D.new()
+		item.set_script(flower_script)
+		item.name = "FlowerItem%d" % i
+		item.position = Vector2(
+			randf_range(120.0, map_size.x - 120.0),
+			randf_range(120.0, map_size.y - 120.0)
+		)
+		add_child(item)
+	print("GameMap: spawned 2 Flower pickups")
 
 
 func _spawn_bot_killer() -> void:

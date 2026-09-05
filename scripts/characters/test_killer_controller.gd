@@ -617,6 +617,8 @@ func _on_rage_triggered(body: Node2D, trap: Node2D) -> void:
 		trap.queue_free()
 		_rage_traps = _rage_traps.filter(func(t): return t != trap and is_instance_valid(t))
 	_reveal_survivor(body)
+	if body.has_method("inflict_red_sickness"):
+		body.inflict_red_sickness()
 
 
 func _reveal_survivor(body: Node2D) -> void:
@@ -640,6 +642,12 @@ func _reveal_survivor(body: Node2D) -> void:
 	_reveal_marker = marker
 	rage_triggered.emit(body)
 	print("TestKiller: SURVIVOR REVEALED at ", body.global_position, " for ", rage_reveal_duration, "s")
+
+
+func reveal_survivor_to_killer(survivor: Node2D) -> void:
+	"""Public API: reveal a survivor to this killer (used by cure/fail events)."""
+	if is_instance_valid(survivor):
+		_reveal_survivor(survivor)
 
 
 func _update_rage(delta: float) -> void:

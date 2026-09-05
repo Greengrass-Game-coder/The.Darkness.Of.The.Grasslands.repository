@@ -8,6 +8,7 @@ signal healed(amount: float, source: String)
 signal stamina_changed(current: float, max_stamina: float)
 signal slowed(duration: float)
 signal hp_changed(current_hp: float, max_hp: float)
+signal red_sickness_changed(infected: bool)
 
 enum State { IDLE, WALKING, BLOCKING, DASH_BLOCKING, PUNCHING, PUNCH_CHARGING, HEALING, STUNNED, SLOWED }
 
@@ -87,6 +88,13 @@ var _slow_timer: float = 0.0
 var _stamina_exhausted: bool = false
 var _exhaustion_timer: float = 0.0
 const SLOW_MULTIPLIER: float = 0.5
+const RED_SICKNESS_TICK_DAMAGE: float = 1.0
+const RED_SICKNESS_TICK_INTERVAL: float = 3.0
+const RED_SICKNESS_BONUS_DAMAGE: float = 2.0
+const RED_SICKNESS_BONUS_INTERVAL: float = 5.0
+const FLOWER_CURE_REVEAL_THRESHOLD: int = 4
+const QTE_TOTAL: int = 15
+const QTE_TIME_WINDOW: float = 2.0
 
 var _block_cd_timer: float = 0.0
 var _punch_cd_timer: float = 0.0
@@ -94,6 +102,19 @@ var _flower_cd_timer: float = 0.0
 var _base_col_scale: Vector2 = Vector2.ONE
 var _base_sprite_scale: float = 0.25
 var stair_climbing: bool = false
+
+# ── Red Sickness ──
+var red_sickness: bool = false
+var red_sickness_tick_timer: float = 3.0
+var _red_sickness_bonus: bool = false
+var _red_sickness_bonus_timer: float = 5.0
+var _flower_infected_cures: int = 0
+# ── Cure QTE ──
+var _qte_active: bool = false
+var _qte_keycode: int = KEY_E
+var _qte_progress: int = 0
+var _qte_timer: float = 0.0
+var _qte_marker: Node2D = null
 
 
 func _ready() -> void:
@@ -129,6 +150,15 @@ func _input(event: InputEvent) -> void:
 	# affects human input.
 	if _near_puzzle_or_generator():
 		return
+	# Red Sickness cure QTE: press F to start, then press the shown key.
+	if red_sickness:
+		if event is InputEventKey and event.pressed:
+			if event.keycode == KEY_F and not _qte_active:
+				_start_cure_qte()
+				return
+			if _qte_active and event.keycode != KEY_F:
+				_handle_qte_keypress(event.keycode)
+				return
 	if event.is_action_pressed("ability_1"):
 		use_block()
 	elif event.is_action_pressed("ability_2"):
@@ -174,6 +204,8 @@ func _physics_process(delta: float) -> void:
 			_handle_stunned(delta)
 
 	_update_cooldowns(delta)
+	_update_red_sickness(delta)
+	_update_cure_qte(delta)
 
 	if heal_over_time_active:
 		heal_tick_timer -= delta
@@ -728,6 +760,7 @@ func use_spare_flower() -> void:
 	_play_animation("heal")
 
 	_apply_heal(spare_flower_heal, "self")
+	_apply_flower_cure()
 
 	var ally := _find_nearest_ally()
 	if ally != null:
@@ -802,6 +835,168 @@ func _update_cooldowns(delta: float) -> void:
 		_flower_cd_timer -= delta
 		if _flower_cd_timer <= 0:
 			flower_on_cooldown = false
+
+# ═══════════════ RED SICKNESS ═══════════════
+
+func inflict_red_sickness() -> void:
+	"""Apply (or refresh) Red Sickness. Does NOT stack — refreshing re-arms the tick."""
+	red_sickness = true
+	red_sickness_tick_timer = RED_SICKNESS_TICK_INTERVAL
+	red_sickness_changed.emit(true)
+	print("Greengrass: afflicted with Red Sickness")
+
+
+func cure_red_sickness() -> void:
+	"""Fully cure Red Sickness and clear any failed-cure bonus damage."""
+	red_sickness = false
+	_red_sickness_bonus = false
+	red_sickness_changed.emit(false)
+	if _qte_active:
+		_clear_qte_marker()
+		_qte_active = false
+		_qte_progress = 0
+	print("Greengrass: cured of Red Sickness")
+
+
+func _update_red_sickness(delta: float) -> void:
+	if red_sickness:
+		red_sickness_tick_timer -= delta
+		if red_sickness_tick_timer <= 0.0:
+			red_sickness_tick_timer = RED_SICKNESS_TICK_INTERVAL
+			if current_hp > 0.0:
+				take_damage(RED_SICKNESS_TICK_DAMAGE)
+	if _red_sickness_bonus:
+		_red_sickness_bonus_timer -= delta
+		if _red_sickness_bonus_timer <= 0.0:
+			_red_sickness_bonus_timer = RED_SICKNESS_BONUS_INTERVAL
+			if current_hp > 0.0:
+				take_damage(RED_SICKNESS_BONUS_DAMAGE)
+
+
+# ═══════════════ CURE QTE (SELF-CURE) ═══════════════
+
+func _start_cure_qte() -> void:
+	if not red_sickness:
+		return
+	_qte_active = true
+	_qte_progress = 0
+	_qte_keycode = _qte_pick_key()
+	_qte_timer = QTE_TIME_WINDOW
+	_spawn_qte_marker()
+	_update_qte_marker()
+	print("Greengrass: cure QTE started — press ", OS.get_keycode_string(_qte_keycode))
+
+
+func _handle_qte_keypress(code: Key) -> void:
+	if not _qte_active:
+		return
+	if code == _qte_keycode:
+		_qte_progress += 1
+		_qte_timer = QTE_TIME_WINDOW
+		if _qte_progress >= QTE_TOTAL:
+			print("Greengrass: cure QTE COMPLETE")
+			cure_red_sickness()
+		else:
+			_qte_keycode = _qte_pick_key()
+			_update_qte_marker()
+	else:
+		_on_qte_fail()
+
+
+func _update_cure_qte(delta: float) -> void:
+	if not _qte_active:
+		return
+	_qte_timer -= delta
+	if _qte_timer <= 0.0:
+		_on_qte_fail()
+
+
+func _on_qte_fail() -> void:
+	print("Greengrass: cure QTE FAILED — revealed, bonus damage active")
+	_red_sickness_bonus = true
+	_red_sickness_bonus_timer = RED_SICKNESS_BONUS_INTERVAL
+	_clear_qte_marker()
+	_qte_active = false
+	_qte_progress = 0
+	_reveal_self_to_killer()
+
+
+func _qte_pick_key() -> int:
+	var keys: Array[int] = [KEY_Q, KEY_E, KEY_R, KEY_W, KEY_A, KEY_S, KEY_D, KEY_F, KEY_SPACE]
+	return keys[randi() % keys.size()]
+
+
+func _spawn_qte_marker() -> void:
+	if is_instance_valid(_qte_marker):
+		_qte_marker.queue_free()
+	var marker := Node2D.new()
+	marker.name = "CureQTEMarker"
+	var lbl := Label.new()
+	lbl.name = "Lbl"
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2, 1.0))
+	lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+	lbl.add_theme_constant_override("shadow_offset_x", 2)
+	lbl.add_theme_constant_override("shadow_offset_y", 2)
+	lbl.position = Vector2(-40, -56)
+	marker.add_child(lbl)
+	marker.z_index = 210
+	add_child(marker)
+	_qte_marker = marker
+
+
+func _update_qte_marker() -> void:
+	if not is_instance_valid(_qte_marker):
+		return
+	var lbl: Label = _qte_marker.get_node_or_null("Lbl") as Label
+	if lbl:
+		lbl.text = "Cure: press %s  (%d/%d)" % [OS.get_keycode_string(_qte_keycode), _qte_progress, QTE_TOTAL]
+
+
+func _clear_qte_marker() -> void:
+	if is_instance_valid(_qte_marker):
+		_qte_marker.queue_free()
+	_qte_marker = null
+
+
+func _reveal_self_to_killer() -> void:
+	for k in get_tree().get_nodes_in_group("killers"):
+		if is_instance_valid(k) and k.has_method("reveal_survivor_to_killer"):
+			k.reveal_survivor_to_killer(self)
+
+
+# ═══════════════ FLOWER CURE ═══════════════
+
+func _apply_flower_cure() -> void:
+	"""Flower cures Red Sickness on self OR the nearest infected other (not both)."""
+	var other := _find_nearest_infected_other()
+	if is_instance_valid(other):
+		if other.has_method("cure_red_sickness"):
+			other.cure_red_sickness()
+			_flower_infected_cures += 1
+			print("Greengrass: Flower cured ", other.name, " (infected cures=", _flower_infected_cures, ")")
+	elif red_sickness:
+		cure_red_sickness()
+		_flower_infected_cures += 1
+		print("Greengrass: Flower cured self (infected cures=", _flower_infected_cures, ")")
+	if _flower_infected_cures >= FLOWER_CURE_REVEAL_THRESHOLD:
+		print("Greengrass: cured ", _flower_infected_cures, " infected — REVEALED to killer")
+		_reveal_self_to_killer()
+		_flower_infected_cures = 0
+
+
+func _find_nearest_infected_other() -> Node:
+	var best: Node = null
+	var best_dist: float = ally_detect_radius
+	for ally in get_tree().get_nodes_in_group("survivors"):
+		if ally == self:
+			continue
+		if ally.get("red_sickness") == true:
+			var d: float = global_position.distance_to(ally.global_position)
+			if d <= best_dist:
+				best_dist = d
+				best = ally
+	return best
 
 
 func get_block_absorption() -> float:
