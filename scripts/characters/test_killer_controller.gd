@@ -317,6 +317,9 @@ func _perform_hit() -> void:
 				_tentacle_caught_survivor = null
 			target.take_damage(dmg)
 			hit_landed.emit(target, dmg)
+			# M1 unstuns the grabbed/stunned survivor so they can run away.
+			if target.has_method("clear_stun"):
+				target.clear_stun()
 	
 	if hit_sound:
 		hit_sound.play()

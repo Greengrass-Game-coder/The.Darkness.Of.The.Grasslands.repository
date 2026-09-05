@@ -109,6 +109,7 @@ var red_sickness: bool = false
 var red_sickness_tick_timer: float = 3.0
 var _red_sickness_bonus: bool = false
 var _red_sickness_bonus_timer: float = 5.0
+var _stun_remaining: float = 0.0
 var _flower_infected_cures: int = 0
 # ── Cure QTE ──
 var _qte_active: bool = false
@@ -437,8 +438,26 @@ func _handle_healing(_delta: float) -> void:
 	_play_animation("heal")
 
 
-func _handle_stunned(_delta: float) -> void:
+func _handle_stunned(delta: float) -> void:
 	velocity = Vector2.ZERO
+	# Count down the stun so the survivor recovers after the stun duration.
+	if _stun_remaining > 0.0:
+		_stun_remaining -= delta
+		if _stun_remaining <= 0.0:
+			clear_stun()
+
+
+func set_stunned(duration: float) -> void:
+	"""Stun this survivor for `duration` seconds (e.g. by the killer's tentacle)."""
+	_change_state(State.STUNNED)
+	_stun_remaining = duration
+
+
+func clear_stun() -> void:
+	"""Instantly end the stun so the survivor can move again (e.g. killer M1)."""
+	_stun_remaining = 0.0
+	if current_state == State.STUNNED:
+		_change_state(State.IDLE)
 
 
 func _update_direction(input_dir: Vector2) -> void:
