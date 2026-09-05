@@ -142,7 +142,7 @@ func _ready() -> void:
 	_apply_size()
 	# Set up tentacle SFX players (stretch/retract loop while active).
 	_tentacle_stretch_audio = _make_audio_player(TENTACLE_STRETCH_SOUND, true)
-		if _tentacle_stretch_audio:
+	if _tentacle_stretch_audio:
 			_tentacle_stretch_audio.volume_db = linear_to_db(1.1)  # +10% louder
 	_tentacle_catch_audio = _make_audio_player(TENTACLE_CATCH_SOUND, false)
 	_tentacle_stop_audio = _make_audio_player(TENTACLE_STOP_SOUND, false)
@@ -719,7 +719,7 @@ func _place_rage_trap() -> void:
 	var trap := Node2D.new()
 	trap.name = "RageTrap"
 	trap.global_position = global_position
-	trap.z_index = 150
+	trap.z_index = 300  # Render the trap ON TOP of players (bodies are z 0-210)
 	trap.set_meta("born", _rage_elapsed)
 	# Outer red ring (pulses brighter)
 	var ring := _make_circle_polygon(rage_trap_radius, Color(0.9, 0.05, 0.05, 0.8))
@@ -748,21 +748,59 @@ func _place_rage_trap() -> void:
 	print("TestKiller: The Rage trap placed at ", global_position, " (", _rage_traps.size(), "/", rage_max_traps, ")")
 
 
-func _on_rage_triggered(body: Node2D, trap: Node2D) -> void:
-	"""A survivor stepped on a trap - it vanishes and the survivor is revealed.
-	An already-infected survivor does NOT trigger the trap, and it stays put."""
-	if not is_instance_valid(body) or not body.has_method("take_damage"):
+func _on_rage_triggered(_body: Node2D, trap: Node2D) -> void:
+	"""A survivor steps on a trap — it vanishes and the best survivor is revealed.
+	When several survivors overlap the trap at once, the one with the most full
+	health is chosen; on a tie the choice is random. An already-infected survivor
+	does NOT trigger the trap, and it stays put."""
+	if not is_instance_valid(trap):
 		return
-	# An infected survivor walking over the trap triggers nothing and the trap stays.
-	if body.get("red_sickness") == true:
-		return
+	var candidates: Array = []
+	var area := trap.get_node_or_null("TrapArea") as Area2D
+	if area:
+		for b in area.get_overlapping_bodies():
+			if _is_valid_rage_target(b):
+				candidates.append(b)
+	if candidates.is_empty() and _is_valid_rage_target(_body):
+		candidates.append(_body)
+	if candidates.is_empty():
+		return  # only infected survivors present — trap stays put
+	var chosen: Node2D = _pick_rage_target(candidates)
 	# Trap disappears
-	if is_instance_valid(trap):
-		trap.queue_free()
-		_rage_traps = _rage_traps.filter(func(t): return t != trap and is_instance_valid(t))
-	_reveal_survivor(body)
-	if body.has_method("inflict_red_sickness"):
-		body.inflict_red_sickness()
+	trap.queue_free()
+	_rage_traps = _rage_traps.filter(func(t): return t != trap and is_instance_valid(t))
+	_reveal_survivor(chosen)
+	if chosen.has_method("inflict_red_sickness"):
+		chosen.inflict_red_sickness()
+
+
+func _is_valid_rage_target(b: Node) -> bool:
+	"""A body is a valid trap target if it can take damage and isn't already infected."""
+	return is_instance_valid(b) and b.has_method("take_damage") and b.get("red_sickness") != true
+
+
+func _pick_rage_target(candidates: Array) -> Node2D:
+	"""Pick the survivor with the most full health (highest hp fraction); on a tie
+	between equally-full survivors, pick one of them at random."""
+	var best_fraction: float = -1.0
+	var best: Array = []
+	for c: Node in candidates:
+		var frac: float = _health_fraction(c)
+		if frac > best_fraction + 0.0001:
+			best_fraction = frac
+			best = [c]
+		elif absf(frac - best_fraction) <= 0.0001:
+			best.append(c)
+	return best[randi() % best.size()] as Node2D
+
+
+func _health_fraction(node: Node) -> float:
+	"""Current/max health as a fraction in [0,1]; defaults to full if unknown."""
+	var cur: float = float(node.get("current_hp") if node.get("current_hp") != null else 1.0)
+	var maxh: float = float(node.get("max_hp") if node.get("max_hp") != null else 1.0)
+	if maxh <= 0.0:
+		return 1.0
+	return clampf(cur / maxh, 0.0, 1.0)
 
 
 func _reveal_survivor(body: Node2D) -> void:
