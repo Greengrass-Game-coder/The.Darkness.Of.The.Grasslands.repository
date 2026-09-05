@@ -107,7 +107,7 @@ var rage_cooldown_timer: float = 0.0
 var _rage_traps: Array = []
 var _rage_elapsed: float = 0.0
 ## How long The Rage freezes the killer in place after placing a trap.
-const RAGE_FREEZE_DURATION: float = 5.0
+const RAGE_FREEZE_DURATION: float = 2.5
 var _rage_freeze_timer: float = 0.0
 var _revealed_survivor: Node2D = null
 var _reveal_marker: Node2D = null
