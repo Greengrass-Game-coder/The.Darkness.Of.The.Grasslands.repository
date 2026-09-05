@@ -34,6 +34,15 @@ func _physics_process(delta: float) -> void:
 		if not rage_on_cooldown and _rage_traps.size() < rage_max_traps:
 			_place_rage_trap()
 	
+	# Freeze in place briefly after placing The Rage.
+	if _rage_freeze_timer > 0.0:
+		_rage_freeze_timer -= delta
+		velocity = Vector2.ZERO
+		current_state = State.IDLE
+		_play_idle_animation()
+		move_and_slide()
+		return
+	
 	match current_state:
 		State.IDLE, State.WALKING:
 			_ai_move(delta)

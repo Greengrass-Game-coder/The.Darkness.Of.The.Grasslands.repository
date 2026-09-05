@@ -105,6 +105,9 @@ var rage_on_cooldown: bool = false
 var rage_cooldown_timer: float = 0.0
 var _rage_traps: Array = []
 var _rage_elapsed: float = 0.0
+## How long The Rage freezes the killer in place after placing a trap.
+const RAGE_FREEZE_DURATION: float = 5.0
+var _rage_freeze_timer: float = 0.0
 var _revealed_survivor: Node2D = null
 var _reveal_marker: Node2D = null
 var _reveal_timer: float = 0.0
@@ -132,6 +135,15 @@ func _physics_process(delta: float) -> void:
 	_update_cooldowns(delta)
 	_update_rage(delta)
 	_update_better_sight(delta)
+	
+	# Freeze in place briefly after placing The Rage.
+	if _rage_freeze_timer > 0.0:
+		_rage_freeze_timer -= delta
+		velocity = Vector2.ZERO
+		current_state = State.IDLE
+		_play_idle_animation()
+		move_and_slide()
+		return
 	
 	match current_state:
 		State.IDLE, State.WALKING:
@@ -605,6 +617,7 @@ func _place_rage_trap() -> void:
 	# Add to the map so it stays put when the killer walks away
 	get_parent().add_child(trap)
 	_rage_traps.append(trap)
+	_rage_freeze_timer = RAGE_FREEZE_DURATION
 	print("TestKiller: The Rage trap placed at ", global_position, " (", _rage_traps.size(), "/", rage_max_traps, ")")
 
 
