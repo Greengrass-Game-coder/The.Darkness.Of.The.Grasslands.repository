@@ -35,13 +35,13 @@ var selected_killer: String = "Violentgrass"  # Will be set from CharacterData
 const CHARACTER_CATALOG: Dictionary = {
 	"Greengrass": {"kind": "survivor", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Greengrass - survivor icon.png"},
 	"Violentgrass": {"kind": "killer", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png"},
-	"Test Killer": {"kind": "killer", "cost": 0, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png"},
+	"Test Killer": {"kind": "killer", "cost": 200, "icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png"},
 }
 
 ## Ownership: which characters the player has bought. Starters are owned by
 ## default. Keyed by character name -> true.
 var owned_survivors: Dictionary = {"Greengrass": true}
-var owned_killers: Dictionary = {"Violentgrass": true, "Test Killer": true}
+var owned_killers: Dictionary = {"Violentgrass": true}
 
 ## Character helper methods ------------------------------------------------
 
@@ -123,6 +123,40 @@ var player_rings: Dictionary = {}
 
 ## Rounds played tracking per player (persisted for profile popup display)
 var player_rounds: Dictionary = {}
+
+## Character EXP — tracks EXP per character per player (username -> {character_name -> exp})
+var player_character_exp: Dictionary = {}
+
+func add_character_exp(character_name: String, amount: int) -> void:
+	"""Add EXP to the currently logged-in player's character."""
+	if logged_in_username.is_empty():
+		return
+	if not player_character_exp.has(logged_in_username):
+		player_character_exp[logged_in_username] = {}
+	var char_exp: Dictionary = player_character_exp[logged_in_username] as Dictionary
+	var current: int = char_exp.get(character_name, 0)
+	char_exp[character_name] = current + amount
+
+func get_character_exp(character_name: String) -> int:
+	"""Get EXP for the logged-in player's character."""
+	if logged_in_username.is_empty():
+		return 0
+	if not player_character_exp.has(logged_in_username):
+		return 0
+	var char_exp: Dictionary = player_character_exp[logged_in_username] as Dictionary
+	return char_exp.get(character_name, 0)
+
+func get_total_exp() -> int:
+	"""Get total EXP across all characters for the logged-in player."""
+	if logged_in_username.is_empty():
+		return 0
+	if not player_character_exp.has(logged_in_username):
+		return 0
+	var char_exp: Dictionary = player_character_exp[logged_in_username] as Dictionary
+	var total: int = 0
+	for exp: int in char_exp.values():
+		total += exp
+	return total
 
 func add_money(amount: int) -> void:
 	"""Add to the player's money."""

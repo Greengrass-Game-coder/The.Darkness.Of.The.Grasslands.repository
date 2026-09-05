@@ -1061,6 +1061,12 @@ func _process(delta: float) -> void:
 			_spectate_time_remaining = maxf(0.0, _spectate_time_remaining - 1.0)
 			_update_spectate_timer_text()
 
+	# Periodically refresh the leaderboard
+	_leaderboard_refresh_timer += delta
+	if _leaderboard_refresh_timer >= 5.0:
+		_leaderboard_refresh_timer = 0.0
+		_update_leaderboard_entries()
+
 	# Handle analysis overlay timer
 	if _analysis_overlay != null:
 		_analysis_timer -= delta
@@ -1380,9 +1386,10 @@ var _leaderboard_visible: bool = true
 var _toggle_arrow: Button = null
 var _leaderboard_entries: Array[Button] = []
 var _info_popup: Control = null
+var _leaderboard_refresh_timer: float = 0.0
 
 @export var leaderboard_pos: Vector2 = Vector2(774, 80)
-@export var leaderboard_size: Vector2 = Vector2(250, 200)
+@export var leaderboard_size: Vector2 = Vector2(260, 240)
 @export var leaderboard_arrow_pos: Vector2 = Vector2(-24, 80)
 
 func _create_leaderboard() -> void:
@@ -1399,12 +1406,28 @@ func _create_leaderboard() -> void:
 	hud.add_child(panel)
 	_leaderboard_panel = panel
 	
-	# Dark background
+	# Dark background with border
 	var bg := ColorRect.new()
 	bg.name = "Bg"
 	bg.size = leaderboard_size
-	bg.color = Color(0.1, 0.1, 0.1, 0.75)
+	bg.color = Color(0.1, 0.1, 0.1, 0.85)
 	panel.add_child(bg)
+	
+	# Border
+	var border := ColorRect.new()
+	border.name = "Border"
+	border.size = leaderboard_size
+	border.color = Color(1, 1, 1, 0.15)
+	border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(border)
+	var border_style := StyleBoxFlat.new()
+	border_style.border_width_left = 2
+	border_style.border_width_right = 2
+	border_style.border_width_top = 2
+	border_style.border_width_bottom = 2
+	border_style.border_color = Color(1, 0.9, 0.3, 0.5)
+	border_style.bg_color = Color(0, 0, 0, 0)
+	panel.add_theme_stylebox_override("panel", border_style)
 	
 	# Title (BitmapLabel)
 	var title := BitmapLabel.new()
@@ -1536,7 +1559,7 @@ func _update_leaderboard_entries() -> void:
 		var entry := Button.new()
 		entry.name = "Entry_%s" % pname
 		entry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		entry.size.y = 22
+		entry.size.y = 28
 		var display_pname: String = _get_display_name(pname)
 		entry.text = "  " + display_pname
 		# Add avatar icon if available

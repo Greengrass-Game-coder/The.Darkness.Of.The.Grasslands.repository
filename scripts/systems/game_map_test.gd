@@ -3176,17 +3176,23 @@ func _reward_puzzle_solve(area: Area2D, puzzle_level: int) -> void:
 	if not area_name in _solved_puzzles:
 		_solved_puzzles.append(area_name)
 	
-	# Rewards: +$5 and +1 ring per puzzle level completed
+	# Rewards: +$5, +1 ring, and +10 EXP per puzzle level completed
 	var gs = get_node("/root/GameState")
 	var rings_per_level: int = 1
 	var money_per_level: int = 5
+	var exp_per_level: int = 10
 	if gs != null:
 		gs.add_money(money_per_level)
 		var username: String = gs.logged_in_username
 		if username != "":
 			var current_rings: int = gs.get_player_rings(username)
 			gs.set_player_rings(username, current_rings + rings_per_level)
-		print("GameMapTest: Puzzle reward — +$", money_per_level, ", +", rings_per_level, " ring (level ", puzzle_level, ")")
+		# Award EXP to the character being played
+		var char_name: String = gs.selected_survivor if not gs.is_killer else gs.selected_killer
+		gs.add_character_exp(char_name, exp_per_level)
+		print("GameMapTest: Puzzle reward — +$", money_per_level, ", +", rings_per_level, " ring, +", exp_per_level, " EXP for ", char_name, " (level ", puzzle_level, ")")
+		# Show floating notification
+		_show_reward_popup("+" + str(exp_per_level) + " EXP (" + char_name + ")\n+$" + str(money_per_level) + " Gold")
 	
 	# Decrease match timer by 3.25 seconds per puzzle level (flash red) — UNLESS
 	# this is an LMS finale or a straight 1v1 (survivor vs killer), where taking
@@ -3255,6 +3261,30 @@ func _on_puzzle_closed(puz_scene: PuzzleManager) -> void:
 # ---------- LEADERBOARD ----------
 
 # Leaderboard moved to lobby.gd
+
+
+func _show_reward_popup(text: String) -> void:
+	"""Show a floating reward notification in the HUD that drifts up and fades."""
+	var hud: CanvasLayer = $HUD
+	if not hud:
+		return
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_color", Color(1, 0.9, 0.3, 1))
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	label.add_theme_constant_override("shadow_offset_x", 2)
+	label.add_theme_constant_override("shadow_offset_y", 2)
+	label.size = Vector2(300, 50)
+	label.position = Vector2(490, 480)
+	hud.add_child(label)
+	
+	var tween: Tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(label, "position:y", label.position.y - 60, 2.0).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "modulate:a", 0.0, 2.0).set_delay(0.8)
+	tween.chain().tween_callback(label.queue_free)
 
 
 # ---------- EPILEPSY SAFE OVERLAY ----------
