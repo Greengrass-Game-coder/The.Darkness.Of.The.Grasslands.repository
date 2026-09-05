@@ -2260,7 +2260,7 @@ func _close_teleport_minimap() -> void:
 
 # ---------- TELEPORT SOUND + INDICATOR ----------
 
-const TELEPORT_SOUND_PATH: String = "res://The Darkness Of The Grasslands assets/Sound/Sfx/Violentgrass_Teleportation.wav"
+const TELEPORT_SOUND_PATH: String = "res://The Darkness Of The Grasslands assets/Sound/Sfx/Abilities/Violentgrass/Violentgrass_Teleportation.wav"
 
 func _on_player_teleported(new_pos: Vector2) -> void:
 	"""Called when Violentgrass (player or AI bot) completes a teleport.
