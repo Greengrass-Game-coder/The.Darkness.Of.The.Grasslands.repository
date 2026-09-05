@@ -11,6 +11,7 @@ const TARGET_RETARGET_INTERVAL := 0.5
 var _target: Node2D = null
 var _target_retarget_timer: float = 0.0
 var _ai_rage_timer: float = 3.0
+var _ai_better_sight_timer: float = 5.0
 
 
 func _physics_process(delta: float) -> void:
@@ -18,6 +19,13 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_cooldowns(delta)
 	_update_rage(delta)
+	
+	# Periodically use Better Sight to lock onto the nearest survivor.
+	_ai_better_sight_timer -= delta
+	if _ai_better_sight_timer <= 0.0:
+		_ai_better_sight_timer = 8.0 + randf() * 6.0
+		if not better_sight_on_cooldown:
+			_activate_better_sight()
 	
 	# Periodically place a Rage trap to prepare ambushes.
 	_ai_rage_timer -= delta
@@ -83,6 +91,7 @@ func _ai_move(_delta: float) -> void:
 	
 	_update_facing(to_target.normalized())
 	_play_walk_animation()
-	velocity = to_target.normalized() * move_speed
+	var spd: float = move_speed * (better_sight_speed_mult if _better_sight_active else 1.0)
+	velocity = to_target.normalized() * spd
 	current_state = State.WALKING
 	move_and_slide()

@@ -1143,6 +1143,7 @@ func _get_abilities_for(is_killer_player: bool) -> Array[Dictionary]:
 				{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "hit_cooldown_timer"},
 				{"icon": "", "key": "E", "cooldown_var": "tentacle_on_cooldown", "cooldown_timer_var": "tentacle_cooldown_timer"},
 				{"icon": "", "key": "R", "cooldown_var": "rage_on_cooldown", "cooldown_timer_var": "rage_cooldown_timer"},
+				{"icon": "", "key": "T", "cooldown_var": "better_sight_on_cooldown", "cooldown_timer_var": "better_sight_cooldown_timer"},
 			]
 		# Violentgrass: M1 hit + E teleport
 		return [

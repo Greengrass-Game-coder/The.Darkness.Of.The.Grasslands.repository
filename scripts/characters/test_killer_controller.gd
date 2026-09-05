@@ -14,6 +14,8 @@ signal exited_chase()
 signal tentacle_caught(survivor: Node2D)
 ## Emitted when a survivor steps on a Rage trap and gets revealed
 signal rage_triggered(survivor: Node2D)
+## Emitted when Better Sight locks onto the nearest survivor
+signal better_sight_triggered(survivor: Node2D)
 
 enum State { IDLE, WALKING, HITTING, STUNNED, TENTACLE_SNATCH }
 enum Direction { DOWN, LEFT, RIGHT, UP }
@@ -50,6 +52,11 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var rage_cooldown: float = 5.0
 @export var rage_reveal_duration: float = 10.0
 @export var rage_trap_radius: float = 44.0
+
+# ── Better Sight (tracking / chase) ──
+@export var better_sight_cooldown: float = 8.0
+@export var better_sight_speed_mult: float = 1.5
+@export var better_sight_reach_distance: float = 120.0
 
 # ── Size ──
 @export var size_mult: float = 1.0:
@@ -101,6 +108,11 @@ var _rage_elapsed: float = 0.0
 var _revealed_survivor: Node2D = null
 var _reveal_marker: Node2D = null
 var _reveal_timer: float = 0.0
+var better_sight_on_cooldown: bool = false
+var better_sight_cooldown_timer: float = 0.0
+var _better_sight_active: bool = false
+var _better_sight_target: Node2D = null
+var _better_sight_marker: Node2D = null
 
 
 # ═══════════════ LIFECYCLE ═══════════════
@@ -119,6 +131,7 @@ func _physics_process(delta: float) -> void:
 	
 	_update_cooldowns(delta)
 	_update_rage(delta)
+	_update_better_sight(delta)
 	
 	match current_state:
 		State.IDLE, State.WALKING:
@@ -147,6 +160,8 @@ func _input(event: InputEvent) -> void:
 		_activate_tentacle_snatch()
 	elif event.is_action_pressed("ability_3"):
 		_place_rage_trap()
+	elif event.is_action_pressed("ability_4"):
+		_activate_better_sight()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		_start_hit()
 
@@ -164,6 +179,10 @@ func _update_cooldowns(delta: float) -> void:
 		rage_cooldown_timer -= delta
 		if rage_cooldown_timer <= 0.0:
 			rage_on_cooldown = false
+	if better_sight_on_cooldown:
+		better_sight_cooldown_timer -= delta
+		if better_sight_cooldown_timer <= 0.0:
+			better_sight_on_cooldown = false
 
 
 # ═══════════════ SIZE ═══════════════
@@ -199,6 +218,8 @@ func _handle_movement(delta: float) -> void:
 	stamina_changed.emit(current_stamina, max_stamina)
 	
 	var speed: float = sprint_speed if is_sprinting and current_stamina > 0.0 else move_speed
+	if _better_sight_active:
+		speed *= better_sight_speed_mult
 	if input_dir != Vector2.ZERO:
 		velocity = input_dir.normalized() * speed
 		current_state = State.WALKING
@@ -647,6 +668,92 @@ func _update_rage(delta: float) -> void:
 			_reveal_marker = null
 			_revealed_survivor = null
 
+
+# ═══════════════ BETTER SIGHT (TRACKING / CHASE) ═══════════════
+
+func _activate_better_sight() -> void:
+	"""Identify the nearest survivor and gain a speed boost until reaching them."""
+	if better_sight_on_cooldown:
+		return
+	if current_state == State.TENTACLE_SNATCH or current_state == State.HITTING:
+		return
+	var target: Node2D = _find_nearest_survivor()
+	if not is_instance_valid(target):
+		print("TestKiller: Better Sight — no survivor to track")
+		return
+	better_sight_on_cooldown = true
+	better_sight_cooldown_timer = better_sight_cooldown
+	_better_sight_active = true
+	_better_sight_target = target
+	_show_better_sight_marker(target)
+	better_sight_triggered.emit(target)
+	print("TestKiller: Better Sight LOCKED ON ", target.name, " at ", target.global_position, " — speed x", better_sight_speed_mult)
+
+
+func _find_nearest_survivor() -> Node2D:
+	"""Return the closest living survivor (player or bot)."""
+	var best: Node2D = null
+	var best_dist: float = INF
+	for group_name in ["survivors", "survivor_bots"]:
+		for s in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(s) or not s.has_method("take_damage"):
+				continue
+			if s.get("current_hp") != null and float(s.get("current_hp")) <= 0.0:
+				continue
+			var d: float = global_position.distance_to(s.global_position)
+			if d < best_dist:
+				best_dist = d
+				best = s as Node2D
+	return best
+
+
+func _update_better_sight(_delta: float) -> void:
+	"""The speed boost is NOT timed — it ends the moment the killer reaches the target."""
+	if not _better_sight_active:
+		return
+	var target: Node2D = _better_sight_target
+	if not is_instance_valid(target):
+		_end_better_sight()
+		return
+	if target.get("current_hp") != null and float(target.get("current_hp")) <= 0.0:
+		_end_better_sight()
+		return
+	var dist: float = global_position.distance_to(target.global_position)
+	if dist <= better_sight_reach_distance:
+		print("TestKiller: Better Sight reached ", target.name, " — speed boost ended")
+		_end_better_sight()
+
+
+func _end_better_sight() -> void:
+	_better_sight_active = false
+	_better_sight_target = null
+	if is_instance_valid(_better_sight_marker):
+		_better_sight_marker.queue_free()
+	_better_sight_marker = null
+
+
+func _show_better_sight_marker(target: Node2D) -> void:
+	"""Draw a red ring + downward arrow on the tracked survivor so the killer can reach them."""
+	if is_instance_valid(_better_sight_marker):
+		_better_sight_marker.queue_free()
+	var marker := Node2D.new()
+	marker.name = "BetterSightMarker"
+	var ring := _make_circle_polygon(30.0, Color(1.0, 0.15, 0.15, 0.55))
+	ring.name = "Ring"
+	marker.add_child(ring)
+	var lbl := Label.new()
+	lbl.text = "▼"
+	lbl.add_theme_font_size_override("font_size", 30)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2, 1.0))
+	lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+	lbl.add_theme_constant_override("shadow_offset_x", 2)
+	lbl.add_theme_constant_override("shadow_offset_y", 2)
+	lbl.position = Vector2(-10, -48)
+	marker.add_child(lbl)
+	marker.position = Vector2(0, -8)
+	marker.z_index = 200
+	target.add_child(marker)
+	_better_sight_marker = marker
 
 func _make_circle_polygon(radius: float, color: Color, points: int = 32) -> Polygon2D:
 	"""Build a filled-circle Polygon2D for the Rage trap visual."""
