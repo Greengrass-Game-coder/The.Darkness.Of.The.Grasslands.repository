@@ -157,10 +157,10 @@ func _input(event: InputEvent) -> void:
 	# Red Sickness cure QTE: press F to start, then press the shown key.
 	if red_sickness:
 		if event is InputEventKey and event.pressed:
-			if event.keycode == KEY_F and not _qte_active:
+			if event.keycode == KEY_C and not _qte_active:
 				_start_cure_qte()
 				return
-			if _qte_active and event.keycode != KEY_F:
+			if _qte_active and event.keycode != KEY_C:
 				_handle_qte_keypress(event.keycode)
 				return
 	# Pick up a nearby Flower with the Interact key into the first empty slot.
@@ -1009,7 +1009,7 @@ func _on_qte_fail() -> void:
 
 
 func _qte_pick_key() -> int:
-	var keys: Array[int] = [KEY_Q, KEY_E, KEY_R, KEY_W, KEY_A, KEY_S, KEY_D, KEY_F, KEY_SPACE]
+	var keys: Array[int] = [KEY_Q, KEY_E, KEY_R, KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE]
 	return keys[randi() % keys.size()]
 
 
