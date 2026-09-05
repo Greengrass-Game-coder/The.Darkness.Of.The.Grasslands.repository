@@ -3597,6 +3597,38 @@ func _on_map_chat_sent(text: String, is_admin: bool) -> void:
 		if panel:
 			panel.toggle_gui()
 		return
+	# "G coingive [user] <amount>" — give gold to the local player
+	if trimmed.begins_with("g coingive"):
+		var chat_layer: ChatLayer = get_node_or_null("ChatLayer")
+		if not chat_layer:
+			return
+		var parts: PackedStringArray = text.strip_edges().split(" ")
+		if parts.size() < 3:
+			chat_layer.add_system_message("Usage: G coingive [user] <amount>")
+			return
+		var amount_str: String = parts[parts.size() - 1]
+		var amount: int = amount_str.to_int()
+		if amount <= 0:
+			chat_layer.add_system_message("Usage: G coingive [user] <amount>")
+			return
+		var target_user: String = ""
+		if parts.size() >= 4:
+			target_user = parts[2]
+		var gs := GameState
+		var is_self: bool = true
+		if target_user != "":
+			var tu: String = target_user.to_lower()
+			var uname: String = gs.logged_in_username.to_lower()
+			var dname: String = gs.display_name.to_lower()
+			is_self = (tu == uname or tu == dname or tu == "me" or tu == "you" or tu == "self")
+			if not is_self:
+				chat_layer.add_system_message("Player '%s' not found locally — granting to you instead." % target_user)
+		gs.add_money(amount)
+		if SaveManager and SaveManager.has_method("autosave"):
+			SaveManager.autosave(gs.logged_in_username)
+		var who: String = gs.display_name if not gs.display_name.is_empty() else gs.logged_in_username
+		chat_layer.add_system_message("Gave $%d to %s. New balance: $%d" % [amount, who, gs.player_money])
+		return
 	
 	# "G force AI" / "G next AI" — force next killer to be AI
 	if is_admin and (trimmed.begins_with("g force") or trimmed.begins_with("g next")):
@@ -3654,6 +3686,7 @@ func _show_map_admin_help() -> void:
 	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
 	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
 	chat_layer.add_system_message("G Gui - Toggle admin GUI panel")
+	chat_layer.add_system_message("G coingive [user] <amount> - Give gold")
 	chat_layer.add_system_message("=====================")
 
 
