@@ -719,7 +719,7 @@ func _place_rage_trap() -> void:
 	var trap := Node2D.new()
 	trap.name = "RageTrap"
 	trap.global_position = global_position
-	trap.z_index = 300  # Render the trap ON TOP of players (bodies are z 0-210)
+	trap.z_index = -50  # Render the trap BEHIND player/killer sprites (z 0), above the ground (z -100)
 	trap.set_meta("born", _rage_elapsed)
 	# Outer red ring (pulses brighter)
 	var ring := _make_circle_polygon(rage_trap_radius, Color(0.9, 0.05, 0.05, 0.8))

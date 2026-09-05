@@ -4,8 +4,19 @@
 
 [node name="GameMap" type="Node2D" unique_id=1666611445]
 script = ExtResource("1_bjyhk")
+blueprint_name = null
+health_bar_pos = null
+health_bar_size = null
+stamina_bar_pos = null
+stamina_bar_size = null
+ability_icons_pos = null
+ability_slot_start_x = null
+ability_slot_spacing = null
+killer_chase_folder = null
+survivor_chase_folder = null
 
 [node name="MapVisual" type="Sprite2D" parent="." unique_id=317550288]
+z_index = -100
 centered = false
 
 [node name="MatchTimer" type="Timer" parent="." unique_id=415837495]
