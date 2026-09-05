@@ -577,8 +577,9 @@ func _deactivate_tentacle(success: bool, cancelled: bool) -> void:
 
 # ═══════════════ THE RAGE (INFORMATION TRAP) ═══════════════
 
-func _place_rage_trap() -> void:
-	"""Place a pulsing black/red trap at the killer's position (ability_3 / R)."""
+func _place_rage_trap(place_pos: Vector2 = Vector2.INF) -> void:
+	"""Place a pulsing black/red trap (ability_3 / R).
+	Defaults to the killer's position; the AI passes a strategic spot (e.g. ahead of a survivor)."""
 	if rage_on_cooldown:
 		return
 	if current_state == State.TENTACLE_SNATCH or current_state == State.HITTING:
@@ -591,7 +592,7 @@ func _place_rage_trap() -> void:
 
 	var trap := Node2D.new()
 	trap.name = "RageTrap"
-	trap.global_position = global_position
+	trap.global_position = place_pos if place_pos.is_finite() else global_position
 	trap.z_index = 150
 	trap.set_meta("born", _rage_elapsed)
 	# Outer red ring (pulses brighter)

@@ -59,6 +59,23 @@ func _physics_process(delta: float) -> void:
 			_stamina_exhausted = false
 
 
+func _place_rage_trap(place_pos: Vector2 = Vector2.INF) -> void:
+	"""Strategically place The Rage near the target survivor's predicted position."""
+	if rage_on_cooldown:
+		return
+	_ai_find_target()
+	if not is_instance_valid(_target):
+		super._place_rage_trap()
+		return
+	var aim: Vector2 = _target.global_position
+	# Lead the survivor's movement slightly so the trap catches them mid-path.
+	if "velocity" in _target:
+		aim += (_target.velocity as Vector2) * 0.6
+	# Small jitter so the trap isn't pixel-perfect and can be dodged.
+	aim += Vector2(randf_range(-45.0, 45.0), randf_range(-45.0, 45.0))
+	super._place_rage_trap(aim)
+
+
 func _ai_find_target() -> void:
 	_target_retarget_timer -= get_physics_process_delta_time()
 	if is_instance_valid(_target) and _target_retarget_timer > 0.0:
