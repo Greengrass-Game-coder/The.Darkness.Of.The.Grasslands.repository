@@ -87,9 +87,11 @@ var heal_ticks_remaining: int = 7
 # --- Held item + 7s self-heal channel ---
 var _held_item_sprite: Sprite2D = null
 var _heal_bar: ColorRect = null
+var _heal_bar_bg: ColorRect = null
 const HELD_ITEM_HEAL_DURATION: float = 7.0    # seconds to channel a flower heal
 const HEAL_WALK_SPEED: float = 80.0           # slow walk while channeling
-const HEAL_BAR_WIDTH: float = 60.0
+const HEAL_BAR_WIDTH: float = 80.0
+const HEAL_BAR_HEIGHT: float = 14.0
 var _heal_channel_slot: int = -1              # slot currently channeling, -1 = none
 var _heal_channel_timer: float = 0.0
 
@@ -394,6 +396,7 @@ func _physics_process(delta: float) -> void:
 		State.STUNNED:
 			_handle_stunned(delta)
 
+	_update_held_item_orbit()
 	_update_cooldowns(delta)
 	_update_red_sickness(delta)
 	_update_cure_qte(delta)
@@ -626,7 +629,12 @@ func _setup_held_item_sprite() -> void:
 	_held_item_sprite.name = "HeldItem"
 	var tex: Texture2D = load("res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Greengrass_holding_flower.png")
 	if tex:
-		_held_item_sprite.texture = tex
+		var atlas := AtlasTexture.new()
+		atlas.atlas = tex
+		# The hand + flower sit in the top ~210px of the holding frame (the body
+		# is below that). Crop just the hand/flower so it can orbit the body.
+		atlas.region = Rect2(0, 0, 193, 210)
+		_held_item_sprite.texture = atlas
 	_held_item_sprite.scale = Vector2(0.25, 0.25)
 	_held_item_sprite.z_index = 5
 	_held_item_sprite.visible = false
@@ -638,12 +646,20 @@ func _setup_heal_progress_bar() -> void:
 	"""Small progress bar above the survivor shown while a flower heal channels."""
 	_heal_bar = ColorRect.new()
 	_heal_bar.name = "HealProgressBar"
-	_heal_bar.position = Vector2(-HEAL_BAR_WIDTH * 0.5, -72.0)
-	_heal_bar.size = Vector2(HEAL_BAR_WIDTH, 6.0)
+	_heal_bar.position = Vector2(-HEAL_BAR_WIDTH * 0.5, -80.0)
+	_heal_bar.size = Vector2(0, HEAL_BAR_HEIGHT)
 	_heal_bar.color = Color(0.2, 0.95, 0.3, 0.95)
 	_heal_bar.visible = false
-	_heal_bar.z_index = 20
+	_heal_bar.z_index = 21
 	add_child(_heal_bar)
+	# Big black background square behind the green fill. It's a child so it
+	# follows the fill's visibility but keeps its own fixed size.
+	_heal_bar_bg = ColorRect.new()
+	_heal_bar_bg.name = "HealBarBG"
+	_heal_bar_bg.size = Vector2(HEAL_BAR_WIDTH, HEAL_BAR_HEIGHT)
+	_heal_bar_bg.color = Color(0.05, 0.05, 0.05, 0.95)
+	_heal_bar_bg.z_index = 20
+	_heal_bar.add_child(_heal_bar_bg)
 
 
 func _update_held_item_visual() -> void:
@@ -655,10 +671,23 @@ func _update_held_item_visual() -> void:
 	var holding: bool = _is_holding_item() and _heal_channel_slot == -1
 	_held_item_sprite.visible = holding
 	if is_instance_valid(animated_sprite):
-		animated_sprite.visible = not holding
+		# Keep the normal body visible; the hand + flower orbit around it.
+		animated_sprite.visible = true
 	if holding:
-		# Mirror the held-flower frame to face the direction of travel.
-		_held_item_sprite.flip_h = (current_direction == Direction.LEFT)
+		_update_held_item_orbit()
+
+
+func _update_held_item_orbit() -> void:
+	"""Revolve the held hand+flower around the character toward the mouse."""
+	if not is_instance_valid(_held_item_sprite) or not _held_item_sprite.visible:
+		return
+	var to_mouse: Vector2 = get_global_mouse_position() - global_position
+	if to_mouse.length() < 1.0:
+		to_mouse = _facing_dir()
+	var angle: float = to_mouse.angle()
+	_held_item_sprite.position = Vector2.from_angle(angle) * 46.0
+	# The flower sits at the top (-Y) of the crop; rotate it to point outward.
+	_held_item_sprite.rotation = angle + PI / 2.0
 
 
 func _setup_ability_vfx_frames() -> void:
