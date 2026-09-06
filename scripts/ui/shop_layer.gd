@@ -3,7 +3,7 @@ extends Control
 
 signal shop_closed()
 
-enum Tab { KILLERS, SURVIVORS }
+enum Tab { KILLERS, SURVIVORS, DETAILS, SKINS }
 
 @onready var _ui_layer: CanvasLayer = $UILayer
 @onready var panel: Control = $UILayer/Panel
@@ -25,6 +25,9 @@ var _selected_kind: String = ""
 var _selected_def: Dictionary = {}
 var _side_open: bool = false
 var _side_tween: Tween = null
+var _details_tab: Button = null
+var _skins_tab: Button = null
+var _content_view: Control = null
 
 
 func _ready() -> void:
@@ -59,14 +62,248 @@ func _setup_signals() -> void:
 	close_button.pressed.connect(close)
 	tab_killers.pressed.connect(func(): _switch_tab(Tab.KILLERS))
 	tab_survivors.pressed.connect(func(): _switch_tab(Tab.SURVIVORS))
+	_create_extra_tabs()
 
 
 func _switch_tab(tab: Tab) -> void:
 	_current_tab = tab
 	tab_killers.disabled = (tab != Tab.KILLERS)
 	tab_survivors.disabled = (tab != Tab.SURVIVORS)
-	_close_side_panel(true)
+	if _details_tab:
+		_details_tab.disabled = (tab != Tab.DETAILS)
+	if _skins_tab:
+		_skins_tab.disabled = (tab != Tab.SKINS)
+	# Keep the side panel open (icon + equip/buy) while viewing DETAILS/SKINS.
+	if tab == Tab.KILLERS or tab == Tab.SURVIVORS:
+		_close_side_panel(true)
+	if tab == Tab.DETAILS:
+		_show_details_tab()
+	elif tab == Tab.SKINS:
+		_show_skins_tab()
+	else:
+		_show_character_list()
+
+
+func _create_extra_tabs() -> void:
+	var tab_bar: HBoxContainer = $UILayer/Panel/TabButtons
+	_details_tab = _make_top_tab("DETAILS", Color(0.8, 0.8, 1, 1))
+	_details_tab.pressed.connect(func(): _switch_tab(Tab.DETAILS))
+	tab_bar.add_child(_details_tab)
+	_skins_tab = _make_top_tab("SKINS", Color(1, 0.8, 1, 1))
+	_skins_tab.pressed.connect(func(): _switch_tab(Tab.SKINS))
+	tab_bar.add_child(_skins_tab)
+	_content_view = Control.new()
+	_content_view.name = "ContentView"
+	_content_view.position = Vector2(140, 140)
+	_content_view.size = Vector2(1000, 520)
+	$UILayer/Panel.add_child(_content_view)
+	_content_view.visible = false
+
+
+func _make_top_tab(label: String, color: Color) -> Button:
+	var btn := Button.new()
+	btn.text = label
+	btn.custom_minimum_size = Vector2(250, 40)
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	btn.add_theme_color_override("font_color", color)
+	btn.add_theme_font_size_override("font_size", 18)
+	return btn
+
+
+func _show_character_list() -> void:
+	character_container.visible = true
+	if _content_view:
+		_content_view.visible = false
 	_build_character_cards()
+
+
+func _show_details_tab() -> void:
+	character_container.visible = false
+	if _content_view:
+		_content_view.visible = true
+	_build_details_view()
+
+
+func _show_skins_tab() -> void:
+	character_container.visible = false
+	if _content_view:
+		_content_view.visible = true
+	_build_skins_view()
+
+
+func _show_placeholder(msg: String) -> void:
+	if not _content_view:
+		return
+	for c in _content_view.get_children():
+		c.queue_free()
+	var bg := ColorRect.new()
+	bg.size = _content_view.size
+	bg.color = Color(0.05, 0.05, 0.08, 0.92)
+	_content_view.add_child(bg)
+	var lbl := Label.new()
+	lbl.text = msg
+	lbl.position = Vector2(24, 200)
+	lbl.size = Vector2(_content_view.size.x - 48, 40)
+	lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7, 1))
+	lbl.add_theme_font_size_override("font_size", 16)
+	_content_view.add_child(lbl)
+
+
+func _build_details_view() -> void:
+	if not _content_view:
+		return
+	for c in _content_view.get_children():
+		c.queue_free()
+	var def: Dictionary = _selected_def
+	if def.is_empty() or _selected_name.is_empty():
+		_show_placeholder("Select a character from the list to see details.")
+		return
+	var name_text: String = _selected_name
+	var kind: String = _selected_kind
+	var bg := ColorRect.new()
+	bg.size = _content_view.size
+	bg.color = Color(0.05, 0.05, 0.08, 0.92)
+	_content_view.add_child(bg)
+	var y: float = 12.0
+	var title := BitmapLabel.new()
+	title.label_text = "%s (%s)" % [name_text, kind.capitalize()]
+	title.font_scale = 0.18
+	title.font_color = Color(1, 0.9, 0.3, 1)
+	title.position = Vector2(16, y)
+	title.size = Vector2(_content_view.size.x - 32, 26)
+	_content_view.add_child(title)
+	y += 32
+	var cost: int = int(def.get("cost", 0))
+	var owned: bool = GameState.is_character_owned(kind, name_text)
+	var value := BitmapLabel.new()
+	value.label_text = "COST: $%d  |  YOUR GOLD: $%d" % [cost, GameState.player_money]
+	value.font_scale = 0.11
+	value.font_color = Color(0.5, 1, 0.5, 1) if owned else Color(1, 0.85, 0.2, 1)
+	value.position = Vector2(16, y)
+	value.size = Vector2(_content_view.size.x - 32, 20)
+	_content_view.add_child(value)
+	y += 24
+	var exp_lbl := BitmapLabel.new()
+	exp_lbl.label_text = "CHARACTER EXP: %d" % GameState.get_character_exp(name_text)
+	exp_lbl.font_scale = 0.11
+	exp_lbl.font_color = Color(0.6, 0.9, 1, 1)
+	exp_lbl.position = Vector2(16, y)
+	exp_lbl.size = Vector2(_content_view.size.x - 32, 20)
+	_content_view.add_child(exp_lbl)
+	y += 24
+	var sep := ColorRect.new()
+	sep.position = Vector2(16, y)
+	sep.size = Vector2(_content_view.size.x - 32, 1)
+	sep.color = Color(1, 1, 1, 0.15)
+	_content_view.add_child(sep)
+	y += 10
+	var stats_header := BitmapLabel.new()
+	stats_header.label_text = "STATS"
+	stats_header.font_scale = 0.13
+	stats_header.font_color = Color(0.7, 0.9, 1, 1)
+	stats_header.position = Vector2(16, y)
+	stats_header.size = Vector2(_content_view.size.x - 32, 20)
+	_content_view.add_child(stats_header)
+	y += 20
+	var stats: Dictionary = def.get("stats", {})
+	for stat_name: String in stats:
+		var stat_lbl := Label.new()
+		stat_lbl.text = "  %s:  %s" % [stat_name, stats[stat_name]]
+		stat_lbl.position = Vector2(16, y)
+		stat_lbl.size = Vector2(_content_view.size.x - 32, 16)
+		stat_lbl.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1))
+		stat_lbl.add_theme_font_size_override("font_size", 11)
+		_content_view.add_child(stat_lbl)
+		y += 16
+	y += 4
+	var ab_header := BitmapLabel.new()
+	ab_header.label_text = "ABILITIES"
+	ab_header.font_scale = 0.13
+	ab_header.font_color = Color(0.7, 0.9, 1, 1)
+	ab_header.position = Vector2(16, y)
+	ab_header.size = Vector2(_content_view.size.x - 32, 20)
+	_content_view.add_child(ab_header)
+	y += 20
+	var abilities: Array = def.get("abilities", [])
+	for ab: Dictionary in abilities:
+		var ab_name := Label.new()
+		ab_name.text = "  " + ab.get("name", "???")
+		ab_name.position = Vector2(16, y)
+		ab_name.size = Vector2(_content_view.size.x - 32, 15)
+		ab_name.add_theme_color_override("font_color", Color(1, 0.85, 0.3, 1))
+		ab_name.add_theme_font_size_override("font_size", 11)
+		_content_view.add_child(ab_name)
+		y += 15
+		var ab_desc := Label.new()
+		ab_desc.text = "      " + ab.get("desc", "")
+		ab_desc.position = Vector2(16, y)
+		ab_desc.size = Vector2(_content_view.size.x - 32, 24)
+		ab_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ab_desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6, 1))
+		ab_desc.add_theme_font_size_override("font_size", 10)
+		_content_view.add_child(ab_desc)
+		y += 26
+
+
+func _build_skins_view() -> void:
+	if not _content_view:
+		return
+	for c in _content_view.get_children():
+		c.queue_free()
+	var name_text: String = _selected_name
+	if name_text.is_empty():
+		_show_placeholder("Select a character from the list to see skins.")
+		return
+	var bg := ColorRect.new()
+	bg.size = _content_view.size
+	bg.color = Color(0.05, 0.05, 0.08, 0.92)
+	_content_view.add_child(bg)
+	var title := BitmapLabel.new()
+	title.label_text = "%s - SKINS" % name_text
+	title.font_scale = 0.18
+	title.font_color = Color(1, 0.9, 0.3, 1)
+	title.position = Vector2(16, 12)
+	title.size = Vector2(_content_view.size.x - 32, 26)
+	_content_view.add_child(title)
+	var skins: Array = _character_skins(name_text)
+	var lines: Array[String] = []
+	if skins.size() <= 1:
+		lines.append("  %s (base)" % name_text)
+		lines.append("  No skins yet.")
+	else:
+		for i in skins.size():
+			var tag: String = "(base)" if i == 0 else ""
+			lines.append("  - %s %s" % [skins[i], tag])
+	var content := Label.new()
+	content.text = "\n".join(lines)
+	content.position = Vector2(16, 52)
+	content.size = Vector2(_content_view.size.x - 32, _content_view.size.y - 70)
+	content.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85, 1))
+	content.add_theme_font_size_override("font_size", 14)
+	_content_view.add_child(content)
+
+
+func _character_skins(base_name: String) -> Array[String]:
+	var skins: Array[String] = [base_name]
+	var roots := [
+		"res://The Darkness Of The Grasslands assets/Skins/%s/" % base_name,
+		"res://The Darkness Of The Grasslands assets/Sprites/%s/Skins/" % base_name,
+		"res://The Darkness Of The Grasslands assets/Sprites/%s/skins/" % base_name,
+	]
+	for root in roots:
+		if not DirAccess.dir_exists_absolute(root):
+			continue
+		var dir := DirAccess.open(root)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var entry := dir.get_next()
+		while entry != "":
+			if dir.current_is_dir() and not entry.begins_with("."):
+				skins.append(entry)
+			entry = dir.get_next()
+		dir.list_dir_end()
+	return skins
 
 
 # ═══════════════ SIDE PANEL ═══════════════
@@ -190,12 +427,12 @@ func _populate_side_panel(name_text: String, kind: String, def: Dictionary) -> v
 
 	# DETAILS button
 	var details_btn := _make_side_button("DETAILS")
-	details_btn.pressed.connect(_show_details.bind(name_text, kind, def))
+	details_btn.pressed.connect(func(): _switch_tab(Tab.DETAILS))
 	_side_buttons.add_child(details_btn)
 
 	# SKINS button
 	var skins_btn := _make_side_button("SKINS")
-	skins_btn.pressed.connect(_open_lms_linking.bind(name_text))
+	skins_btn.pressed.connect(func(): _switch_tab(Tab.SKINS))
 	_side_buttons.add_child(skins_btn)
 
 	# EQUIP button (owned but not equipped)
