@@ -74,6 +74,8 @@ var _inventory_layer: InventoryLayer = null
 var _settings_layer: SettingsLayer = null
 var _analysis_overlay: CanvasLayer = null
 var _analysis_timer: float = 0.0
+var _pack_player: AudioStreamPlayer2D = null
+var _pack_base_volume: float = -8.0
 var _friends_panel: FriendsPanel = null
 
 # Spectate state — the toggleable "who's playing" panel + live match timer
@@ -115,6 +117,7 @@ func _ready() -> void:
 	# Make music loop using finished signal (works on any AudioStream type)
 	lobby_music.finished.connect(_on_music_finished)
 	lobby_music.play()
+	_sync_pack_layer.call_deferred()
 	
 	_show_idle_frame()
 	
@@ -375,6 +378,50 @@ func _replace_labels_with_bitmap() -> void:
 
 func _on_music_finished() -> void:
 	lobby_music.play()
+	_restart_pack_layer()
+
+
+# ── Sound pack layer: plays on top of the lobby OST if one is equipped ──────────
+
+func _create_pack_player() -> void:
+	if _pack_player:
+		return
+	_pack_player = AudioStreamPlayer2D.new()
+	_pack_player.name = "SoundPackLayer"
+	_pack_player.bus = "Music"
+	_pack_player.volume_db = _pack_base_volume
+	lobby_music.get_parent().add_child(_pack_player)
+	_pack_player.finished.connect(_restart_pack_layer)
+
+
+func _current_pack_def() -> Dictionary:
+	var id: String = GameState.get_equipped_sound_pack()
+	if id.is_empty():
+		return {}
+	return GameState.SOUND_PACK_CATALOG.get(id, {})
+
+
+func _sync_pack_layer() -> void:
+	_create_pack_player()
+	var def: Dictionary = _current_pack_def()
+	if def.is_empty() or def.get("ost", "") != "lobby":
+		if _pack_player.playing:
+			_pack_player.stop()
+		return
+	var pack_path: String = def.get("path", "")
+	if not ResourceLoader.exists(pack_path):
+		return
+	var stream: AudioStream = load(pack_path)
+	if not stream:
+		return
+	_pack_player.stream = stream
+	_pack_player.volume_db = _pack_base_volume
+	_pack_player.play()
+
+
+func _restart_pack_layer() -> void:
+	if is_instance_valid(_pack_player) and _pack_player.playing:
+		_pack_player.play()
 
 
 func _physics_process(_delta: float) -> void:
@@ -835,9 +882,14 @@ func _apply_intermission_music() -> void:
 		# Any match music is "coming" — mute the intermission tune.
 		if lobby_music.volume_db > -60.0:
 			lobby_music.volume_db = -80.0
+		if is_instance_valid(_pack_player):
+			_pack_player.volume_db = -80.0
 	else:
 		if lobby_music.volume_db < -60.0:
 			lobby_music.volume_db = 0.0
+			_sync_pack_layer()
+		if is_instance_valid(_pack_player) and _pack_player.volume_db < -60.0:
+			_pack_player.volume_db = _pack_base_volume
 
 
 func _play_lms_in_lobby() -> void:
@@ -851,6 +903,8 @@ func _play_lms_in_lobby() -> void:
 	if is_instance_valid(lobby_music):
 		lobby_music.stop()
 		lobby_music.volume_db = 0.0
+	if is_instance_valid(_pack_player):
+		_pack_player.stop()
 	lobby_music.stream = stream
 	lobby_music.play()
 	# Clear the carry-over flag so a later intermission uses the normal tune.

@@ -100,6 +100,47 @@ func equip_character(kind: String, name: String) -> bool:
 		selected_killer = name
 	return true
 
+
+## ── Sound Packs: buyable audio layers that play on top of an OST ──────────
+## Catalog of buyable sound packs. `cost` 0 = free starter. `path` = the audio
+## file layered over the base OST when equipped. `ost` = which OST it layers
+## over ("lobby" for now; maps come later), so it only starts on a matching tune.
+const SOUND_PACK_CATALOG: Dictionary = {
+	"Chiptunic Layer": {
+		"description": "A chiptune remix layer that sits on top of the lobby OST.",
+		"cost": 100,
+		"ost": "lobby",
+		"path": "res://The Darkness Of The Grasslands assets/Music/Lobby/Lobby remix layers/Chiptunic layer.wav",
+	},
+	"Chiptunic Layer #2": {
+		"description": "A second chiptune remix layer for the lobby OST.",
+		"cost": 150,
+		"ost": "lobby",
+		"path": "res://The Darkness Of The Grasslands assets/Music/Lobby/Lobby remix layers/Chiptunic layer #2.wav",
+	},
+}
+
+var owned_sound_packs: Dictionary = {}
+var equipped_sound_pack: String = ""
+
+func is_sound_pack_owned(id: String) -> bool:
+	return owned_sound_packs.get(id, false)
+
+
+func own_sound_pack(id: String) -> void:
+	owned_sound_packs[id] = true
+
+
+func equip_sound_pack(id: String) -> bool:
+	if id != "" and not is_sound_pack_owned(id):
+		return false
+	equipped_sound_pack = id
+	return true
+
+
+func get_equipped_sound_pack() -> String:
+	return equipped_sound_pack
+
 ## User settings (persisted across scenes, not yet saved to disk)
 var hide_leaderboard: bool = false
 var epilepsy_safe_mode: bool = true

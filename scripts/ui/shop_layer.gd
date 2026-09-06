@@ -3,7 +3,7 @@ extends Control
 
 signal shop_closed()
 
-enum Tab { KILLERS, SURVIVORS, DETAILS, SKINS }
+enum Tab { KILLERS, SURVIVORS, DETAILS, SKINS, SOUND_PACKS }
 
 @onready var _ui_layer: CanvasLayer = $UILayer
 @onready var panel: Control = $UILayer/Panel
@@ -27,6 +27,7 @@ var _side_open: bool = false
 var _side_tween: Tween = null
 var _details_tab: Button = null
 var _skins_tab: Button = null
+var _packs_tab: Button = null
 var _content_view: Control = null
 
 
@@ -73,6 +74,8 @@ func _switch_tab(tab: Tab) -> void:
 		_details_tab.disabled = (tab != Tab.DETAILS)
 	if _skins_tab:
 		_skins_tab.disabled = (tab != Tab.SKINS)
+	if _packs_tab:
+		_packs_tab.disabled = (tab != Tab.SOUND_PACKS)
 	# Keep the side panel open (icon + equip/buy) while viewing DETAILS/SKINS.
 	if tab == Tab.KILLERS or tab == Tab.SURVIVORS:
 		_close_side_panel(true)
@@ -80,6 +83,8 @@ func _switch_tab(tab: Tab) -> void:
 		_show_details_tab()
 	elif tab == Tab.SKINS:
 		_show_skins_tab()
+	elif tab == Tab.SOUND_PACKS:
+		_show_packs_tab()
 	else:
 		_show_character_list()
 
@@ -92,6 +97,9 @@ func _create_extra_tabs() -> void:
 	_skins_tab = _make_top_tab("SKINS", Color(1, 0.8, 1, 1))
 	_skins_tab.pressed.connect(func(): _switch_tab(Tab.SKINS))
 	tab_bar.add_child(_skins_tab)
+	_packs_tab = _make_top_tab("SOUND PACKS", Color(1, 1, 0.6, 1))
+	_packs_tab.pressed.connect(func(): _switch_tab(Tab.SOUND_PACKS))
+	tab_bar.add_child(_packs_tab)
 	_content_view = Control.new()
 	_content_view.name = "ContentView"
 	_content_view.position = Vector2(140, 140)
@@ -497,6 +505,155 @@ func _toggle_side_panel() -> void:
 
 
 # ═══════════════ CHARACTER CARDS ═══════════════
+
+# ═══ SOUND PACKS (buyable audio layers) ═══
+
+func _show_packs_tab() -> void:
+	character_container.visible = false
+	if _content_view:
+		_content_view.visible = true
+	_build_packs_view()
+
+
+func _build_packs_view() -> void:
+	if not _content_view:
+		return
+	for c in _content_view.get_children():
+		c.queue_free()
+	var bg := ColorRect.new()
+	bg.size = _content_view.size
+	bg.color = Color(0.05, 0.05, 0.08, 0.92)
+	_content_view.add_child(bg)
+	var title := BitmapLabel.new()
+	title.label_text = "SOUND PACKS"
+	title.font_scale = 0.2
+	title.font_color = Color(1, 0.9, 0.3, 1)
+	title.position = Vector2(16, 12)
+	title.size = Vector2(_content_view.size.x - 32, 28)
+	_content_view.add_child(title)
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(16, 48)
+	scroll.size = Vector2(_content_view.size.x - 32, _content_view.size.y - 64)
+	_content_view.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+	for id: String in GameState.SOUND_PACK_CATALOG:
+		var def: Dictionary = GameState.SOUND_PACK_CATALOG[id]
+		_add_pack_card(id, def, list)
+
+
+func _add_pack_card(id: String, def: Dictionary, list: VBoxContainer) -> void:
+	var card := Button.new()
+	card.custom_minimum_size = Vector2(460, 92)
+	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	card.clip_contents = true
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.08, 0.08, 0.12, 0.85)
+	normal.border_width_left = 2
+	normal.border_width_right = 2
+	normal.border_width_top = 2
+	normal.border_width_bottom = 2
+	normal.border_color = Color(1, 1, 1, 0.1)
+	card.add_theme_stylebox_override("normal", normal)
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = Color(0.12, 0.12, 0.18, 0.9)
+	hover.border_width_left = 2
+	hover.border_width_right = 2
+	hover.border_width_top = 2
+	hover.border_width_bottom = 2
+	hover.border_color = Color(1, 0.85, 0.2, 0.4)
+	card.add_theme_stylebox_override("hover", hover)
+	var name_lbl := BitmapLabel.new()
+	name_lbl.label_text = id
+	name_lbl.font_scale = 0.16
+	name_lbl.position = Vector2(12, 12)
+	name_lbl.size = Vector2(430, 24)
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(name_lbl)
+	var owned: bool = GameState.is_sound_pack_owned(id)
+	var equipped: bool = GameState.get_equipped_sound_pack() == id
+	var cost: int = int(def.get("cost", 0))
+	var status := BitmapLabel.new()
+	status.font_scale = 0.10
+	status.position = Vector2(12, 38)
+	status.size = Vector2(430, 16)
+	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if equipped:
+		status.label_text = "★ EQUIPPED"
+		status.font_color = Color(0.5, 1, 0.5, 1)
+	elif owned:
+		status.label_text = "OWNED"
+		status.font_color = Color(0.5, 1, 0.5, 1)
+	else:
+		status.label_text = "PRICE: $%d" % cost
+		status.font_color = Color(1, 0.85, 0.2, 1)
+	card.add_child(status)
+	var desc := Label.new()
+	desc.text = def.get("description", "")
+	desc.position = Vector2(12, 56)
+	desc.size = Vector2(430, 30)
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65, 1))
+	desc.add_theme_font_size_override("font_size", 10)
+	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(desc)
+	card.pressed.connect(_populate_pack_side.bind(id, def))
+	list.add_child(card)
+
+
+func _populate_pack_side(id: String, def: Dictionary) -> void:
+	_selected_name = id
+	_selected_kind = "sound_pack"
+	_selected_def = def
+	if not _side_panel:
+		return
+	_side_icon.texture = null
+	_side_name.label_text = id
+	var owned: bool = GameState.is_sound_pack_owned(id)
+	var equipped: bool = GameState.get_equipped_sound_pack() == id
+	var cost: int = int(def.get("cost", 0))
+	if equipped:
+		_side_status.label_text = "★ EQUIPPED"
+		_side_status.font_color = Color(0.5, 1, 0.5, 1)
+	elif owned:
+		_side_status.label_text = "OWNED"
+		_side_status.font_color = Color(0.5, 1, 0.5, 1)
+	else:
+		_side_status.label_text = "PRICE: $%d" % cost
+		_side_status.font_color = Color(1, 0.85, 0.2, 1)
+	for c in _side_buttons.get_children():
+		c.queue_free()
+	if not owned:
+		var buy := _make_side_button("BUY — $%d" % cost)
+		buy.add_theme_color_override("font_color", Color(1, 0.85, 0.2, 1))
+		buy.pressed.connect(_buy_sound_pack.bind(id, cost))
+		_side_buttons.add_child(buy)
+	else:
+		var hint := Label.new()
+		hint.text = "Owned! Equip it in the\nInventory."
+		hint.size = Vector2(220, 40)
+		hint.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6, 1))
+		_side_buttons.add_child(hint)
+
+
+func _buy_sound_pack(id: String, cost: int) -> void:
+	if GameState.is_sound_pack_owned(id):
+		return
+	if cost > 0 and GameState.player_money < cost:
+		return
+	if cost > 0:
+		GameState.spend_money(cost)
+	GameState.own_sound_pack(id)
+	if SaveManager and SaveManager.has_method("autosave"):
+		SaveManager.autosave(GameState.logged_in_username)
+	_build_packs_view()
+	_populate_pack_side(id, GameState.SOUND_PACK_CATALOG[id])
+
+
+
+	_open_side_panel()
+
 
 func _build_character_cards() -> void:
 	for c in _card_list.get_children():
