@@ -548,19 +548,24 @@ func _add_pack_card(id: String, def: Dictionary, list: VBoxContainer) -> void:
 	var owned: bool = GameState.is_sound_pack_owned(id)
 	var equipped: bool = GameState.get_equipped_sound_pack() == id
 	var cost: int = int(def.get("cost", 0))
+	var version: int = int(def.get("version", 1))
+	var upd: bool = GameState.can_update_sound_pack(id)
 	var status := BitmapLabel.new()
 	status.font_scale = 0.10
 	status.position = Vector2(12, 38)
 	status.size = Vector2(430, 16)
 	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if equipped:
-		status.label_text = "★ EQUIPPED"
+		status.label_text = "★ EQUIPPED (v%d)" % version
 		status.font_color = Color(0.5, 1, 0.5, 1)
+	elif owned and upd:
+		status.label_text = "UPDATE AVAILABLE → v%d" % version
+		status.font_color = Color(1, 0.85, 0.2, 1)
 	elif owned:
-		status.label_text = "OWNED"
+		status.label_text = "OWNED (v%d)" % version
 		status.font_color = Color(0.5, 1, 0.5, 1)
 	else:
-		status.label_text = "PRICE: $%d" % cost
+		status.label_text = "PRICE: $%d (2 layers)" % cost
 		status.font_color = Color(1, 0.85, 0.2, 1)
 	card.add_child(status)
 	var desc := Label.new()
@@ -587,18 +592,29 @@ func _populate_pack_side(id: String, def: Dictionary) -> void:
 	var owned: bool = GameState.is_sound_pack_owned(id)
 	var equipped: bool = GameState.get_equipped_sound_pack() == id
 	var cost: int = int(def.get("cost", 0))
+	var version: int = int(def.get("version", 1))
+	var upd: bool = GameState.can_update_sound_pack(id)
+	var fee: int = int(def.get("update_cost", 15))
 	if equipped:
-		_side_status.label_text = "★ EQUIPPED"
+		_side_status.label_text = "★ EQUIPPED (v%d)" % version
 		_side_status.font_color = Color(0.5, 1, 0.5, 1)
+	elif owned and upd:
+		_side_status.label_text = "UPDATE → v%d" % version
+		_side_status.font_color = Color(1, 0.85, 0.2, 1)
 	elif owned:
-		_side_status.label_text = "OWNED"
+		_side_status.label_text = "OWNED (v%d)" % version
 		_side_status.font_color = Color(0.5, 1, 0.5, 1)
 	else:
-		_side_status.label_text = "PRICE: $%d" % cost
+		_side_status.label_text = "PRICE: $%d (2 layers)" % cost
 		_side_status.font_color = Color(1, 0.85, 0.2, 1)
 	for c in _side_buttons.get_children():
 		c.queue_free()
 	if equipped:
+		if upd:
+			var ubtn := _make_side_button("UPDATE — $%d" % fee)
+			ubtn.add_theme_color_override("font_color", Color(1, 0.85, 0.2, 1))
+			ubtn.pressed.connect(_update_sound_pack.bind(id))
+			_side_buttons.add_child(ubtn)
 		var hint := Label.new()
 		hint.text = "Equipped on the lobby OST."
 		hint.size = Vector2(220, 30)
@@ -608,6 +624,11 @@ func _populate_pack_side(id: String, def: Dictionary) -> void:
 		rm.pressed.connect(_equip_sound_pack.bind(""))
 		_side_buttons.add_child(rm)
 	elif owned:
+		if upd:
+			var ubtn2 := _make_side_button("UPDATE — $%d" % fee)
+			ubtn2.add_theme_color_override("font_color", Color(1, 0.85, 0.2, 1))
+			ubtn2.pressed.connect(_update_sound_pack.bind(id))
+			_side_buttons.add_child(ubtn2)
 		var eq := _make_side_button("EQUIP")
 		eq.pressed.connect(_equip_sound_pack.bind(id))
 		_side_buttons.add_child(eq)
@@ -619,6 +640,9 @@ func _populate_pack_side(id: String, def: Dictionary) -> void:
 		_side_buttons.add_child(hint2)
 
 
+	_open_side_panel()
+
+
 func _equip_sound_pack(id: String) -> void:
 	if GameState.equip_sound_pack(id):
 		if SaveManager and SaveManager.has_method("autosave"):
@@ -626,6 +650,21 @@ func _equip_sound_pack(id: String) -> void:
 		_build_packs_view()
 		if id != "":
 			_populate_pack_side(id, GameState.SOUND_PACK_CATALOG[id])
+
+
+func _update_sound_pack(id: String) -> void:
+	var def: Dictionary = GameState.SOUND_PACK_CATALOG.get(id, {})
+	if def.is_empty() or not GameState.can_update_sound_pack(id):
+		return
+	var fee: int = int(def.get("update_cost", 15))
+	if GameState.player_money < fee:
+		return
+	GameState.spend_money(fee)
+	GameState.update_sound_pack(id)
+	if SaveManager and SaveManager.has_method("autosave"):
+		SaveManager.autosave(GameState.logged_in_username)
+	_build_packs_view()
+	_populate_pack_side(id, def)
 
 
 

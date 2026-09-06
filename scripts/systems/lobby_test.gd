@@ -74,8 +74,9 @@ var _inventory_layer: InventoryLayer = null
 var _settings_layer: SettingsLayer = null
 var _analysis_overlay: CanvasLayer = null
 var _analysis_timer: float = 0.0
-var _pack_player: AudioStreamPlayer2D = null
+var _pack_players: Array = []
 var _pack_base_volume: float = -8.0
+var _loaded_pack_id: String = ""
 var _friends_panel: FriendsPanel = null
 
 # Spectate state — the toggleable "who's playing" panel + live match timer
@@ -378,21 +379,10 @@ func _replace_labels_with_bitmap() -> void:
 
 func _on_music_finished() -> void:
 	lobby_music.play()
-	_restart_pack_layer()
+	_restart_pack_layers()
 
 
 # ── Sound pack layer: plays on top of the lobby OST if one is equipped ──────────
-
-func _create_pack_player() -> void:
-	if _pack_player:
-		return
-	_pack_player = AudioStreamPlayer2D.new()
-	_pack_player.name = "SoundPackLayer"
-	_pack_player.bus = "Music"
-	_pack_player.volume_db = _pack_base_volume
-	lobby_music.get_parent().add_child(_pack_player)
-	_pack_player.finished.connect(_restart_pack_layer)
-
 
 func _current_pack_def() -> Dictionary:
 	var id: String = GameState.get_equipped_sound_pack()
@@ -401,30 +391,68 @@ func _current_pack_def() -> Dictionary:
 	return GameState.SOUND_PACK_CATALOG.get(id, {})
 
 
+func _clear_pack_players() -> void:
+	for pl in _pack_players:
+		if is_instance_valid(pl):
+			pl.stop()
+			pl.queue_free()
+	_pack_players.clear()
+
+
+func _create_pack_players(layers: Array) -> void:
+	_clear_pack_players()
+	for layer_path in layers:
+		if not ResourceLoader.exists(layer_path):
+			continue
+		var stream: AudioStream = load(layer_path)
+		if not stream:
+			continue
+		var pl := AudioStreamPlayer2D.new()
+		pl.name = "SoundPackLayer"
+		pl.bus = "Music"
+		pl.volume_db = _pack_base_volume
+		pl.stream = stream
+		lobby_music.get_parent().add_child(pl)
+		pl.finished.connect(_restart_pack_layers)
+		pl.play(lobby_music.get_playback_position())
+		_pack_players.append(pl)
+
+
+func _seek_pack_layers() -> void:
+	# Align every layer with where the base OST currently is.
+	var pos: float = lobby_music.get_playback_position()
+	for pl in _pack_players:
+		if is_instance_valid(pl):
+			pl.play(pos)
+
+
 func _sync_pack_layer() -> void:
-	_create_pack_player()
+	var id: String = GameState.get_equipped_sound_pack()
 	var def: Dictionary = _current_pack_def()
 	if def.is_empty() or def.get("ost", "") != "lobby":
-		if _pack_player.playing:
-			_pack_player.stop()
+		if _loaded_pack_id != "":
+			_loaded_pack_id = ""
+			_clear_pack_players()
 		return
-	var pack_path: String = def.get("path", "")
-	if not ResourceLoader.exists(pack_path):
+	if _loaded_pack_id == id and _pack_players.size() > 0:
+		_seek_pack_layers()
 		return
-	var stream: AudioStream = load(pack_path)
-	if not stream:
-		return
-	_pack_player.stream = stream
-	_pack_player.volume_db = _pack_base_volume
-	_pack_player.play()
+	_create_pack_players(def.get("layers", []))
+	_loaded_pack_id = id
 
 
-func _restart_pack_layer() -> void:
-	if is_instance_valid(_pack_player) and _pack_player.playing:
-		_pack_player.play()
+func _restart_pack_layers() -> void:
+	_seek_pack_layers()
+
+
+func _check_pack_equip() -> void:
+	var id: String = GameState.get_equipped_sound_pack()
+	if id != _loaded_pack_id:
+		_sync_pack_layer()
 
 
 func _physics_process(_delta: float) -> void:
+	_check_pack_equip()
 	if dialogue_ui.is_dialogue_active() or _is_any_ui_open():
 		velocity = Vector2.ZERO
 		_show_idle_frame()
@@ -882,14 +910,16 @@ func _apply_intermission_music() -> void:
 		# Any match music is "coming" — mute the intermission tune.
 		if lobby_music.volume_db > -60.0:
 			lobby_music.volume_db = -80.0
-		if is_instance_valid(_pack_player):
-			_pack_player.volume_db = -80.0
+		for pl in _pack_players:
+			if is_instance_valid(pl):
+				pl.volume_db = -80.0
 	else:
 		if lobby_music.volume_db < -60.0:
 			lobby_music.volume_db = 0.0
 			_sync_pack_layer()
-		if is_instance_valid(_pack_player) and _pack_player.volume_db < -60.0:
-			_pack_player.volume_db = _pack_base_volume
+		for pl in _pack_players:
+			if is_instance_valid(pl) and pl.volume_db < -60.0:
+				pl.volume_db = _pack_base_volume
 
 
 func _play_lms_in_lobby() -> void:
@@ -903,8 +933,7 @@ func _play_lms_in_lobby() -> void:
 	if is_instance_valid(lobby_music):
 		lobby_music.stop()
 		lobby_music.volume_db = 0.0
-	if is_instance_valid(_pack_player):
-		_pack_player.stop()
+	_clear_pack_players()
 	lobby_music.stream = stream
 	lobby_music.play()
 	# Clear the carry-over flag so a later intermission uses the normal tune.

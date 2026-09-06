@@ -102,33 +102,56 @@ func equip_character(kind: String, name: String) -> bool:
 
 
 ## ── Sound Packs: buyable audio layers that play on top of an OST ──────────
-## Catalog of buyable sound packs. `cost` 0 = free starter. `path` = the audio
-## file layered over the base OST when equipped. `ost` = which OST it layers
-## over ("lobby" for now; maps come later), so it only starts on a matching tune.
+## Catalog of buyable sound packs. One entry = one purchasable pack, which can
+## hold MULTIPLE audio layers that all play on top of the base OST when equipped.
+## `cost` = one-time gold price for the whole bundle. `version` is bumped whenever
+## the pack is updated (new sounds / remixes); owners can re-buy the latest version
+## for `update_cost` gold. `ost` = which OST the layers sit on ("lobby" for now;
+## maps come later), so it only starts on a matching tune.
 const SOUND_PACK_CATALOG: Dictionary = {
-	"Chiptunic Layer": {
-		"description": "A chiptune remix layer that sits on top of the lobby OST.",
-		"cost": 100,
+	"Chiptunic Pack": {
+		"description": "Two chiptune remix layers that sit on top of the lobby OST.",
+		"cost": 300,
+		"version": 1,
+		"update_cost": 15,
 		"ost": "lobby",
-		"path": "res://The Darkness Of The Grasslands assets/Music/Lobby/Lobby remix layers/Chiptunic layer.wav",
-	},
-	"Chiptunic Layer #2": {
-		"description": "A second chiptune remix layer for the lobby OST.",
-		"cost": 150,
-		"ost": "lobby",
-		"path": "res://The Darkness Of The Grasslands assets/Music/Lobby/Lobby remix layers/Chiptunic layer #2.wav",
+		"layers": [
+			"res://The Darkness Of The Grasslands assets/Music/Lobby/Lobby remix layers/Chiptunic layer.wav",
+			"res://The Darkness Of The Grasslands assets/Music/Lobby/Lobby remix layers/Chiptunic layer #2.wav",
+		],
 	},
 }
 
+## Owned sound packs: id -> version owned (int). A pack is "owned" once bought.
 var owned_sound_packs: Dictionary = {}
 var equipped_sound_pack: String = ""
 
 func is_sound_pack_owned(id: String) -> bool:
-	return owned_sound_packs.get(id, false)
+	return owned_sound_packs.has(id)
+
+
+func get_owned_sound_pack_version(id: String) -> int:
+	return int(owned_sound_packs.get(id, 0))
 
 
 func own_sound_pack(id: String) -> void:
-	owned_sound_packs[id] = true
+	var def: Dictionary = SOUND_PACK_CATALOG.get(id, {})
+	owned_sound_packs[id] = int(def.get("version", 1))
+
+
+## True when the player owns the pack but a newer version is available.
+func can_update_sound_pack(id: String) -> bool:
+	if not is_sound_pack_owned(id):
+		return false
+	var def: Dictionary = SOUND_PACK_CATALOG.get(id, {})
+	if def.is_empty():
+		return false
+	return get_owned_sound_pack_version(id) < int(def.get("version", 1))
+
+
+func update_sound_pack(id: String) -> void:
+	var def: Dictionary = SOUND_PACK_CATALOG.get(id, {})
+	owned_sound_packs[id] = int(def.get("version", 1))
 
 
 func equip_sound_pack(id: String) -> bool:
