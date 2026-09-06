@@ -68,14 +68,15 @@ func _setup_signals() -> void:
 
 func _switch_tab(tab: Tab) -> void:
 	_current_tab = tab
-	tab_killers.disabled = (tab != Tab.KILLERS)
-	tab_survivors.disabled = (tab != Tab.SURVIVORS)
+	# Keep every tab clickable; the active one is shown by its colour.
+	_set_tab_active(tab_killers, tab == Tab.KILLERS, Color(1, 0.3, 0.3, 1))
+	_set_tab_active(tab_survivors, tab == Tab.SURVIVORS, Color(0.3, 1, 0.3, 1))
 	if _details_tab:
-		_details_tab.disabled = (tab != Tab.DETAILS)
+		_set_tab_active(_details_tab, tab == Tab.DETAILS, Color(0.8, 0.8, 1, 1))
 	if _skins_tab:
-		_skins_tab.disabled = (tab != Tab.SKINS)
+		_set_tab_active(_skins_tab, tab == Tab.SKINS, Color(1, 0.8, 1, 1))
 	if _packs_tab:
-		_packs_tab.disabled = (tab != Tab.SOUND_PACKS)
+		_set_tab_active(_packs_tab, tab == Tab.SOUND_PACKS, Color(1, 1, 0.6, 1))
 	# Keep the side panel open (icon + equip/buy) while viewing DETAILS/SKINS.
 	if tab == Tab.KILLERS or tab == Tab.SURVIVORS:
 		_close_side_panel(true)
@@ -100,6 +101,11 @@ func _create_extra_tabs() -> void:
 	_content_view.size = Vector2(1000, 520)
 	$UILayer/Panel.add_child(_content_view)
 	_content_view.visible = false
+
+
+func _set_tab_active(btn: Button, active: bool, color: Color) -> void:
+	btn.disabled = false
+	btn.add_theme_color_override("font_color", color if active else Color(0.55, 0.55, 0.6, 1))
 
 
 func _make_top_tab(label: String, color: Color) -> Button:
