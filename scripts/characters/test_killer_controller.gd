@@ -554,6 +554,7 @@ func _on_tentacle_catch(body: Node2D) -> void:
 	
 	# Deal initial catch damage
 	body.take_damage(tentacle_catch_damage)
+	hit_landed.emit(body, tentacle_catch_damage)
 	tentacle_caught.emit(body)
 	
 	# Disable survivor movement by setting them as a child of the tentacle
@@ -607,6 +608,7 @@ func _retract_tentacle(delta: float) -> void:
 				if collider and collider is StaticBody2D:
 					# Wall hit during retraction — deal wall damage
 					_tentacle_caught_survivor.take_damage(tentacle_wall_damage)
+					hit_landed.emit(_tentacle_caught_survivor, tentacle_wall_damage)
 					# Push survivor away from wall
 					_tentacle_caught_survivor.global_position += collision.get_normal() * 8.0
 

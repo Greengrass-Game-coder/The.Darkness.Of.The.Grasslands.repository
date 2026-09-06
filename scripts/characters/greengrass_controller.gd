@@ -4,6 +4,7 @@ extends CharacterBody2D
 signal block_unlocked_punch()
 signal punch_locked_changed(locked: bool)
 signal punch_landed(stunned: bool)
+signal damage_dealt(target: Node2D, amount: float)
 signal healed(amount: float, source: String)
 signal stamina_changed(current: float, max_stamina: float)
 signal slowed(duration: float)
@@ -980,6 +981,7 @@ func _check_punch_hits_during_launch() -> void:
 			target.take_stun(stun_duration)
 		if target.has_method("take_damage"):
 			target.take_damage(punch_damage * _punch_dmg_mult)
+			damage_dealt.emit(target, punch_damage * _punch_dmg_mult)
 
 
 # ---------- AIM ARROW ----------

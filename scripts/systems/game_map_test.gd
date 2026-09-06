@@ -654,6 +654,12 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	# Track damage dealt via punch signal
 	if _player.has_signal("punch_landed") and not _player.punch_landed.is_connected(_on_player_attacked):
 		_player.punch_landed.connect(_on_player_attacked)
+
+	# Show floating damage numbers for the human player's own hits (killer or survivor).
+	if _player.has_signal("hit_landed") and not _player.hit_landed.is_connected(_on_killer_hit_landed):
+		_player.hit_landed.connect(_on_killer_hit_landed)
+	if _player.has_signal("damage_dealt") and not _player.damage_dealt.is_connected(_on_survivor_damage_dealt):
+		_player.damage_dealt.connect(_on_survivor_damage_dealt)
 	
 	# Connect teleport zoom signal for killer map-view
 	if _player.has_signal("teleport_zoom_started") and not _player.teleport_zoom_started.is_connected(_on_teleport_zoom_started):
@@ -3562,8 +3568,35 @@ func _apply_epilepsy_mode() -> void:
 
 
 func _on_killer_hit_landed(target: Node2D, damage: float) -> void:
-	"""Track when killer lands a hit (for stats and VFX)."""
-	print("GameMap: Killer landed hit for %.1f damage on %s" % [damage, target.name])
+	"""Show a floating damage number over the survivor the killer just hit."""
+	if is_instance_valid(target):
+		_spawn_damage_number(target.global_position, damage, Color(1.0, 0.35, 0.25, 1.0))
+
+
+func _on_survivor_damage_dealt(target: Node2D, amount: float) -> void:
+	"""Show a floating damage number over the killer the survivor just punched."""
+	if is_instance_valid(target):
+		_spawn_damage_number(target.global_position, amount, Color(1.0, 0.85, 0.25, 1.0))
+
+
+func _spawn_damage_number(pos: Vector2, amount: float, color: Color) -> void:
+	"""Spawn a floating damage number that drifts up and fades out."""
+	var label := Label.new()
+	label.text = str(int(round(amount)))
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 24)
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	label.add_theme_constant_override("shadow_offset_x", 2)
+	label.add_theme_constant_override("shadow_offset_y", 2)
+	label.position = pos + Vector2(-16, -70)
+	label.z_index = 200
+	add_child(label)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(label, "position:y", label.position.y - 48.0, 0.9).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "modulate:a", 0.0, 0.5).set_delay(0.45)
+	tween.chain().tween_callback(label.queue_free)
 
 
 func _trigger_vignette() -> void:
