@@ -75,7 +75,7 @@ var _settings_layer: SettingsLayer = null
 var _analysis_overlay: CanvasLayer = null
 var _analysis_timer: float = 0.0
 var _pack_players: Array = []
-var _pack_base_volume: float = -8.0
+var _pack_base_volume: float = 4.0
 var _loaded_pack_sig: String = ""
 var _friends_panel: FriendsPanel = null
 

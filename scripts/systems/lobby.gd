@@ -75,7 +75,7 @@ var _settings_layer: SettingsLayer = null
 var _analysis_overlay: CanvasLayer = null
 var _analysis_timer: float = 0.0
 var _pack_players: Array = []
-var _pack_base_volume: float = -8.0
+var _pack_base_volume: float = 4.0
 var _loaded_pack_sig: String = ""
 var _friends_panel: FriendsPanel = null
 
@@ -876,6 +876,7 @@ func _create_pack_players(pack_ids: Array) -> void:
 			pl.finished.connect(_restart_pack_layers)
 			pl.play(lobby_music.get_playback_position())
 			_pack_players.append(pl)
+			var _t: float = 1.0
 
 
 func _seek_pack_layers() -> void:
@@ -902,6 +903,7 @@ func _sync_pack_layers() -> void:
 
 func _restart_pack_layers() -> void:
 	_seek_pack_layers()
+
 
 
 func _apply_intermission_music() -> void:
