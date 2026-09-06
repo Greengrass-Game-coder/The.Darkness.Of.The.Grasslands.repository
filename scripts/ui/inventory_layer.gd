@@ -546,7 +546,7 @@ func _add_pack_card(id: String, def: Dictionary, list: VBoxContainer) -> void:
 	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(name_lbl)
 	var owned: bool = GameState.is_sound_pack_owned(id)
-	var equipped: bool = GameState.get_equipped_sound_pack() == id
+	var equipped: bool = GameState.is_sound_pack_equipped(id)
 	var cost: int = int(def.get("cost", 0))
 	var version: int = int(def.get("version", 1))
 	var upd: bool = GameState.can_update_sound_pack(id)
@@ -590,7 +590,7 @@ func _populate_pack_side(id: String, def: Dictionary) -> void:
 	_side_icon.texture = null
 	_side_name.label_text = id
 	var owned: bool = GameState.is_sound_pack_owned(id)
-	var equipped: bool = GameState.get_equipped_sound_pack() == id
+	var equipped: bool = GameState.is_sound_pack_equipped(id)
 	var cost: int = int(def.get("cost", 0))
 	var version: int = int(def.get("version", 1))
 	var upd: bool = GameState.can_update_sound_pack(id)
@@ -621,7 +621,7 @@ func _populate_pack_side(id: String, def: Dictionary) -> void:
 		hint.add_theme_color_override("font_color", Color(0.5, 1, 0.5, 1))
 		_side_buttons.add_child(hint)
 		var rm := _make_side_button("REMOVE")
-		rm.pressed.connect(_equip_sound_pack.bind(""))
+		rm.pressed.connect(_remove_sound_pack.bind(id))
 		_side_buttons.add_child(rm)
 	elif owned:
 		if upd:
@@ -648,8 +648,18 @@ func _equip_sound_pack(id: String) -> void:
 		if SaveManager and SaveManager.has_method("autosave"):
 			SaveManager.autosave(GameState.logged_in_username)
 		_build_packs_view()
-		if id != "":
-			_populate_pack_side(id, GameState.SOUND_PACK_CATALOG[id])
+		_populate_pack_side(id, GameState.SOUND_PACK_CATALOG[id])
+	elif _side_status:
+		_side_status.label_text = "MAX 2 LAYERS EQUIPPED"
+		_side_status.font_color = Color(1, 0.5, 0.4, 1)
+
+
+func _remove_sound_pack(id: String) -> void:
+	GameState.unequip_sound_pack(id)
+	if SaveManager and SaveManager.has_method("autosave"):
+		SaveManager.autosave(GameState.logged_in_username)
+	_build_packs_view()
+	_populate_pack_side(id, GameState.SOUND_PACK_CATALOG[id])
 
 
 func _update_sound_pack(id: String) -> void:

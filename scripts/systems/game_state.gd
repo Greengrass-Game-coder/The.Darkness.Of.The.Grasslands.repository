@@ -133,7 +133,7 @@ const SOUND_PACK_CATALOG: Dictionary = {
 
 ## Owned sound packs: id -> version owned (int). A pack is "owned" once bought.
 var owned_sound_packs: Dictionary = {}
-var equipped_sound_pack: String = ""
+var equipped_sound_packs: Array = []
 
 func is_sound_pack_owned(id: String) -> bool:
 	return owned_sound_packs.has(id)
@@ -163,15 +163,37 @@ func update_sound_pack(id: String) -> void:
 	owned_sound_packs[id] = int(def.get("version", 1))
 
 
+func is_sound_pack_equipped(id: String) -> bool:
+	return equipped_sound_packs.has(id)
+
+
+func _sound_pack_layer_count(id: String) -> int:
+	return int(SOUND_PACK_CATALOG.get(id, {}).get("layers", []).size())
+
+
 func equip_sound_pack(id: String) -> bool:
-	if id != "" and not is_sound_pack_owned(id):
+	# Toggle. If already equipped, unequip it. Otherwise add it only when the
+	# total equipped layers stays within the 2-layer cap.
+	if not is_sound_pack_owned(id):
 		return false
-	equipped_sound_pack = id
-	return true
+	if is_sound_pack_equipped(id):
+		unequip_sound_pack(id)
+		return true
+	var total: int = 0
+	for eid in equipped_sound_packs:
+		total += _sound_pack_layer_count(eid)
+	if total + _sound_pack_layer_count(id) <= 2:
+		equipped_sound_packs.append(id)
+		return true
+	return false
 
 
-func get_equipped_sound_pack() -> String:
-	return equipped_sound_pack
+func unequip_sound_pack(id: String) -> void:
+	equipped_sound_packs.erase(id)
+
+
+func get_equipped_sound_packs() -> Array:
+	return equipped_sound_packs
 
 ## User settings (persisted across scenes, not yet saved to disk)
 var hide_leaderboard: bool = false

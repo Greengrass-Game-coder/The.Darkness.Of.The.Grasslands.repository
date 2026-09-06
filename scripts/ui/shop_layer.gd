@@ -572,7 +572,7 @@ func _add_pack_card(id: String, def: Dictionary, list: VBoxContainer) -> void:
 	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(name_lbl)
 	var owned: bool = GameState.is_sound_pack_owned(id)
-	var equipped: bool = GameState.get_equipped_sound_pack() == id
+	var equipped: bool = GameState.is_sound_pack_equipped(id)
 	var cost: int = int(def.get("cost", 0))
 	var version: int = int(def.get("version", 1))
 	var upd: bool = GameState.can_update_sound_pack(id)
@@ -616,7 +616,7 @@ func _populate_pack_side(id: String, def: Dictionary) -> void:
 	_side_icon.texture = null
 	_side_name.label_text = id
 	var owned: bool = GameState.is_sound_pack_owned(id)
-	var equipped: bool = GameState.get_equipped_sound_pack() == id
+	var equipped: bool = GameState.is_sound_pack_equipped(id)
 	var cost: int = int(def.get("cost", 0))
 	var version: int = int(def.get("version", 1))
 	var upd: bool = GameState.can_update_sound_pack(id)

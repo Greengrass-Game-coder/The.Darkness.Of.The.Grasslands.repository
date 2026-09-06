@@ -175,7 +175,7 @@ static func autosave(username: String) -> bool:
 		"dirtysweeper_owns_paid": GameState.dirtysweeper_owns_paid,
 		"dirtysweeper_hard": GameState.dirtysweeper_hard,
 		"owned_sound_packs": GameState.owned_sound_packs.duplicate(true),
-		"equipped_sound_pack": GameState.equipped_sound_pack
+		"equipped_sound_packs": GameState.equipped_sound_packs.duplicate(true)
 	}
 	# Also include audio bus volumes
 	for bus_name in ["Master", "Music", "SFX"]:
@@ -246,8 +246,10 @@ static func autoload(username: String) -> bool:
 		GameState.dirtysweeper_hard = data.dirtysweeper_hard
 	if data.has("owned_sound_packs") and data.owned_sound_packs is Dictionary:
 		GameState.owned_sound_packs = data.owned_sound_packs.duplicate(true)
-	if data.has("equipped_sound_pack"):
-		GameState.equipped_sound_pack = data.equipped_sound_pack
+	if data.has("equipped_sound_packs") and data.equipped_sound_packs is Array:
+		GameState.equipped_sound_packs = data.equipped_sound_packs.duplicate(true)
+	elif data.has("equipped_sound_pack") and data.equipped_sound_pack is String and not (data.equipped_sound_pack as String).is_empty():
+		GameState.equipped_sound_packs = [data.equipped_sound_pack]
 	
 	# Restore audio bus volumes
 	for bus_name in ["Master", "Music", "SFX"]:
