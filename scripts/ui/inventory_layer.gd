@@ -87,12 +87,6 @@ func _switch_tab(tab: Tab) -> void:
 
 func _create_extra_tabs() -> void:
 	var tab_bar: HBoxContainer = $UILayer/Panel/TabButtons
-	_details_tab = _make_top_tab("DETAILS", Color(0.8, 0.8, 1, 1))
-	_details_tab.pressed.connect(func(): _switch_tab(Tab.DETAILS))
-	tab_bar.add_child(_details_tab)
-	_skins_tab = _make_top_tab("SKINS", Color(1, 0.8, 1, 1))
-	_skins_tab.pressed.connect(func(): _switch_tab(Tab.SKINS))
-	tab_bar.add_child(_skins_tab)
 	_packs_tab = _make_top_tab("SOUND PACKS", Color(1, 1, 0.6, 1))
 	_packs_tab.pressed.connect(func(): _switch_tab(Tab.SOUND_PACKS))
 	tab_bar.add_child(_packs_tab)
