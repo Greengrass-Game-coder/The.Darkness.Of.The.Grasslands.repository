@@ -591,7 +591,7 @@ func _add_pack_card(id: String, def: Dictionary, list: VBoxContainer) -> void:
 		status.label_text = "OWNED (v%d)" % version
 		status.font_color = Color(0.5, 1, 0.5, 1)
 	else:
-		status.label_text = "PRICE: $%d (2 layers)" % cost
+		status.label_text = "PRICE: $%d (%d layers)" % [cost, def.get("layers", []).size()]
 		status.font_color = Color(1, 0.85, 0.2, 1)
 	card.add_child(status)
 	var desc := Label.new()
@@ -631,7 +631,7 @@ func _populate_pack_side(id: String, def: Dictionary) -> void:
 		_side_status.label_text = "OWNED (v%d)" % version
 		_side_status.font_color = Color(0.5, 1, 0.5, 1)
 	else:
-		_side_status.label_text = "PRICE: $%d (2 layers)" % cost
+		_side_status.label_text = "PRICE: $%d (%d layers)" % [cost, def.get("layers", []).size()]
 		_side_status.font_color = Color(1, 0.85, 0.2, 1)
 	for c in _side_buttons.get_children():
 		c.queue_free()

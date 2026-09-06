@@ -109,14 +109,23 @@ func equip_character(kind: String, name: String) -> bool:
 ## for `update_cost` gold. `ost` = which OST the layers sit on ("lobby" for now;
 ## maps come later), so it only starts on a matching tune.
 const SOUND_PACK_CATALOG: Dictionary = {
-	"Chiptunic Pack": {
-		"description": "Two chiptune remix layers that sit on top of the lobby OST.",
-		"cost": 300,
+	"Chiptunic Layer": {
+		"description": "A chiptune remix layer that sits on top of the lobby OST.",
+		"cost": 150,
 		"version": 1,
 		"update_cost": 15,
 		"ost": "lobby",
 		"layers": [
 			"res://The Darkness Of The Grasslands assets/Music/Lobby/Lobby remix layers/Chiptunic layer.wav",
+		],
+	},
+	"Chiptunic Layer #2": {
+		"description": "A second chiptune remix layer for the lobby OST.",
+		"cost": 150,
+		"version": 1,
+		"update_cost": 15,
+		"ost": "lobby",
+		"layers": [
 			"res://The Darkness Of The Grasslands assets/Music/Lobby/Lobby remix layers/Chiptunic layer #2.wav",
 		],
 	},

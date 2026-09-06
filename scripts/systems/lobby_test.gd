@@ -412,6 +412,10 @@ func _create_pack_players(layers: Array) -> void:
 		pl.bus = "Music"
 		pl.volume_db = _pack_base_volume
 		pl.stream = stream
+		# Match the OST's positional setup so the layer can't get distance-faded.
+		pl.position = lobby_music.position
+		pl.scale = lobby_music.scale
+		pl.max_distance = lobby_music.max_distance
 		lobby_music.get_parent().add_child(pl)
 		pl.finished.connect(_restart_pack_layers)
 		pl.play(lobby_music.get_playback_position())
