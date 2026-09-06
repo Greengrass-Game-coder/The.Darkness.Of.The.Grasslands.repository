@@ -895,7 +895,9 @@ func _sync_pack_layers() -> void:
 			_clear_pack_players()
 		return
 	if _loaded_pack_sig == sig and _pack_players.size() > 0:
-		_seek_pack_layers()
+		# Layers and OST play 1:1, so once started in sync they stay in sync.
+		# Re-seeking (pl.play()) here every frame would restart the audio each
+		# physics tick and cause a stutter/buffering artifact.
 		return
 	_create_pack_players(_equipped_pack_ids())
 	_loaded_pack_sig = sig
