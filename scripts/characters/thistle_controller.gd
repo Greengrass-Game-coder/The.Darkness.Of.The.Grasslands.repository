@@ -99,11 +99,11 @@ func _start_charge_punch() -> void:
 
 
 func _fire_charged_punch() -> void:
-	"""End Spectral Veil on E release."""
+	"""E release: start the cooldown, but let the veil run its full duration
+	(auto-ended by the timer) instead of cutting it off on release."""
 	if not _charging:
 		return
 	_charging = false
-	_end_veil()
 	punch_on_cooldown = true
 	_punch_cd_timer = veil_cooldown
 
@@ -144,6 +144,24 @@ func use_spare_flower() -> void:
 
 
 # ---------- VISUAL HELPER ----------
+
+func _play_ability_vfx(anim: String) -> void:
+	"""Play an ability VFX overlay, resolving the directional animation.
+
+	Thistle's AbilityVFX SpriteFrames only has directional variants
+	(e.g. 'block_down'), while the base controller requests plain names
+	(e.g. 'block'). Resolve the current facing direction so the VFX actually
+	plays instead of silently doing nothing.
+	"""
+	var dir_name: String = ["down", "left", "right", "up"][int(current_direction)]
+	var full: String = anim + "_" + dir_name
+	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(full):
+		ability_vfx.visible = true
+		ability_vfx.play(full)
+	elif ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(anim):
+		ability_vfx.visible = true
+		ability_vfx.play(anim)
+
 
 func _draw() -> void:
 	# Small expanding ring for the Bloom Burst (super's _draw draws the aim

@@ -1019,6 +1019,20 @@ func set_stunned(duration: float) -> void:
 	state_timer.timeout.connect(_on_stun_end)
 
 
+func take_stun(duration: float) -> void:
+	"""Alias used by survivor abilities (e.g. Thistle's Bloom Burst) to stun this killer."""
+	if current_state == State.STUNNED:
+		return
+	set_stunned(duration)
+	print("Test Killer stunned for ", duration, "s")
+	# Visual feedback so the stun reads clearly (grey flash like other characters).
+	modulate = Color(0.5, 0.5, 0.5, 1.0)
+	get_tree().create_timer(duration).timeout.connect(func() -> void:
+		if is_instance_valid(self):
+			modulate = Color.WHITE
+	)
+
+
 func _on_stun_end() -> void:
 	if current_state == State.STUNNED:
 		current_state = State.IDLE
