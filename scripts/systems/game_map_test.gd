@@ -794,6 +794,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		if a_panel:
 			a_panel.toggle_gui()
 		get_viewport().set_input_as_handled()
+	# F4 prints the current player position — use it to mark flower spawn spots.
+	# Walk to a good spot (floor, not in a wall), press F4, then paste the
+	# printed Vector2 into FLOWER_SPAWN_POINTS.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F4:
+		if is_instance_valid(_player):
+			print("FLOWER_SPOT: Vector2(%.1f, %.1f)" % [_player.global_position.x, _player.global_position.y])
+		get_viewport().set_input_as_handled()
 # ═══════════════ STAIRS SYSTEM ═══════════════
 
 func _on_stairs_entered(body: Node2D, area: Area2D) -> void:
@@ -1544,22 +1551,39 @@ func _chase_theme_folder() -> String:
 	return "Violentgrass"
 
 
+# ── Flower spawn points (PRIMARY / DEFAULT) ──
+# Add Vector2(x, y) positions here to force flowers to spawn at YOUR spots.
+# These are used first. If left empty, flowers spawn at random positions
+# (which can land inside walls). Coordinates are in map pixels; pick spots
+# that are on walkable floor (not inside walls/objects).
+const FLOWER_SPAWN_POINTS: Array = [
+	# Example: Vector2(400, 400),
+]
+
 func _spawn_flower_items() -> void:
-	"""Place a couple of Flower pickups (heal 90 HP) randomly across the map."""
+	"""Place Flower pickups (heal 90 HP). Uses FLOWER_SPAWN_POINTS when set,
+	otherwise falls back to random positions across the map."""
 	var flower_script: Script = load("res://scripts/items/flower_item.gd")
 	if flower_script == null:
 		return
 	var map_size: Vector2 = _map_manager.blueprint_size if _map_manager and _map_manager.blueprint_size else Vector2(2000, 1500)
-	for i in range(2):
+	var points: Array = FLOWER_SPAWN_POINTS
+	if points.is_empty():
+		points = []
+		for i in range(2):
+			points.append(Vector2(
+				randf_range(120.0, map_size.x - 120.0),
+				randf_range(120.0, map_size.y - 120.0)
+			))
+	for i in range(points.size()):
 		var item := Area2D.new()
 		item.set_script(flower_script)
 		item.name = "FlowerItem%d" % i
-		item.position = Vector2(
-			randf_range(120.0, map_size.x - 120.0),
-			randf_range(120.0, map_size.y - 120.0)
-		)
+		item.position = points[i]
 		add_child(item)
-	print("GameMap: spawned 2 Flower pickups")
+	print("GameMapTest: spawned %d Flower pickups" % points.size())
+	for pt in points:
+		print("GameMapTest: Flower at ", pt)
 
 
 func _spawn_bot_killer() -> void:

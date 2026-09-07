@@ -88,10 +88,16 @@ var heal_ticks_remaining: int = 7
 var _held_item_sprite: Sprite2D = null
 var _heal_bar: ColorRect = null
 var _heal_bar_bg: ColorRect = null
+# Overheal "SHARING IS CARING." screen warning (human survivor only)
+var _sharing_overlay: CanvasLayer = null
+var _sharing_label: Label = null
+var _sharing_active: bool = false
+var _sharing_flicker: float = 0.0
 const HELD_ITEM_HEAL_DURATION: float = 7.0    # seconds to channel a flower heal
 const HEAL_WALK_SPEED: float = 80.0           # slow walk while channeling
 const HEAL_BAR_WIDTH: float = 80.0
 const HEAL_BAR_HEIGHT: float = 14.0
+const OVERHEAL_CAP: float = 150.0   # healing can push HP above max_hp (for sharing)
 var _heal_channel_slot: int = -1              # slot currently channeling, -1 = none
 var _heal_channel_timer: float = 0.0
 
@@ -155,6 +161,7 @@ func _ready() -> void:
 	_setup_ability_vfx_frames()
 	_setup_held_item_sprite()
 	_setup_heal_progress_bar()
+	_setup_sharing_overlay()
 	if not ability_vfx.animation_finished.is_connected(_on_ability_vfx_finished):
 		ability_vfx.animation_finished.connect(_on_ability_vfx_finished)
 
@@ -182,18 +189,17 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		if _try_pickup_item():
 			return
-	# Item slots (1/2): use the item held in that slot.
+	# Item slots (1/2): unequip (drop) the item held in that slot.
 	if event.is_action_pressed("item_1"):
-		_use_item_in_slot(0)
+		_unequip_item(0)
 		return
 	if event.is_action_pressed("item_2"):
-		_use_item_in_slot(1)
+		_unequip_item(1)
 		return
-	# Use the held item with M1 (left click). While channeling a heal, M1
-	# cancels it (same as pressing its inventory slot).
+	# Heal with M1 (left click): start a flower heal channel while carrying.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _heal_channel_slot >= 0:
-			_use_item_in_slot(_heal_channel_slot)
+			_cancel_heal_channel()
 		elif _is_holding_item():
 			_use_held_item_m1()
 		return
@@ -297,6 +303,39 @@ func _use_item_in_slot(slot: int) -> void:
 	_start_heal_channel(slot)
 
 
+func _unequip_item(slot: int) -> void:
+	"""Unequip (drop) the item in the given slot back to the ground."""
+	if slot < 0 or slot >= _item_slots.size():
+		return
+	if _heal_channel_slot == slot:
+		_cancel_heal_channel()
+		return
+	if _item_slots[slot] == null:
+		return
+	var itype: String = _item_slots[slot]
+	_item_slots[slot] = null
+	item_slot_changed.emit(slot, "")
+	_update_held_item_visual()
+	if itype == FlowerItem.FLOWER_ITEM:
+		_drop_flower_item()
+	print("Greengrass: unequipped item from slot ", slot + 1)
+
+
+func _drop_flower_item() -> void:
+	"""Spawn a pickable flower at the survivor's feet (dropped by unequipping)."""
+	var flower_script: Script = load("res://scripts/items/flower_item.gd")
+	if flower_script == null:
+		return
+	var item := Area2D.new()
+	item.set_script(flower_script)
+	item.name = "DroppedFlower"
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	parent.add_child(item)
+	item.global_position = global_position + Vector2(20, 0)
+
+
 func _start_heal_channel(slot: int) -> void:
 	_heal_channel_slot = slot
 	_heal_channel_timer = HELD_ITEM_HEAL_DURATION
@@ -304,7 +343,7 @@ func _start_heal_channel(slot: int) -> void:
 	_play_animation("heal")
 	_update_held_item_visual()
 	if _heal_bar:
-		_heal_bar.visible = true
+		_set_heal_bar_visible(true)
 		_heal_bar.size.x = 0.0
 	print("Greengrass: healing with Flower (7s channel) from slot ", slot + 1)
 
@@ -321,8 +360,7 @@ func _finish_heal_channel() -> void:
 	_apply_heal(FlowerItem.HEAL_AMOUNT, "self")
 	_apply_flower_cure()
 	_update_held_item_visual()
-	if _heal_bar:
-		_heal_bar.visible = false
+	_set_heal_bar_visible(false)
 	_change_state(State.IDLE)
 	_play_animation("idle")
 	print("Greengrass: Flower heal complete (+", FlowerItem.HEAL_AMOUNT, " HP)")
@@ -334,8 +372,7 @@ func _cancel_heal_channel() -> void:
 		return
 	_heal_channel_slot = -1
 	_update_held_item_visual()
-	if _heal_bar:
-		_heal_bar.visible = false
+	_set_heal_bar_visible(false)
 	_change_state(State.IDLE)
 	_play_animation("idle")
 	print("Greengrass: cancelled Flower heal — flower back in hand")
@@ -400,6 +437,7 @@ func _physics_process(delta: float) -> void:
 	_update_cooldowns(delta)
 	_update_red_sickness(delta)
 	_update_cure_qte(delta)
+	_update_sharing_overlay(delta)
 
 	if heal_over_time_active:
 		heal_tick_timer -= delta
@@ -629,13 +667,10 @@ func _setup_held_item_sprite() -> void:
 	_held_item_sprite.name = "HeldItem"
 	var tex: Texture2D = load("res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Greengrass_holding_flower.png")
 	if tex:
-		var atlas := AtlasTexture.new()
-		atlas.atlas = tex
-		# The hand + flower sit in the top ~210px of the holding frame (the body
-		# is below that). Crop just the hand/flower so it can orbit the body.
-		atlas.region = Rect2(0, 0, 193, 210)
-		_held_item_sprite.texture = atlas
-	_held_item_sprite.scale = Vector2(0.25, 0.25)
+		_held_item_sprite.texture = tex
+	# Scale the holding frame down small so it reads as a hand holding the
+	# flower while it orbits the character.
+	_held_item_sprite.scale = Vector2(0.12, 0.12)
 	_held_item_sprite.z_index = 5
 	_held_item_sprite.visible = false
 	add_child(_held_item_sprite)
@@ -643,23 +678,37 @@ func _setup_held_item_sprite() -> void:
 
 
 func _setup_heal_progress_bar() -> void:
-	"""Small progress bar above the survivor shown while a flower heal channels."""
+	"""Progress bar above the survivor shown while a flower heal channels:
+	a big black square background with a green fill that grows across it."""
+	var bar_pos: Vector2 = Vector2(-HEAL_BAR_WIDTH * 0.5, -80.0)
+	# Black background goes in FIRST (behind). Sibling of the fill so the
+	# draw order is guaranteed: black square, then green fill on top of it.
+	_heal_bar_bg = ColorRect.new()
+	_heal_bar_bg.name = "HealBarBG"
+	_heal_bar_bg.position = bar_pos
+	_heal_bar_bg.size = Vector2(HEAL_BAR_WIDTH, HEAL_BAR_HEIGHT)
+	_heal_bar_bg.color = Color(0.02, 0.02, 0.02, 0.95)
+	_heal_bar_bg.visible = false
+	_heal_bar_bg.z_index = 20
+	add_child(_heal_bar_bg)
+	# Green fill on top; its width grows as the heal channels.
 	_heal_bar = ColorRect.new()
 	_heal_bar.name = "HealProgressBar"
-	_heal_bar.position = Vector2(-HEAL_BAR_WIDTH * 0.5, -80.0)
+	_heal_bar.position = bar_pos
 	_heal_bar.size = Vector2(0, HEAL_BAR_HEIGHT)
 	_heal_bar.color = Color(0.2, 0.95, 0.3, 0.95)
 	_heal_bar.visible = false
 	_heal_bar.z_index = 21
 	add_child(_heal_bar)
-	# Big black background square behind the green fill. It's a child so it
-	# follows the fill's visibility but keeps its own fixed size.
-	_heal_bar_bg = ColorRect.new()
-	_heal_bar_bg.name = "HealBarBG"
-	_heal_bar_bg.size = Vector2(HEAL_BAR_WIDTH, HEAL_BAR_HEIGHT)
-	_heal_bar_bg.color = Color(0.05, 0.05, 0.05, 0.95)
-	_heal_bar_bg.z_index = 20
-	_heal_bar.add_child(_heal_bar_bg)
+	_heal_bar_bg.visible = false
+
+
+func _set_heal_bar_visible(bar_visible: bool) -> void:
+	"""Show/hide both halves of the heal progress bar together."""
+	if _heal_bar:
+		_heal_bar.visible = bar_visible
+	if _heal_bar_bg:
+		_heal_bar_bg.visible = bar_visible
 
 
 func _update_held_item_visual() -> void:
@@ -688,6 +737,48 @@ func _update_held_item_orbit() -> void:
 	_held_item_sprite.position = Vector2.from_angle(angle) * 46.0
 	# The flower sits at the top (-Y) of the crop; rotate it to point outward.
 	_held_item_sprite.rotation = angle + PI / 2.0
+
+
+func _setup_sharing_overlay() -> void:
+	"""Create the big red 'SHARING IS CARING.' warning for overheal (HP > max)."""
+	if is_in_group("survivor_bots"):
+		return  # Only the human survivor has a screen to show this on
+	_sharing_overlay = CanvasLayer.new()
+	_sharing_overlay.name = "SharingOverlay"
+	_sharing_overlay.layer = 70
+	add_child(_sharing_overlay)
+	var label := Label.new()
+	label.name = "SharingLabel"
+	label.text = "SHARING\nIS\nCARING."
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.add_theme_font_size_override("font_size", 110)
+	label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.0, 1.0))
+	label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
+	label.add_theme_constant_override("outline_size", 12)
+	label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.85))
+	label.add_theme_constant_override("shadow_offset_x", 6)
+	label.add_theme_constant_override("shadow_offset_y", 6)
+	label.visible = false
+	_sharing_overlay.add_child(label)
+	_sharing_label = label
+
+
+func _update_sharing_overlay(delta: float) -> void:
+	"""Flicker the sharing warning whenever the survivor is overhealed."""
+	if _sharing_label == null:
+		return
+	var should_show: bool = current_hp > max_hp
+	if should_show != _sharing_active:
+		_sharing_active = should_show
+		_sharing_flicker = 0.0
+	if not _sharing_active:
+		return
+	_sharing_flicker += delta
+	var on: bool = int(_sharing_flicker / 0.09) % 2 == 0
+	_sharing_label.visible = on
+	_sharing_label.modulate.a = 1.0 if on else 0.0
 
 
 func _setup_ability_vfx_frames() -> void:
@@ -911,6 +1002,10 @@ func _clear_slow() -> void:
 
 
 func take_damage(amount: float) -> void:
+	# A killer hitting the survivor interrupts any flower heal channel; the
+	# flower returns to its slot and they must re-heal.
+	if _heal_channel_slot >= 0:
+		_cancel_heal_channel()
 	if block_active and can_block_hit:
 		var _absorbed: float = amount * block_absorption
 		current_hp -= amount * (1.0 - block_absorption)
@@ -1111,7 +1206,7 @@ func _apply_heal(amount: float, source: String, target: Node = null) -> void:
 	if target == null:
 		target = self
 	if target == self:
-		current_hp = min(current_hp + amount, max_hp)
+		current_hp = min(current_hp + amount, OVERHEAL_CAP)
 		hp_changed.emit(current_hp, max_hp)
 	elif target.has_method("get_current_hp") and target.has_method("set_current_hp"):
 		var hp: float = target.get("current_hp")
