@@ -599,18 +599,61 @@ func _retract_tentacle(delta: float) -> void:
 		var prev_pos: Vector2 = _tentacle_caught_survivor.global_position
 		_tentacle_caught_survivor.global_position = survivor_global
 		
-		# Check for wall collisions during retraction
+		# Check for wall collisions during retraction — deal damage for EVERY
+		# wall the survivor is pressed against (2 dmg per wall, so a corner
+		# jam hits for both walls).
 		if _tentacle_caught_survivor is CharacterBody2D:
 			var surv: CharacterBody2D = _tentacle_caught_survivor as CharacterBody2D
-			var collision: KinematicCollision2D = surv.move_and_collide(Vector2.ZERO, true)
-			if collision:
-				var collider: Node = collision.get_collider()
-				if collider and collider is StaticBody2D:
-					# Wall hit during retraction — deal wall damage
-					_tentacle_caught_survivor.take_damage(tentacle_wall_damage)
-					hit_landed.emit(_tentacle_caught_survivor, tentacle_wall_damage)
-					# Push survivor away from wall
-					_tentacle_caught_survivor.global_position += collision.get_normal() * 8.0
+			var walls_hit: Array = _get_tentacle_wall_hits(surv)
+			if not walls_hit.is_empty():
+				var total_damage: float = tentacle_wall_damage * walls_hit.size()
+				_tentacle_caught_survivor.take_damage(total_damage)
+				hit_landed.emit(_tentacle_caught_survivor, total_damage)
+				# Push survivor out of each wall so it doesn't stick
+				for wall in walls_hit:
+					var wall_normal: Vector2 = wall.get("normal", Vector2.ZERO)
+					_tentacle_caught_survivor.global_position += wall_normal * 8.0
+
+
+func _get_tentacle_wall_hits(surv: CharacterBody2D) -> Array:
+	"""Return every StaticBody2D wall the survivor is currently overlapping.
+
+	Unlike move_and_collide (which only reports the FIRST collision), this
+	uses a shape query so a survivor jammed against multiple walls (e.g. in a
+	corner) is counted once per wall. Each entry is a dict with 'collider' and
+	'normal'.
+	"""
+	var walls: Array = []
+	if not is_instance_valid(surv):
+		return walls
+	var space: PhysicsDirectSpaceState2D = surv.get_world_2d().direct_space_state
+	var params := PhysicsShapeQueryParameters2D.new()
+	params.collision_mask = surv.collision_mask
+	params.collide_with_bodies = true
+	params.collide_with_areas = false
+	# Query with the survivor's own collision shape(s)
+	for child in surv.get_children():
+		if child is CollisionShape2D:
+			var cs: CollisionShape2D = child as CollisionShape2D
+			if cs.shape:
+				params.shape = cs.shape
+				params.transform = cs.global_transform
+				var results: Array = space.intersect_shape(params, 32)
+				for r in results:
+					var collider: Object = r.get("collider", null)
+					if collider is StaticBody2D:
+						var wall_hit: Dictionary = {
+							"collider": collider,
+							"normal": r.get("normal", Vector2.ZERO),
+						}
+						var already: bool = false
+						for w in walls:
+							if w.get("collider", null) == collider:
+								already = true
+								break
+						if not already:
+							walls.append(wall_hit)
+	return walls
 
 
 func _finish_tentacle_catch() -> void:
