@@ -88,16 +88,10 @@ var heal_ticks_remaining: int = 7
 var _held_item_sprite: Sprite2D = null
 var _heal_bar: ColorRect = null
 var _heal_bar_bg: ColorRect = null
-# Overheal "SHARING IS CARING." screen warning (human survivor only)
-var _sharing_overlay: CanvasLayer = null
-var _sharing_label: Label = null
-var _sharing_active: bool = false
-var _sharing_flicker: float = 0.0
 const HELD_ITEM_HEAL_DURATION: float = 7.0    # seconds to channel a flower heal
 const HEAL_WALK_SPEED: float = 80.0           # slow walk while channeling
 const HEAL_BAR_WIDTH: float = 80.0
 const HEAL_BAR_HEIGHT: float = 14.0
-const OVERHEAL_CAP: float = 150.0   # healing can push HP above max_hp (for sharing)
 var _heal_channel_slot: int = -1              # slot currently channeling, -1 = none
 var _heal_channel_timer: float = 0.0
 
@@ -161,7 +155,6 @@ func _ready() -> void:
 	_setup_ability_vfx_frames()
 	_setup_held_item_sprite()
 	_setup_heal_progress_bar()
-	_setup_sharing_overlay()
 	if not ability_vfx.animation_finished.is_connected(_on_ability_vfx_finished):
 		ability_vfx.animation_finished.connect(_on_ability_vfx_finished)
 
@@ -300,6 +293,9 @@ func _use_item_in_slot(slot: int) -> void:
 		return
 	# Healthy survivor: start the 7-second self-heal channel. The flower stays
 	# in the slot until the channel completes.
+	# Don't heal when health is already full (max or above) — no point wasting it.
+	if current_hp >= max_hp:
+		return
 	_start_heal_channel(slot)
 
 
@@ -437,7 +433,6 @@ func _physics_process(delta: float) -> void:
 	_update_cooldowns(delta)
 	_update_red_sickness(delta)
 	_update_cure_qte(delta)
-	_update_sharing_overlay(delta)
 
 	if heal_over_time_active:
 		heal_tick_timer -= delta
@@ -737,48 +732,6 @@ func _update_held_item_orbit() -> void:
 	_held_item_sprite.position = Vector2.from_angle(angle) * 46.0
 	# The flower sits at the top (-Y) of the crop; rotate it to point outward.
 	_held_item_sprite.rotation = angle + PI / 2.0
-
-
-func _setup_sharing_overlay() -> void:
-	"""Create the big red 'SHARING IS CARING.' warning for overheal (HP > max)."""
-	if is_in_group("survivor_bots"):
-		return  # Only the human survivor has a screen to show this on
-	_sharing_overlay = CanvasLayer.new()
-	_sharing_overlay.name = "SharingOverlay"
-	_sharing_overlay.layer = 70
-	add_child(_sharing_overlay)
-	var label := Label.new()
-	label.name = "SharingLabel"
-	label.text = "SHARING\nIS\nCARING."
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.set_anchors_preset(Control.PRESET_FULL_RECT)
-	label.add_theme_font_size_override("font_size", 110)
-	label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.0, 1.0))
-	label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
-	label.add_theme_constant_override("outline_size", 12)
-	label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.85))
-	label.add_theme_constant_override("shadow_offset_x", 6)
-	label.add_theme_constant_override("shadow_offset_y", 6)
-	label.visible = false
-	_sharing_overlay.add_child(label)
-	_sharing_label = label
-
-
-func _update_sharing_overlay(delta: float) -> void:
-	"""Flicker the sharing warning whenever the survivor is overhealed."""
-	if _sharing_label == null:
-		return
-	var should_show: bool = current_hp > max_hp
-	if should_show != _sharing_active:
-		_sharing_active = should_show
-		_sharing_flicker = 0.0
-	if not _sharing_active:
-		return
-	_sharing_flicker += delta
-	var on: bool = int(_sharing_flicker / 0.09) % 2 == 0
-	_sharing_label.visible = on
-	_sharing_label.modulate.a = 1.0 if on else 0.0
 
 
 func _setup_ability_vfx_frames() -> void:
@@ -1206,7 +1159,7 @@ func _apply_heal(amount: float, source: String, target: Node = null) -> void:
 	if target == null:
 		target = self
 	if target == self:
-		current_hp = min(current_hp + amount, OVERHEAL_CAP)
+		current_hp = min(current_hp + amount, max_hp)
 		hp_changed.emit(current_hp, max_hp)
 	elif target.has_method("get_current_hp") and target.has_method("set_current_hp"):
 		var hp: float = target.get("current_hp")
