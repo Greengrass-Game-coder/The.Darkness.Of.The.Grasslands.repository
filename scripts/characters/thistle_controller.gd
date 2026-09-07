@@ -25,6 +25,8 @@ var _dash_dir: Vector2 = Vector2.ZERO
 var _veil_active: bool = false
 var _veil_timer: float = 0.0
 var _bloom_flash: float = 0.0
+var _ability_anim_name: String = ""
+var _ability_anim_timer: float = 0.0
 
 
 func _physics_process(delta: float) -> void:
@@ -57,6 +59,17 @@ func _physics_process(delta: float) -> void:
 			modulate = Color.WHITE
 		queue_redraw()
 
+	# Ability animation window: play the directional anim for its brief span,
+	# then hand back to the normal idle/walk cycle.
+	if _ability_anim_timer > 0.0:
+		_ability_anim_timer -= delta
+		if _ability_anim_timer > 0.0:
+			_play_character_ability(_ability_anim_name)
+		else:
+			_ability_anim_name = ""
+			_play_animation("idle")
+		return
+
 	super._physics_process(delta)
 
 
@@ -79,7 +92,7 @@ func use_block() -> void:
 	_change_state(State.DASH_BLOCKING)
 	# Quick translucent "phase" flash while blinking.
 	modulate = Color(0.75, 0.95, 1.0, 0.65)
-	_play_ability_vfx("block")
+	_play_character_ability("dash")
 
 
 # ---------- E — SPECTRAL VEIL (hold) ----------
@@ -95,7 +108,7 @@ func _start_charge_punch() -> void:
 	_veil_timer = veil_duration
 	modulate = Color(0.6, 0.9, 1.0, 0.35)
 	_change_state(State.IDLE)
-	_play_ability_vfx("block")
+	_play_character_ability("veil")
 
 
 func _fire_charged_punch() -> void:
@@ -132,9 +145,10 @@ func use_spare_flower() -> void:
 		return
 	flower_on_cooldown = true
 	_flower_cd_timer = bloom_cooldown
-	# Small self flash so the burst reads visually (no punch/heal animation).
+	# Character blooms outward for the burst.
 	_bloom_flash = 0.3
 	modulate = Color(1.0, 0.9, 0.6, 0.8)
+	_play_character_ability("bloom")
 	# Stun every killer within range (breaks the chase).
 	for k in get_tree().get_nodes_in_group("killers"):
 		if is_instance_valid(k) and k != self:
@@ -145,22 +159,24 @@ func use_spare_flower() -> void:
 
 # ---------- VISUAL HELPER ----------
 
-func _play_ability_vfx(anim: String) -> void:
-	"""Play an ability VFX overlay, resolving the directional animation.
-
-	Thistle's AbilityVFX SpriteFrames only has directional variants
-	(e.g. 'block_down'), while the base controller requests plain names
-	(e.g. 'block'). Resolve the current facing direction so the VFX actually
-	plays instead of silently doing nothing.
-	"""
+func _play_character_ability(anim: String) -> void:
+	"""Play one of Thistle's directional ability animations on the character's
+	own AnimatedSprite2D (e.g. 'dash_down'), instead of a VFX overlay. The
+	animation auto-returns to idle on completion (non-looping)."""
 	var dir_name: String = ["down", "left", "right", "up"][int(current_direction)]
 	var full: String = anim + "_" + dir_name
-	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(full):
-		ability_vfx.visible = true
-		ability_vfx.play(full)
-	elif ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(anim):
-		ability_vfx.visible = true
-		ability_vfx.play(anim)
+	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(full):
+		# Hide the (unused) VFX overlay so only the character anim shows.
+		ability_vfx.visible = false
+		ability_vfx.stop()
+		animated_sprite.visible = true
+		animated_sprite.play(full)
+		# Keep the ability anim playing for a short window before resuming
+		# idle/walk. Dash has its own movement timer (early-returns), so only
+		# veil/bloom rely on this window.
+		if anim != "dash":
+			_ability_anim_name = anim
+			_ability_anim_timer = 0.4
 
 
 func _draw() -> void:
