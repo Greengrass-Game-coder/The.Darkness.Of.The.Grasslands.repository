@@ -616,12 +616,17 @@ func _retract_tentacle(delta: float) -> void:
 
 
 func _get_tentacle_wall_hits(surv: CharacterBody2D) -> Array:
-	"""Return every StaticBody2D wall the survivor is currently overlapping.
+	"""Return every distinct wall polygon the survivor currently overlaps.
 
-	Unlike move_and_collide (which only reports the FIRST collision), this
-	uses a shape query so a survivor jammed against multiple walls (e.g. in a
-	corner) is counted once per wall. Each entry is a dict with 'collider' and
-	'normal'.
+	IMPORTANT: all map walls share ONE StaticBody2D (with many
+	CollisionPolygon2D children), so two walls in a corner report the SAME
+	collider. move_and_collide only reports the first collision, and deduping
+	by collider would collapse a corner into one wall. Instead we dedup by
+	(collider_id, shape_index) so every polygon counts as its own wall.
+
+	Each entry is a dict with 'collider', 'shape_index', and a real push
+	'normal' pointing from the wall's centroid back toward the survivor
+	(intersect_shape returns null normals, so we compute one ourselves).
 	"""
 	var walls: Array = []
 	if not is_instance_valid(surv):
@@ -642,18 +647,39 @@ func _get_tentacle_wall_hits(surv: CharacterBody2D) -> Array:
 				for r in results:
 					var collider: Object = r.get("collider", null)
 					if collider is StaticBody2D:
+						var shape_idx: int = r.get("shape", -1)
 						var wall_hit: Dictionary = {
 							"collider": collider,
-							"normal": r.get("normal", Vector2.ZERO),
+							"shape_index": shape_idx,
+							"normal": _tentacle_wall_push_dir(collider, shape_idx, surv),
 						}
 						var already: bool = false
 						for w in walls:
-							if w.get("collider", null) == collider:
+							if w.get("collider", null) == collider \
+									and w.get("shape_index", -1) == shape_idx:
 								already = true
 								break
 						if not already:
 							walls.append(wall_hit)
 	return walls
+
+
+func _tentacle_wall_push_dir(body: StaticBody2D, shape_idx: int, surv: CharacterBody2D) -> Vector2:
+	"""Compute a push direction for a wall polygon: from the polygon's center
+	back toward the survivor (away from the wall)."""
+	var centroid: Vector2 = body.global_position
+	if body.shape_owners_get_count() > 0:
+		var owner_id: int = body.shape_find_owner(shape_idx)
+		if owner_id != -1:
+			var owner_node: Node = body.shape_owner_get_owner(owner_id)
+			if owner_node is CollisionPolygon2D:
+				var poly: CollisionPolygon2D = owner_node as CollisionPolygon2D
+				if poly.polygon.size() > 0:
+					centroid = poly.global_transform * poly.polygon[0]
+	var dir: Vector2 = surv.global_position - centroid
+	if dir.length_squared() < 0.0001:
+		return Vector2.UP
+	return dir.normalized()
 
 
 func _finish_tentacle_catch() -> void:
