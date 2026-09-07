@@ -41,6 +41,8 @@ var _queued_players: Array[int] = []  # peer_ids in queue
 var _private_rooms: Dictionary = {}  # code -> {host_peer_id, players: []}
 var _force_ai_killer: bool = false  # Set by "G force AI" command
 var _admin_password: String = "Moon996633"
+var _banned: Dictionary = {}  # username_lower -> true (can't rejoin while banned)
+var _paused: bool = false  # "G pause" / "G resume"
 var _current_match_id: int = 0
 
 
@@ -141,6 +143,8 @@ func _on_peer_disconnected(pid: int) -> void:
 # ═══════════════ PHASES ═══════════════
 
 func _advance_phase(delta: float) -> void:
+	if _paused:
+		return  # Round timer frozen while paused
 	match _phase:
 		MatchPhase.WAITING_FOR_PLAYERS:
 			if _queued_players.size() >= MAX_PLAYERS:
@@ -393,6 +397,9 @@ func _handle_login(pid: int, username: String, password: String) -> void:
 	if username.is_empty():
 		_send_to(pid, "auth_result", {"success": false, "error": "Username required."})
 		return
+	if _banned.has(username.to_lower()):
+		_send_to(pid, "auth_result", {"success": false, "error": "You are banned from this server."})
+		return
 	var key: String = username.to_lower()
 	if not _accounts.has(key):
 		# Auto-register if not exists
@@ -542,12 +549,13 @@ func _handle_admin_command(pid: int, command: String) -> void:
 		"end", "round":
 			_phase_timer = 0.0
 			_send_to_all("admin_result", {"success": true, "message": "Round ended by admin."})
-		"kill":
+		"kill", "eliminate":
 			if parts.size() >= 2:
 				var target_name: String = parts[1]
 				for pid2: int in _peer_info:
 					if _peer_info[pid2]["username"] == target_name:
 						_peer_info[pid2]["alive"] = false
+						_send_to_all("server_effect", {"effect": "eliminate", "target": target_name})
 						_send_to_all("admin_result", {"success": true, "message": "Player %s eliminated." % target_name})
 						return
 				_send_to(pid, "admin_result", {"success": false, "message": "Player not found: " + target_name})
@@ -564,6 +572,100 @@ func _handle_admin_command(pid: int, command: String) -> void:
 			else:
 				_rotate_killer_role()
 				_send_to_all("admin_result", {"success": true, "message": "Next killer forced."})
+		"setkiller", "makekiller":
+			if parts.size() >= 2:
+				var mk_target: String = parts[1]
+				var found_k: bool = false
+				for pid3: int in _peer_info:
+					if _peer_info[pid3]["username"] == mk_target:
+						_peer_info[pid3]["role"] = "killer"
+						_peer_info[pid3]["alive"] = true
+						found_k = true
+					else:
+						_peer_info[pid3]["role"] = "survivor"
+				if found_k:
+					_send_to_all("server_effect", {"effect": "set_killer", "target": mk_target})
+					_broadcast_player_list()
+					_send_to_all("admin_result", {"success": true, "message": mk_target + " is now the killer."})
+				else:
+					_send_to(pid, "admin_result", {"success": false, "message": "Player not found: " + mk_target})
+		"tp", "teleport":
+			if parts.size() >= 4:
+				_send_to_all("server_effect", {"effect": "teleport", "target": parts[1], "x": parts[2].to_float(), "y": parts[3].to_float()})
+				_send_to_all("admin_result", {"success": true, "message": "Teleported " + parts[1] + "."})
+			else:
+				_send_to(pid, "admin_result", {"success": false, "message": "Usage: G tp <name> <x> <y>"})
+		"heal":
+			if parts.size() >= 3:
+				_send_to_all("server_effect", {"effect": "heal", "target": parts[1], "amount": parts[2].to_float()})
+				_send_to_all("admin_result", {"success": true, "message": "Healed " + parts[1] + " for " + parts[2] + "."})
+			else:
+				_send_to(pid, "admin_result", {"success": false, "message": "Usage: G heal <name> <amount>"})
+		"damage":
+			if parts.size() >= 3:
+				_send_to_all("server_effect", {"effect": "damage", "target": parts[1], "amount": parts[2].to_float()})
+				_send_to_all("admin_result", {"success": true, "message": "Damaged " + parts[1] + " for " + parts[2] + "."})
+			else:
+				_send_to(pid, "admin_result", {"success": false, "message": "Usage: G damage <name> <amount>"})
+		"spawnflower", "spawn":
+			if parts.size() >= 2:
+				_send_to_all("server_effect", {"effect": "spawn_flower", "target": parts[1]})
+				_send_to_all("admin_result", {"success": true, "message": "Spawned flower for " + parts[1] + "."})
+			else:
+				_send_to(pid, "admin_result", {"success": false, "message": "Usage: G spawnflower <name>"})
+		"kick":
+			if parts.size() >= 2:
+				var kick_target: String = parts[1]
+				var kicked: bool = false
+				for pid4: int in _peer_info:
+					if _peer_info[pid4]["username"] == kick_target:
+						_send_to(pid4, "error", {"message": "You have been kicked by an admin."})
+						_peers[pid4].close(1000, "Kicked")
+						kicked = true
+						break
+				_send_to_all("admin_result", {"success": kicked, "message": ("Kicked " + kick_target + ".") if kicked else ("Player not found: " + kick_target)})
+		"ban":
+			if parts.size() >= 2:
+				var ban_target: String = parts[1]
+				_banned[ban_target.to_lower()] = true
+				for pid5: int in _peer_info:
+					if _peer_info[pid5]["username"] == ban_target:
+						_peers[pid5].close(1000, "Banned")
+						break
+				_send_to_all("admin_result", {"success": true, "message": "Banned " + ban_target + "."})
+		"unban":
+			if parts.size() >= 2:
+				_banned.erase(parts[1].to_lower())
+				_send_to(pid, "admin_result", {"success": true, "message": "Unbanned " + parts[1] + "."})
+		"timer", "time":
+			if parts.size() >= 2:
+				_phase_timer = parts[1].to_float()
+				var phase_name: String = "ROUND_ACTIVE"
+				match _phase:
+					MatchPhase.LOBBY_ANALYSIS:
+						phase_name = "LOBBY_ANALYSIS"
+					MatchPhase.LAST_MAN_STANDING:
+						phase_name = "LAST_MAN_STANDING"
+					MatchPhase.MATCH_END:
+						phase_name = "MATCH_END"
+				_broadcast_phase(phase_name, _phase_timer)
+				_send_to_all("admin_result", {"success": true, "message": "Timer set to " + parts[1] + "s."})
+			else:
+				_send_to(pid, "admin_result", {"success": false, "message": "Usage: G timer <seconds>"})
+		"pause":
+			_paused = true
+			_send_to_all("server_effect", {"effect": "pause", "paused": true})
+			_send_to_all("admin_result", {"success": true, "message": "Game paused."})
+		"resume":
+			_paused = false
+			_send_to_all("server_effect", {"effect": "pause", "paused": false})
+			_send_to_all("admin_result", {"success": true, "message": "Game resumed."})
+		"status", "players":
+			var table: Array[Dictionary] = []
+			for pid6: int in _peer_info:
+				var pinfo: Dictionary = _peer_info[pid6]
+				table.append({"username": pinfo["username"], "role": pinfo["role"], "alive": pinfo["alive"], "hp": pinfo["hp"], "max_hp": pinfo["max_hp"], "x": pinfo["x"], "y": pinfo["y"]})
+			_send_to(pid, "player_status", {"players": table})
 		"gamemode":
 			if parts.size() >= 3 and parts[1].to_lower() == "select" and parts[2].to_lower() == "double" and parts.size() >= 4:
 				if parts[3].to_lower() == "trouble":

@@ -16,6 +16,8 @@ signal match_found(match_data: Dictionary)
 signal game_started(role: String, player_list: Array)
 signal phase_changed(phase: String, time_remaining: float)
 signal admin_command_result(success: bool, message: String)
+signal server_effect(effect: Dictionary)
+signal player_status_received(players: Array)
 
 # Auth & save signals
 signal auth_result(success: bool, username: String, error_msg: String)
@@ -204,6 +206,12 @@ func _handle_message(text: String) -> void:
 				json.get("success", false),
 				json.get("message", "")
 			)
+		
+		"server_effect":
+			server_effect.emit(json.get("effect", {}))
+		
+		"player_status":
+			player_status_received.emit(json.get("players", []))
 		
 		"queue_status":
 			queue_status_updated.emit(json.get("position", 0), json.get("total", 0))

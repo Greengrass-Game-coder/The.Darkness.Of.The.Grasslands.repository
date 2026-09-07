@@ -3695,6 +3695,111 @@ func _setup_admin_panel() -> void:
 	if not panel.role_switch_requested.is_connected(_switch_role):
 		panel.role_switch_requested.connect(_switch_role)
 	panel.hide()  # Start hidden — toggled via "G Gui"
+	# Connect server-driven admin effects and player status feed
+	var nm: Node = get_node_or_null("/root/NetworkManager")
+	if is_instance_valid(nm):
+		if nm.has_signal("server_effect") and not nm.server_effect.is_connected(_on_server_effect):
+			nm.server_effect.connect(_on_server_effect)
+		if nm.has_signal("player_status_received") and not nm.player_status_received.is_connected(_on_player_status_received):
+			nm.player_status_received.connect(_on_player_status_received)
+		if nm.has_signal("player_list_updated") and not nm.player_list_updated.is_connected(_on_network_player_list):
+			nm.player_list_updated.connect(_on_network_player_list)
+
+
+func _on_network_player_list(players: Array) -> void:
+	"""Feed the admin panel's player selector/status list from server data."""
+	var a_panel: AdminPanel = get_node_or_null("AdminPanel")
+	if is_instance_valid(a_panel) and a_panel.has_method("update_player_list"):
+		a_panel.update_player_list(players)
+
+
+func _on_player_status_received(players: Array) -> void:
+	"""Refresh the admin panel with full live player status (HP, role, alive)."""
+	var a_panel: AdminPanel = get_node_or_null("AdminPanel")
+	if is_instance_valid(a_panel) and a_panel.has_method("update_player_status"):
+		a_panel.update_player_status(players)
+
+
+func _on_server_effect(effect: Dictionary) -> void:
+	"""Apply a server-driven admin effect (teleport/heal/damage/role/flower/pause)."""
+	var effect_type: String = effect.get("effect", "")
+	var target_name: String = effect.get("target", "")
+	var node: Node2D = null
+	if target_name != "":
+		node = _find_player_node_by_name(target_name)
+	match effect_type:
+		"teleport":
+			if node:
+				var x: float = effect.get("x", 0.0)
+				var y: float = effect.get("y", 0.0)
+				node.global_position = Vector2(x, y)
+				print("GameMap: admin teleported ", target_name, " to (", x, ", ", y, ")")
+		"heal":
+			if node:
+				var amount: float = effect.get("amount", 0.0)
+				_apply_admin_heal(node, amount)
+				print("GameMap: admin healed ", target_name, " +", amount)
+		"damage":
+			if node and node.has_method("take_damage"):
+				node.take_damage(effect.get("amount", 0.0))
+				print("GameMap: admin damaged ", target_name, " -", effect.get("amount", 0.0))
+		"eliminate":
+			if node and node.has_method("take_damage"):
+				node.take_damage(9999.0)
+				print("GameMap: admin eliminated ", target_name)
+		"set_killer":
+			# If the admin promoted a locally-controlled player, switch our role.
+			var my_name: String = GameState.logged_in_username.to_lower()
+			if target_name.to_lower() == my_name and not GameState.is_killer:
+				_switch_role("killer")
+			print("GameMap: admin made ", target_name, " the killer")
+		"spawn_flower":
+			if node:
+				_spawn_flower_at(node.global_position)
+				print("GameMap: admin spawned flower for ", target_name)
+		"pause":
+			var paused: bool = effect.get("paused", true)
+			get_tree().paused = paused
+			print("GameMap: admin set paused=", paused)
+
+
+func _find_player_node_by_name(target_name: String) -> Node2D:
+	"""Find the player/bot node whose name or username matches the admin target."""
+	var lower_target: String = target_name.to_lower()
+	if is_instance_valid(_player):
+		var pusername: String = GameState.logged_in_username.to_lower()
+		if lower_target == pusername:
+			return _player
+	for bot: Node2D in _survivor_bots:
+		if is_instance_valid(bot) and bot.name.to_lower() == lower_target:
+			return bot
+	if is_instance_valid(_killer_bot) and _killer_bot.name.to_lower() == lower_target:
+		return _killer_bot
+	return null
+
+
+func _apply_admin_heal(node: Node2D, amount: float) -> void:
+	"""Heal a node via its hp_changed signal so HUD updates."""
+	if node.has_method("_apply_heal"):
+		node._apply_heal(amount, "admin")
+		return
+	if node.get("current_hp") != null and node.get("max_hp") != null:
+		var new_hp: float = min(float(node.current_hp) + amount, float(node.max_hp))
+		node.current_hp = new_hp
+		if node.has_signal("hp_changed"):
+			node.hp_changed.emit(new_hp, node.max_hp)
+
+
+func _spawn_flower_at(pos: Vector2) -> void:
+	"""Spawn a single Flower pickup at a given world position."""
+	var flower_script: Script = load("res://scripts/items/flower_item.gd")
+	if flower_script == null:
+		return
+	var item := Area2D.new()
+	item.set_script(flower_script)
+	item.name = "AdminFlower"
+	item.position = pos
+	add_child(item)
 
 
 func _create_role_hint() -> void:
@@ -3864,6 +3969,14 @@ func _show_map_admin_help() -> void:
 	chat_layer.add_system_message("G kill <name> - Eliminate player")
 	chat_layer.add_system_message("G force / G next - Force next killer")
 	chat_layer.add_system_message("G force AI / G next AI - Force next killer to be AI")
+	chat_layer.add_system_message("G setkiller <name> - Make a player the killer")
+	chat_layer.add_system_message("G tp <name> <x> <y> - Teleport a player")
+	chat_layer.add_system_message("G heal <name> <amount> / G damage <name> <amount>")
+	chat_layer.add_system_message("G spawnflower <name> - Spawn a flower for a player")
+	chat_layer.add_system_message("G kick <name> / G ban <name> / G unban <name>")
+	chat_layer.add_system_message("G timer <seconds> - Set round timer")
+	chat_layer.add_system_message("G pause / G resume - Pause or resume the game")
+	chat_layer.add_system_message("G status / G players - Show live player status")
 	chat_layer.add_system_message("G gamemode select double trouble - Toggle double trouble")
 	chat_layer.add_system_message("G AUTH <pw> - Authenticate as admin")
 	chat_layer.add_system_message("G Gui - Toggle admin GUI panel")
