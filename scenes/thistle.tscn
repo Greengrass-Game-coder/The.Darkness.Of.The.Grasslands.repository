@@ -1,37 +1,61 @@
 [gd_scene format=3 uid="uid://bjm1oxo20kc6j"]
 
 [ext_resource type="Script" uid="uid://bhibdsmebnac7" path="res://scripts/characters/thistle_controller.gd" id="1_7nksj"]
-[ext_resource type="Texture2D" uid="uid://dc5l768f6m0kq" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING DOWN/WALKING_DOWN_frame_00000.png" id="2_d0"]
-[ext_resource type="Texture2D" uid="uid://dod25yfq4srrr" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING DOWN/WALKING_DOWN_frame_00001.png" id="2_d1"]
 [ext_resource type="Texture2D" uid="uid://dn5vj1cl7c516" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_0.png" id="2_ejb6i"]
+[ext_resource type="Texture2D" uid="uid://bdyh2s7b72rbp" path="res://assets/thistle/idle_down_0.png" id="2_kript"]
 [ext_resource type="Texture2D" uid="uid://cof0qswroqjh5" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-0.png" id="3_k888d"]
-[ext_resource type="Texture2D" uid="uid://80n8lne2qn7s" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING LEFT/WALKING_LEFT_frame_00000.png" id="3_l0"]
-[ext_resource type="Texture2D" uid="uid://k5kvj85nwmru" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING LEFT/WALKING_LEFT_frame_00001.png" id="3_l1"]
-[ext_resource type="Texture2D" uid="uid://ccks4rtrxsxii" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING RIGHT/WALKING_RIGHT_frame_00000.png" id="4_r0"]
-[ext_resource type="Texture2D" uid="uid://ratx57ib6xsm" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING RIGHT/WALKING_RIGHT_frame_00001.png" id="4_r1"]
-[ext_resource type="Texture2D" uid="uid://coxqbov8d662" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING_UP_frame_00000.png" id="5_u0"]
-[ext_resource type="Texture2D" uid="uid://c8myx5sf4u0rx" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Walking directions/GREENGRASS ---- Survivor/WALKING_UP_frame_00001.png" id="5_u1"]
+[ext_resource type="Texture2D" uid="uid://male1x4i0wga" path="res://assets/thistle/idle_down_1.png" id="3_nc23c"]
+[ext_resource type="Texture2D" uid="uid://b2al2uwbdp1g8" path="res://assets/thistle/idle_down_2.png" id="4_ea4nx"]
+[ext_resource type="Texture2D" uid="uid://n68v5b2qxrvp" path="res://assets/thistle/idle_down_3.png" id="5_udi1h"]
+[ext_resource type="Texture2D" uid="uid://be8gcx1cfwi38" path="res://assets/thistle/idle_left_0.png" id="6_7unkq"]
+[ext_resource type="Texture2D" uid="uid://bqr55i6s5lao7" path="res://assets/thistle/idle_left_1.png" id="7_eupcb"]
+[ext_resource type="Texture2D" uid="uid://khh8kt7sltmd" path="res://assets/thistle/idle_left_2.png" id="8_ergc8"]
 [ext_resource type="Texture2D" uid="uid://bugsymtncohux" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/PUNCH_frame_00000.png" id="8_xwlje"]
 [ext_resource type="Texture2D" uid="uid://banvr60uhkhv7" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_0000.png" id="9_bvtwo"]
+[ext_resource type="Texture2D" uid="uid://c7v85dvrko8is" path="res://assets/thistle/idle_left_3.png" id="9_uyct0"]
+[ext_resource type="Texture2D" uid="uid://bgswhnvhtbkg4" path="res://assets/thistle/idle_right_0.png" id="10_kvkum"]
+[ext_resource type="Texture2D" uid="uid://d2wa80liw83bi" path="res://assets/thistle/idle_right_1.png" id="11_lfxtk"]
+[ext_resource type="Texture2D" uid="uid://g8en85mpaw6g" path="res://assets/thistle/idle_right_2.png" id="12_3qp6u"]
+[ext_resource type="Texture2D" uid="uid://c0unxd82tr0bi" path="res://assets/thistle/idle_right_3.png" id="13_1atyn"]
 [ext_resource type="Texture2D" uid="uid://bntr1pbjfsu7i" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_1.png" id="14_f4mb1"]
+[ext_resource type="Texture2D" uid="uid://3son8yx1sap5" path="res://assets/thistle/idle_up_0.png" id="14_vu6vs"]
 [ext_resource type="Texture2D" uid="uid://cvft2xesmhey3" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_2.png" id="15_em17q"]
+[ext_resource type="Texture2D" uid="uid://d1l5ue8nykois" path="res://assets/thistle/idle_up_1.png" id="15_sdh05"]
 [ext_resource type="Texture2D" uid="uid://dtu4k8n3s5shl" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_3.png" id="16_byj40"]
+[ext_resource type="Texture2D" uid="uid://dwv84rmbab07s" path="res://assets/thistle/idle_up_2.png" id="16_le8wb"]
 [ext_resource type="Texture2D" uid="uid://gh145l1i75r1" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_4.png" id="17_1jy1b"]
+[ext_resource type="Texture2D" uid="uid://c72f84l7eyx2d" path="res://assets/thistle/idle_up_3.png" id="17_e50is"]
+[ext_resource type="Texture2D" uid="uid://l1ua0pqng58v" path="res://assets/thistle/walk_down_0.png" id="18_faqr3"]
 [ext_resource type="Texture2D" uid="uid://bexcplcky8n1u" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_5.png" id="18_qavso"]
+[ext_resource type="Texture2D" uid="uid://dujuq1j2qjpr7" path="res://assets/thistle/walk_down_1.png" id="19_8qmjc"]
 [ext_resource type="Texture2D" uid="uid://cdel78blutdb6" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_6.png" id="19_m1vxa"]
 [ext_resource type="Texture2D" uid="uid://bd4x1jq04wflv" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_7.png" id="20_dkani"]
+[ext_resource type="Texture2D" uid="uid://cxpw0tyv6m4qm" path="res://assets/thistle/walk_down_2.png" id="20_trbdf"]
 [ext_resource type="Texture2D" uid="uid://vbr7n05ykh7q" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_8.png" id="21_7odi4"]
+[ext_resource type="Texture2D" uid="uid://bqsty5ew87iom" path="res://assets/thistle/walk_down_3.png" id="21_lmaaf"]
 [ext_resource type="Texture2D" uid="uid://boeyl2afev5nq" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_9.png" id="22_h7w76"]
+[ext_resource type="Texture2D" uid="uid://bkfrewsqu8h8n" path="res://assets/thistle/walk_left_0.png" id="22_tx5df"]
 [ext_resource type="Texture2D" uid="uid://ble8kjl5o5st8" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_10.png" id="23_2brt7"]
+[ext_resource type="Texture2D" uid="uid://4hkdqqm8xobe" path="res://assets/thistle/walk_left_1.png" id="23_eur6n"]
 [ext_resource type="Texture2D" uid="uid://b3m88vdjkw7u8" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_11.png" id="24_4iw11"]
+[ext_resource type="Texture2D" uid="uid://c48b1uaetvoch" path="res://assets/thistle/walk_left_2.png" id="24_ohyjd"]
+[ext_resource type="Texture2D" uid="uid://clkapkwsr03w0" path="res://assets/thistle/walk_left_3.png" id="25_5onys"]
 [ext_resource type="Texture2D" uid="uid://b8ba04nlnp442" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_12.png" id="25_xgmjj"]
 [ext_resource type="Texture2D" uid="uid://ct70m1ksr88i7" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-1.png" id="26_lgg4d"]
+[ext_resource type="Texture2D" uid="uid://ces6fvhv16o3g" path="res://assets/thistle/walk_right_0.png" id="26_stnji"]
 [ext_resource type="Texture2D" uid="uid://dlfl1u2ole3mf" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-2.png" id="27_7n705"]
+[ext_resource type="Texture2D" uid="uid://dkhhawimf6whr" path="res://assets/thistle/walk_right_1.png" id="27_50pph"]
 [ext_resource type="Texture2D" uid="uid://bcfanrgl481cu" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-3.png" id="28_1v3yc"]
+[ext_resource type="Texture2D" uid="uid://bf213ukw2wpix" path="res://assets/thistle/walk_right_2.png" id="28_46ktp"]
 [ext_resource type="Texture2D" uid="uid://gghoqicfe127" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-4.png" id="29_xbsar"]
+[ext_resource type="Texture2D" uid="uid://dmsyd8c1koxl4" path="res://assets/thistle/walk_right_3.png" id="29_xne26"]
 [ext_resource type="Texture2D" uid="uid://ku5h8jddm6vp" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-5.png" id="30_3j0hq"]
+[ext_resource type="Texture2D" uid="uid://dhld36pgdhfy" path="res://assets/thistle/walk_up_0.png" id="30_i4j8j"]
+[ext_resource type="Texture2D" uid="uid://ddp4pfvyxvs3a" path="res://assets/thistle/walk_up_1.png" id="31_78h4y"]
 [ext_resource type="Texture2D" uid="uid://b2j5r6oxlv6ak" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-6.png" id="31_y2buw"]
+[ext_resource type="Texture2D" uid="uid://dc1k2tlsj51iq" path="res://assets/thistle/walk_up_2.png" id="32_jnf2m"]
 [ext_resource type="Texture2D" uid="uid://dt0q08o2ldyxn" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-7.png" id="32_x2a3x"]
+[ext_resource type="Texture2D" uid="uid://cvl12ign80twl" path="res://assets/thistle/walk_up_3.png" id="33_aeeke"]
 [ext_resource type="Texture2D" uid="uid://biyq7jk2bkkia" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- SPARE FLOWER/ABILITY_HEAL_frame-8.png" id="33_ymnr8"]
 [ext_resource type="Texture2D" uid="uid://wxllha7taxsc" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_00001.png" id="34_cyu8f"]
 [ext_resource type="Texture2D" uid="uid://drd8jug6tm8p6" path="res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_00002.png" id="35_7hb0l"]
@@ -54,127 +78,139 @@
 animations = [{
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("2_ejb6i")
+"texture": ExtResource("2_kript")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_nc23c")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_ea4nx")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_udi1h")
 }],
-"loop": 0,
-"name": &"block",
-"speed": 12.0
+"loop": 1,
+"name": &"idle_down",
+"speed": 8.0
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("2_ejb6i")
+"texture": ExtResource("6_7unkq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_eupcb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_ergc8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_uyct0")
 }],
-"loop": 0,
-"name": &"block_impact",
-"speed": 12.0
+"loop": 1,
+"name": &"idle_left",
+"speed": 8.0
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("3_k888d")
+"texture": ExtResource("10_kvkum")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_lfxtk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_3qp6u")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_1atyn")
 }],
-"loop": 0,
-"name": &"heal",
+"loop": 1,
+"name": &"idle_right",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("14_vu6vs")
+}, {
+"duration": 1.0,
+"texture": ExtResource("15_sdh05")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_le8wb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("17_e50is")
+}],
+"loop": 1,
+"name": &"idle_up",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("18_faqr3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("19_8qmjc")
+}, {
+"duration": 1.0,
+"texture": ExtResource("20_trbdf")
+}, {
+"duration": 1.0,
+"texture": ExtResource("21_lmaaf")
+}],
+"loop": 1,
+"name": &"walk_down",
 "speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("2_d0")
-}],
-"loop": 0,
-"name": &"idle",
-"speed": 5.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("2_d0")
-}],
-"loop": 0,
-"name": &"idle_down",
-"speed": 5.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("3_l0")
-}],
-"loop": 0,
-"name": &"idle_left",
-"speed": 5.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("4_r0")
-}],
-"loop": 0,
-"name": &"idle_right",
-"speed": 5.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("5_u0")
-}],
-"loop": 0,
-"name": &"idle_up",
-"speed": 5.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("8_xwlje")
-}],
-"loop": 0,
-"name": &"punch",
-"speed": 12.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("9_bvtwo")
-}],
-"loop": 0,
-"name": &"punch_parry",
-"speed": 8.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("2_d0")
+"texture": ExtResource("22_tx5df")
 }, {
 "duration": 1.0,
-"texture": ExtResource("2_d1")
-}],
-"loop": 1,
-"name": &"walk_down",
-"speed": 8.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": ExtResource("3_l0")
+"texture": ExtResource("23_eur6n")
 }, {
 "duration": 1.0,
-"texture": ExtResource("3_l1")
+"texture": ExtResource("24_ohyjd")
+}, {
+"duration": 1.0,
+"texture": ExtResource("25_5onys")
 }],
 "loop": 1,
 "name": &"walk_left",
-"speed": 8.0
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("4_r0")
+"texture": ExtResource("26_stnji")
 }, {
 "duration": 1.0,
-"texture": ExtResource("4_r1")
+"texture": ExtResource("27_50pph")
+}, {
+"duration": 1.0,
+"texture": ExtResource("28_46ktp")
+}, {
+"duration": 1.0,
+"texture": ExtResource("29_xne26")
 }],
 "loop": 1,
 "name": &"walk_right",
-"speed": 8.0
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("5_u0")
+"texture": ExtResource("30_i4j8j")
 }, {
 "duration": 1.0,
-"texture": ExtResource("5_u1")
+"texture": ExtResource("31_78h4y")
+}, {
+"duration": 1.0,
+"texture": ExtResource("32_jnf2m")
+}, {
+"duration": 1.0,
+"texture": ExtResource("33_aeeke")
 }],
 "loop": 1,
 "name": &"walk_up",
-"speed": 8.0
+"speed": 10.0
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_gg"]
@@ -325,25 +361,18 @@ animations = [{
 
 [node name="Thistle" type="CharacterBody2D" unique_id=681448495]
 script = ExtResource("1_7nksj")
-sprint_speed = 320.0
-move_speed = 175.0
 max_hp = 90.0
-dash_distance = 180.0
-dash_cooldown = 6.0
-veil_duration = 2.5
-veil_cooldown = 12.0
-bloom_range = 170.0
-bloom_stun = 1.5
-bloom_cooldown = 18.0
+move_speed = 175.0
+sprint_speed = 320.0
 parry_window = 2.5
 normal_stun = 2.5
 parry_stun = 6.0
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=852369333]
-scale = Vector2(0.25, 0.25)
+scale = Vector2(1.5, 1.5)
 sprite_frames = SubResource("SpriteFrames_gg")
-animation = &"idle"
-autoplay = "idle"
+animation = &"idle_down"
+autoplay = "idle_down"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=392062106]
 shape = SubResource("CircleShape2D_gg")
