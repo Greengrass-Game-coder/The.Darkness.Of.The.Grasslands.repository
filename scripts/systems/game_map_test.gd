@@ -1065,7 +1065,7 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 	var container := Control.new()
 	container.name = "AbilityIcons"
 	container.position = ability_icons_pos  # Centered below sprint bar
-	container.size = Vector2(300, 60)
+	container.size = Vector2(300, 80)
 	$HUD.add_child(container)
 	
 	# Define ability icon data based on character type (single source of truth)
@@ -1145,6 +1145,9 @@ func _create_ability_icons(_player_node: Node2D, is_killer: bool) -> void:
 		name_label.add_theme_constant_override("shadow_offset_x", 1)
 		name_label.add_theme_constant_override("shadow_offset_y", 1)
 		slot.add_child(name_label)
+
+		# Hover tooltip with the ability description
+		slot.tooltip_text = (data.get("name", "") + "\n" + data.get("desc", "")) if data.get("name", "") != "" else data.get("desc", "")
 
 		var limit_label := Label.new()
 		limit_label.name = "LimitLabel"
@@ -1336,14 +1339,14 @@ func _get_abilities_for(is_killer_player: bool) -> Array[Dictionary]:
 		if _character_name == "Test Killer":
 			# Test Killer: M1 hit + E tentacle snatch + R The Rage
 			return [
-				{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "name": "M1 HIT", "limit": "25", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "hit_cooldown_timer"},
-				{"icon": "", "key": "E", "name": "TENTACLE", "limit": "1000", "cooldown_var": "tentacle_on_cooldown", "cooldown_timer_var": "tentacle_cooldown_timer"},
-				{"icon": "", "key": "R", "name": "RAGE", "limit_kind": "rage_traps", "cooldown_var": "rage_on_cooldown", "cooldown_timer_var": "rage_cooldown_timer"},
+				{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "name": "M1 HIT", "desc": "Deal 25 damage up to 120px away (2.5s cooldown)", "limit": "25", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "hit_cooldown_timer"},
+				{"icon": "", "key": "E", "name": "TENTACLE", "desc": "Snag a survivor from range and drag them toward you", "limit": "1000", "cooldown_var": "tentacle_on_cooldown", "cooldown_timer_var": "tentacle_cooldown_timer"},
+				{"icon": "", "key": "R", "name": "RAGE", "desc": "Unleash a burst of speed and power", "limit_kind": "rage_traps", "cooldown_var": "rage_on_cooldown", "cooldown_timer_var": "rage_cooldown_timer"},
 			]
 		# Violentgrass: M1 hit + E teleport
 		return [
-			{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "_hit_cd_timer"},
-			{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "E", "cooldown_var": "teleport_on_cooldown", "cooldown_timer_var": "_teleport_cd_timer"},
+			{"icon": "res://assets/generated/icon_ability_hit.png", "key": "M1", "name": "Scythe Strike", "desc": "Deal 25 damage up to 120px away (2.5s cooldown)", "cooldown_var": "hit_on_cooldown", "cooldown_timer_var": "_hit_cd_timer"},
+			{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "E", "name": "Shadow Teleport", "desc": "Teleport up to 350px away (45s cooldown)", "cooldown_var": "teleport_on_cooldown", "cooldown_timer_var": "_teleport_cd_timer"},
 		]
 	else:
 		# Thistle — phase survivor. Reuses the survivor cooldown vars so HUD
@@ -1351,14 +1354,14 @@ func _get_abilities_for(is_killer_player: bool) -> Array[Dictionary]:
 		# flower=Bloom Burst).
 		if _character_name == "Thistle":
 			return [
-				{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "Q", "cooldown_var": "block_on_cooldown", "cooldown_timer_var": "_block_cd_timer"},
-				{"icon": "res://assets/generated/icon_ability_block.png", "key": "E", "cooldown_var": "punch_on_cooldown", "cooldown_timer_var": "_punch_cd_timer"},
-				{"icon": "res://assets/generated/icon_ability_spare_flower.png", "key": "R", "cooldown_var": "flower_on_cooldown", "cooldown_timer_var": "_flower_cd_timer"},
+				{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "Q", "name": "Phase Dash", "desc": "Blink a short distance toward your aim (6s cooldown)", "cooldown_var": "block_on_cooldown", "cooldown_timer_var": "_block_cd_timer"},
+				{"icon": "res://assets/generated/icon_ability_block.png", "key": "E", "name": "Spectral Veil", "desc": "Turn intangible for 2.5s, taking no damage (12s cooldown)", "cooldown_var": "punch_on_cooldown", "cooldown_timer_var": "_punch_cd_timer"},
+				{"icon": "res://assets/generated/icon_ability_spare_flower.png", "key": "R", "name": "Bloom Burst", "desc": "Stun nearby killers for 1.5s to break a chase (18s cooldown)", "cooldown_var": "flower_on_cooldown", "cooldown_timer_var": "_flower_cd_timer"},
 			]
 		return [
-			{"icon": "res://assets/generated/icon_ability_block.png", "key": "Q", "cooldown_var": "block_on_cooldown", "cooldown_timer_var": "_block_cd_timer"},
-			{"icon": "res://assets/generated/icon_ability_grass_punch.png", "key": "E", "cooldown_var": "punch_on_cooldown", "cooldown_timer_var": "_punch_cd_timer"},
-			{"icon": "res://assets/generated/icon_ability_spare_flower.png", "key": "R", "cooldown_var": "flower_on_cooldown", "cooldown_timer_var": "_flower_cd_timer"},
+			{"icon": "res://assets/generated/icon_ability_block.png", "key": "Q", "name": "Grass Block", "desc": "Block incoming attacks and push back enemies", "cooldown_var": "block_on_cooldown", "cooldown_timer_var": "_block_cd_timer"},
+			{"icon": "res://assets/generated/icon_ability_grass_punch.png", "key": "E", "name": "Grass Punch", "desc": "Unlockable: a powerful punch after a successful block", "cooldown_var": "punch_on_cooldown", "cooldown_timer_var": "_punch_cd_timer"},
+			{"icon": "res://assets/generated/icon_ability_spare_flower.png", "key": "R", "name": "Spare Flower", "desc": "Heal 70 HP (45s cooldown)", "cooldown_var": "flower_on_cooldown", "cooldown_timer_var": "_flower_cd_timer"},
 		]
 
 
