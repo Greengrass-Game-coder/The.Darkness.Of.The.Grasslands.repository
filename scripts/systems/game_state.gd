@@ -43,6 +43,17 @@ const CHARACTER_CATALOG: Dictionary = {
 			{"name": "Spare Flower (M2)", "desc": "Heal 70 HP — 45s cooldown"}
 		]
 	},
+	"Thistle": {
+		"kind": "survivor", "cost": 0,
+		"icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Greengrass - survivor icon.png",
+		"description": "A phase spirit who blinks between places. Phase Dash to escape, Spectral Veil to vanish, and Bloom Burst to stun the killer.",
+		"stats": {"HP": "90", "Speed": "175", "Sprint": "320", "Stamina": "100"},
+		"abilities": [
+			{"name": "Phase Dash (Q)", "desc": "Blink a short distance toward your aim — 6s cooldown"},
+			{"name": "Spectral Veil (E)", "desc": "Turn intangible for 2.5s — 12s cooldown"},
+			{"name": "Bloom Burst (R)", "desc": "Stun nearby killers for 1.5s — 18s cooldown"}
+		]
+	},
 	"Violentgrass": {
 		"kind": "killer", "cost": 0,
 		"icon": "res://The Darkness Of The Grasslands assets/UI/Lobby/Violentgrass - Killer icon.png",
@@ -67,7 +78,7 @@ const CHARACTER_CATALOG: Dictionary = {
 
 ## Ownership: which characters the player has bought. Starters are owned by
 ## default. Keyed by character name -> true.
-var owned_survivors: Dictionary = {"Greengrass": true}
+var owned_survivors: Dictionary = {"Greengrass": true, "Thistle": true}
 var owned_killers: Dictionary = {"Violentgrass": true}
 
 ## Character helper methods ------------------------------------------------

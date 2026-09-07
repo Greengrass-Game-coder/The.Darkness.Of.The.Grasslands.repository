@@ -20,6 +20,7 @@ const MATCH_DURATION: float = 240.0  # 4 minutes
 @onready var map_visual: Sprite2D = $MapVisual
 @onready var timer_label: Label = $HUD/TimerLabel
 const GREENGRASS_SCENE: PackedScene = preload("res://scenes/greengrass.tscn")
+const THISTLE_SCENE: PackedScene = preload("res://scenes/thistle.tscn")
 const VIOLENTGRASS_SCENE: PackedScene = preload("res://scenes/violentgrass.tscn")
 const TEST_KILLER_SCENE: PackedScene = preload("res://scenes/test_killer.tscn")
 const AI_BOT_SCRIPT: Script = preload("res://scripts/characters/ai_bot_controller_test.gd")
@@ -572,7 +573,9 @@ func _survivor_scene_for(survivor_name: String) -> PackedScene:
 	# Map an equipped survivor name to its scene. Only Greengrass exists today —
 	# extend this map (and add the entry to GameState.CHARACTER_CATALOG) as more
 	# survivors are added.
-	return GREENGRASS_SCENE
+	match survivor_name:
+		"Thistle": return THISTLE_SCENE
+		_: return GREENGRASS_SCENE
 
 
 func _killer_scene_for(killer_name: String) -> PackedScene:
@@ -1343,6 +1346,15 @@ func _get_abilities_for(is_killer_player: bool) -> Array[Dictionary]:
 			{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "E", "cooldown_var": "teleport_on_cooldown", "cooldown_timer_var": "_teleport_cd_timer"},
 		]
 	else:
+		# Thistle — phase survivor. Reuses the survivor cooldown vars so HUD
+		# cooldown tracking works unchanged (block=Phase Dash, punch=Veil,
+		# flower=Bloom Burst).
+		if _character_name == "Thistle":
+			return [
+				{"icon": "res://assets/generated/icon_ability_teleport.png", "key": "Q", "cooldown_var": "block_on_cooldown", "cooldown_timer_var": "_block_cd_timer"},
+				{"icon": "res://assets/generated/icon_ability_block.png", "key": "E", "cooldown_var": "punch_on_cooldown", "cooldown_timer_var": "_punch_cd_timer"},
+				{"icon": "res://assets/generated/icon_ability_spare_flower.png", "key": "R", "cooldown_var": "flower_on_cooldown", "cooldown_timer_var": "_flower_cd_timer"},
+			]
 		return [
 			{"icon": "res://assets/generated/icon_ability_block.png", "key": "Q", "cooldown_var": "block_on_cooldown", "cooldown_timer_var": "_block_cd_timer"},
 			{"icon": "res://assets/generated/icon_ability_grass_punch.png", "key": "E", "cooldown_var": "punch_on_cooldown", "cooldown_timer_var": "_punch_cd_timer"},
@@ -3275,6 +3287,8 @@ func _check_all_survivors_eliminated() -> void:
 		return
 	# Human is a survivor — all survivors gone only when bots AND human are dead.
 	if _alive_survivor_bot_count > 0:
+		return
+	if _death_active:
 		return
 	var player_hp: float = _player.get("current_hp") if is_instance_valid(_player) and "current_hp" in _player else 0.0
 	if player_hp <= 0.0:
