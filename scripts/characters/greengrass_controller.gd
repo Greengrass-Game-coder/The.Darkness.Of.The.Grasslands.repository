@@ -666,7 +666,10 @@ func _setup_held_item_sprite() -> void:
 	# Scale the holding frame down small so it reads as a hand holding the
 	# flower while it orbits the character.
 	_held_item_sprite.scale = Vector2(0.12, 0.12)
-	_held_item_sprite.z_index = 5
+	# Keep the held hand/flower BEHIND the Greengrass body: the held sprite and
+	# the character's AnimatedSprite2D are siblings, so a negative z_index
+	# (below the body's default 0) draws it behind the survivor.
+	_held_item_sprite.z_index = -5
 	_held_item_sprite.visible = false
 	add_child(_held_item_sprite)
 	_update_held_item_visual()
