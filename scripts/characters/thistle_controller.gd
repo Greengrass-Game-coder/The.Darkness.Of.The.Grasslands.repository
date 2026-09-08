@@ -59,13 +59,13 @@ func _physics_process(delta: float) -> void:
 			modulate = Color.WHITE
 		queue_redraw()
 
-	# Ability animation window: play the directional anim for its brief span,
-	# then hand back to the normal idle/walk cycle.
+	# Ability animation window: keep the ability anim showing for its brief
+	# span, then hand back to the normal idle/walk cycle. We do NOT re-call
+	# _play_character_ability here — it resets _ability_anim_timer, which
+	# would lock the window open forever (character stuck + cooldowns frozen).
 	if _ability_anim_timer > 0.0:
 		_ability_anim_timer -= delta
-		if _ability_anim_timer > 0.0:
-			_play_character_ability(_ability_anim_name)
-		else:
+		if _ability_anim_timer <= 0.0:
 			_ability_anim_name = ""
 			_play_animation("idle")
 		return
@@ -176,7 +176,8 @@ func _play_character_ability(anim: String) -> void:
 		# veil/bloom rely on this window.
 		if anim != "dash":
 			_ability_anim_name = anim
-			_ability_anim_timer = 0.4
+			# Match the 4-frame @8.0 ability anim length (0.5s) so it plays out.
+			_ability_anim_timer = 0.5
 
 
 func _draw() -> void:
