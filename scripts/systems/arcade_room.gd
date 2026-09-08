@@ -21,7 +21,7 @@ const TETRIVO_CHOICE: String = "res://The Darkness Of The Grasslands assets/Soun
 # Subtle old-console CRT post-process overlay (pixelation, faint scanlines,
 # gentle curvature, static only while loading).
 const CONSOLE_CRT_SHADER: String = "res://shaders/console_crt.gdshader"
-const TETRIVO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRINO.thumnail.png"
+const TETRIVO_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_TETRIVO.thumbnail.png"
 # Dirtysweeper cartridge: its own thumbnail. It now plays EMBEDDED inside this
 # arcade scene (no separate scene) — exactly like Tetrivo does.
 const DIRTSWEEPER_THUMB: String = "res://The Darkness Of The Grasslands assets/Thumbnails/Minigame_dirtysweeper.thumbnail.png"
