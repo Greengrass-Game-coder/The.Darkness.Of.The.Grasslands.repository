@@ -6,6 +6,7 @@ signal stamina_changed(current: float, max_stamina: float)
 signal tentacle_stamina_changed(current: float, max_stamina: float)
 signal tentacle_activated
 signal tentacle_deactivated
+signal status_effect_changed(effect_name: String, remaining: float, total: float)
 signal hp_changed(current_hp: float, max_hp: float)
 signal teleported(new_position: Vector2)
 signal teleport_fx_started()
@@ -103,6 +104,9 @@ var _stamina_exhausted: bool = false
 var _exhaustion_timer: float = 0.0
 var tentacle_sprint_stamina: float = 50.0
 var _tentacle_sprinting: bool = false
+# Walls already dealt retraction damage during the current grab (key:
+# "collider_id:shape_index") so each wall hits for its damage only ONCE.
+var _tentacle_damaged_walls: Dictionary = {}
 var _base_sprite_scale: float = 1.0
 var _base_col_scale: float = 1.0
 
@@ -171,6 +175,9 @@ func _physics_process(delta: float) -> void:
 	_update_cooldowns(delta)
 	_update_rage(delta)
 	_update_better_sight(delta)
+	# Broadcast active timed effects for the HUD countdown (runs before the
+	# rage-freeze early-return so every state is reported).
+	_emit_status_effects()
 	
 	# Auto-hide the non-blocking M1 swing effect.
 	if _hit_vfx_timer > 0.0:
@@ -240,6 +247,28 @@ func _update_cooldowns(delta: float) -> void:
 		better_sight_cooldown_timer -= delta
 		if better_sight_cooldown_timer <= 0.0:
 			better_sight_on_cooldown = false
+
+
+func _emit_status_effects() -> void:
+	"""Report every active timed killer effect (name + remaining) so the HUD can
+	show a live countdown in the right-middle of the screen. Inactive effects are
+	reported with 0 so the HUD hides them again."""
+	if _stamina_exhausted:
+		status_effect_changed.emit("Exhausted", maxf(_exhaustion_timer, 0.0), EXHAUSTION_DURATION)
+	else:
+		status_effect_changed.emit("Exhausted", 0.0, EXHAUSTION_DURATION)
+	if _rage_freeze_timer > 0.0:
+		status_effect_changed.emit("Rage Freeze", _rage_freeze_timer, RAGE_FREEZE_DURATION)
+	else:
+		status_effect_changed.emit("Rage Freeze", 0.0, RAGE_FREEZE_DURATION)
+	if current_state == State.STUNNED:
+		status_effect_changed.emit("Stunned", state_timer.time_left, state_timer.wait_time)
+	else:
+		status_effect_changed.emit("Stunned", 0.0, 1.0)
+	if is_instance_valid(_revealed_survivor):
+		status_effect_changed.emit("Revealed", maxf(_reveal_timer, 0.0), rage_reveal_duration)
+	else:
+		status_effect_changed.emit("Revealed", 0.0, rage_reveal_duration)
 
 
 # ═══════════════ SIZE ═══════════════
@@ -460,6 +489,7 @@ func _activate_tentacle_snatch() -> void:
 	_tentacle_caught_survivor = null
 	_tentacle_retracting = false
 	_tentacle_was_cancelled = false
+	_tentacle_damaged_walls = {}
 	_tentacle_expired = false
 	
 	tentacle_activated.emit()
@@ -594,6 +624,7 @@ func _on_tentacle_catch(body: Node2D) -> void:
 	
 	_tentacle_retracting = true
 	_tentacle_caught_survivor = body
+	_tentacle_damaged_walls = {}
 	
 	# Deal initial catch damage
 	body.take_damage(tentacle_catch_damage)
@@ -642,16 +673,25 @@ func _retract_tentacle(delta: float) -> void:
 		var prev_pos: Vector2 = _tentacle_caught_survivor.global_position
 		_tentacle_caught_survivor.global_position = survivor_global
 		
-		# Check for wall collisions during retraction — deal damage for EVERY
-		# wall the survivor is pressed against (2 dmg per wall, so a corner
-		# jam hits for both walls).
+		# Check for wall collisions during retraction. Each distinct wall the
+		# survivor is pressed against deals its OWN damage (2 per wall, so a
+		# corner jam hits for both walls), but only ONCE per grab — it must not
+		# re-damage the same wall every frame while being dragged along it.
 		if _tentacle_caught_survivor is CharacterBody2D:
 			var surv: CharacterBody2D = _tentacle_caught_survivor as CharacterBody2D
 			var walls_hit: Array = _get_tentacle_wall_hits(surv)
 			if not walls_hit.is_empty():
-				var total_damage: float = tentacle_wall_damage * walls_hit.size()
-				_tentacle_caught_survivor.take_damage(total_damage)
-				hit_landed.emit(_tentacle_caught_survivor, total_damage)
+				var new_walls: Array = []
+				for wall in walls_hit:
+					var cid: int = wall.get("collider").get_instance_id() if wall.get("collider") != null else -1
+					var key: String = "%d:%d" % [cid, wall.get("shape_index", -1)]
+					if not _tentacle_damaged_walls.has(key):
+						_tentacle_damaged_walls[key] = true
+						new_walls.append(wall)
+				if not new_walls.is_empty():
+					var total_damage: float = tentacle_wall_damage * new_walls.size()
+					_tentacle_caught_survivor.take_damage(total_damage)
+					hit_landed.emit(_tentacle_caught_survivor, total_damage)
 				# Push survivor out of each wall so it doesn't stick
 				for wall in walls_hit:
 					var wall_normal: Vector2 = wall.get("normal", Vector2.ZERO)

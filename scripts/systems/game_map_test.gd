@@ -157,6 +157,7 @@ const TELEPORT_FX_ZOOM_IN_HOLD_S: float = 0.35 # Hold the zoomed-in red state be
 
 # Match-ending effect
 var _ending_vignette: ColorRect = null
+var _status_effects_container: VBoxContainer = null
 var _ending_music_switched: bool = false
 var _ending_start_time: float = 0.0
 
@@ -615,6 +616,8 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	_create_stamina_bar(_player)
 	# Create tentacle-sprint stamina bar (only shown while Tentacle Snatch is up)
 	_create_tentacle_stamina_bar(_player)
+	# Create right-middle effect countdown HUD (invisible until an effect starts)
+	_create_status_effect_hud(_player)
 	
 	add_child(_player)
 	if is_killer_player:
@@ -743,6 +746,10 @@ func _clear_role_entities() -> void:
 		var tsb: Node = hud_node.get_node_or_null("TentacleStaminaBar")
 		if tsb:
 			tsb.queue_free()
+		var fx: Node = hud_node.get_node_or_null("StatusEffects")
+		if fx:
+			fx.queue_free()
+	_status_effects_container = null
 	# Fullscreen overlays (epilepsy + vignette + ending) — free them so they don't
 	# stack/get progressively greyer on repeated role switches.
 	if is_instance_valid(_epilepsy_overlay):
@@ -988,6 +995,26 @@ func _create_tentacle_stamina_bar(player: Node2D) -> void:
 		player.tentacle_activated.connect(_on_tentacle_activated.bind(c))
 	if player.has_signal("tentacle_deactivated"):
 		player.tentacle_deactivated.connect(_on_tentacle_deactivated.bind(c))
+
+
+func _create_status_effect_hud(player: Node2D) -> void:
+	"""Right-middle HUD listing the player's active effects with live countdowns.
+	Invisible by default; appears while any effect is active and hides again when
+	they end. Red Sickness is shown as a persistent red status (no countdown)."""
+	var c := VBoxContainer.new()
+	c.name = "StatusEffects"
+	c.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	c.offset_left = -300.0
+	c.offset_right = -24.0
+	c.alignment = BoxContainer.ALIGNMENT_CENTER
+	c.add_theme_constant_override("separation", 8)
+	c.visible = false
+	$HUD.add_child(c)
+	_status_effects_container = c
+	if player.has_signal("status_effect_changed"):
+		player.status_effect_changed.connect(_on_status_effect_changed)
+	if player.has_signal("red_sickness_changed"):
+		player.red_sickness_changed.connect(_on_red_sickness_changed)
 
 
 func _process(delta: float) -> void:
@@ -1512,6 +1539,48 @@ func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorR
 	var ratio: float = current / max_stamina if max_stamina > 0 else 0.0
 	fill.size.x = 400.0 * clampf(ratio, 0.0, 1.0)
 	fill.color.a = 0.5 if ratio < 0.2 else 0.9  # Dim when low
+
+
+func _on_red_sickness_changed(infected: bool) -> void:
+	"""Red Sickness is a persistent (infinite) red status — no countdown."""
+	if infected:
+		_on_status_effect_changed("Red Sickness", INF, INF)
+	else:
+		_on_status_effect_changed("Red Sickness", 0.0, INF)
+
+
+func _on_status_effect_changed(effect_name: String, remaining: float, _total: float) -> void:
+	"""Add/update/remove an effect row. remaining <= 0 hides it again."""
+	if _status_effects_container == null:
+		return
+	var node: Node = _status_effects_container.get_node_or_null("Fx_%s" % effect_name)
+	if remaining <= 0.0:
+		if node:
+			node.queue_free()
+	else:
+		var lbl: Label = node as Label if node != null else null
+		if lbl == null:
+			lbl = Label.new()
+			lbl.name = "Fx_%s" % effect_name
+			lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			lbl.add_theme_font_size_override("font_size", 18)
+			lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+			lbl.add_theme_constant_override("shadow_offset_x", 1)
+			lbl.add_theme_constant_override("shadow_offset_y", 1)
+			lbl.add_theme_color_override("font_color", Color(1, 0.78, 0.25, 1))
+			_status_effects_container.add_child(lbl)
+		if effect_name == "Red Sickness":
+			lbl.add_theme_color_override("font_color", Color(0.95, 0.15, 0.15, 1))
+		if is_inf(remaining):
+			lbl.text = effect_name  # persistent, no countdown
+		else:
+			lbl.text = "%s  %.1fs" % [effect_name, remaining]
+	# Show the panel only while at least one effect row is active.
+	_status_effects_container.visible = false
+	for child in _status_effects_container.get_children():
+		if not child.is_queued_for_deletion() and (child as Label).text != "":
+			_status_effects_container.visible = true
+			break
 
 
 func _on_player_tentacle_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:
