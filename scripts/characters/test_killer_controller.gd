@@ -3,6 +3,9 @@ extends CharacterBody2D
 
 signal hit_landed(target: Node2D, damage: float)
 signal stamina_changed(current: float, max_stamina: float)
+signal tentacle_stamina_changed(current: float, max_stamina: float)
+signal tentacle_activated
+signal tentacle_deactivated
 signal hp_changed(current_hp: float, max_hp: float)
 signal teleported(new_position: Vector2)
 signal teleport_fx_started()
@@ -48,6 +51,13 @@ enum Direction { DOWN, LEFT, RIGHT, UP }
 @export var tentacle_cooldown_success: float = 28.0
 @export var tentacle_cooldown_miss: float = 18.0
 @export var tentacle_cooldown_cancel: float = 12.0
+@export var tentacle_sprint_stamina_max: float = 50.0
+@export var tentacle_sprint_speed_mult: float = 2.0
+@export var tentacle_sprint_stamina_drain: float = 25.0
+@export var tentacle_stamina_regen: float = 18.0
+# The tentacle tip is never allowed closer than this to the killer, so it can't
+# be steered back onto/near the killer itself.
+@export var tentacle_min_range: float = 150.0
 
 # ── The Rage (information trap) ──
 @export var rage_max_traps: int = 5
@@ -91,6 +101,8 @@ var tentacle_cooldown_timer: float = 0.0
 var is_sprinting: bool = false
 var _stamina_exhausted: bool = false
 var _exhaustion_timer: float = 0.0
+var tentacle_sprint_stamina: float = 50.0
+var _tentacle_sprinting: bool = false
 var _base_sprite_scale: float = 1.0
 var _base_col_scale: float = 1.0
 
@@ -121,6 +133,8 @@ var _rage_traps: Array = []
 var _rage_elapsed: float = 0.0
 ## How long The Rage freezes the killer in place after placing a trap.
 const RAGE_FREEZE_DURATION: float = 2.5
+## How long stamina exhaustion blocks sprinting (movement + tentacle).
+const EXHAUSTION_DURATION: float = 10.0
 var _rage_freeze_timer: float = 0.0
 var _revealed_survivor: Node2D = null
 var _reveal_marker: Node2D = null
@@ -137,6 +151,7 @@ var _better_sight_marker: Node2D = null
 func _ready() -> void:
 	current_hp = max_hp
 	current_stamina = max_stamina
+	tentacle_sprint_stamina = tentacle_sprint_stamina_max
 	_base_sprite_scale = animated_sprite.scale.x if animated_sprite else 1.0
 	_base_col_scale = $CollisionShape2D.scale.x if has_node("CollisionShape2D") else 1.0
 	_apply_size()
@@ -254,12 +269,12 @@ func _handle_movement(delta: float) -> void:
 		if current_stamina <= 0.0:
 			current_stamina = 0.0
 			_stamina_exhausted = true
-			_exhaustion_timer = 1.0
+			_exhaustion_timer = EXHAUSTION_DURATION
 	else:
 		current_stamina = min(current_stamina + stamina_regen * delta, max_stamina)
 	stamina_changed.emit(current_stamina, max_stamina)
 	
-	var speed: float = sprint_speed if is_sprinting and current_stamina > 0.0 else move_speed
+	var speed: float = sprint_speed if is_sprinting and current_stamina > 0.0 and not _stamina_exhausted else move_speed
 	if _better_sight_active:
 		speed *= better_sight_speed_mult
 	if input_dir != Vector2.ZERO:
@@ -447,6 +462,8 @@ func _activate_tentacle_snatch() -> void:
 	_tentacle_was_cancelled = false
 	_tentacle_expired = false
 	
+	tentacle_activated.emit()
+	
 	# Spawn tentacle tip at killer position
 	_tentacle_node = Sprite2D.new()
 	_tentacle_node.name = "TentacleTip"
@@ -508,6 +525,23 @@ func _handle_tentacle_snatch(delta: float) -> void:
 	# Control the tentacle with WASD — it only extends while steered and holds
 	# still when no direction is held (it no longer auto-stretches downward).
 	var aim_dir: Vector2 = _get_aim_direction()
+	# Tentacle sprint: hold Shift for 2x speed while steering, draining the
+	# dedicated 50 tentacle stamina. Running it dry exhausts the killer.
+	var want_sprint: bool = aim_dir.length_squared() > 0.01 \
+			and Input.is_action_pressed("sprint") \
+			and not _stamina_exhausted and tentacle_sprint_stamina > 0.0
+	if want_sprint:
+		tentacle_sprint_stamina = max(tentacle_sprint_stamina - tentacle_sprint_stamina_drain * delta, 0.0)
+		_tentacle_sprinting = true
+		if tentacle_sprint_stamina <= 0.0:
+			_stamina_exhausted = true
+			_exhaustion_timer = EXHAUSTION_DURATION
+			_tentacle_sprinting = false
+			want_sprint = false
+	else:
+		tentacle_sprint_stamina = min(tentacle_sprint_stamina + tentacle_stamina_regen * delta, tentacle_sprint_stamina_max)
+		_tentacle_sprinting = false
+	tentacle_stamina_changed.emit(tentacle_sprint_stamina, tentacle_sprint_stamina_max)
 	if aim_dir.length_squared() < 0.01:
 		# Holding still — stop the stretch hum.
 		_stop_tentacle_stretch_sound()
@@ -517,12 +551,21 @@ func _handle_tentacle_snatch(delta: float) -> void:
 	_play_tentacle_stretch_sound()
 	
 	var tentacle_speed: float = move_speed * tentacle_speed_mult
+	if _tentacle_sprinting:
+		tentacle_speed *= tentacle_sprint_speed_mult
 	var target_pos: Vector2 = _tentacle_node.position + aim_dir * tentacle_speed * delta
 	
 	# Clamp to max range from killer
 	if target_pos.length() > tentacle_max_range:
 		target_pos = target_pos.normalized() * tentacle_max_range
 	
+	# Never let the tentacle be steered back onto/near the killer: keep the tip
+	# at least tentacle_min_range away from the killer at all times.
+	if target_pos.length() < tentacle_min_range:
+		if target_pos.length() < 0.001:
+			target_pos = aim_dir * tentacle_min_range
+		else:
+			target_pos = target_pos.normalized() * tentacle_min_range
 	_tentacle_node.position = target_pos
 	
 	# Rotate tentacle to face movement direction
@@ -738,6 +781,7 @@ func _restore_camera_to_killer() -> void:
 func _deactivate_tentacle(success: bool, cancelled: bool) -> void:
 	"""Clean up tentacle and set cooldown."""
 	_tentacle_active = false
+	tentacle_deactivated.emit()
 	
 	# Stop tentacle SFX: snap-back "stop" if the stretch hum was still going.
 	if _tentacle_stretch_audio and _tentacle_stretch_audio.playing:

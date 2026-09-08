@@ -12,6 +12,8 @@ const MATCH_DURATION: float = 240.0  # 4 minutes
 @export var health_bar_size: Vector2 = Vector2(400, 30)
 @export var stamina_bar_pos: Vector2 = Vector2(440, 590)
 @export var stamina_bar_size: Vector2 = Vector2(400, 36)
+@export var tentacle_stamina_bar_pos: Vector2 = Vector2(440, 632)
+@export var tentacle_stamina_bar_size: Vector2 = Vector2(240, 30)
 @export var ability_icons_pos: Vector2 = Vector2(490, 652)
 @export var ability_slot_start_x: float = 52.0
 @export var ability_slot_spacing: float = 66.0
@@ -611,6 +613,8 @@ func spawn_player(spawn_as_killer: bool = false) -> void:
 	_create_health_bar(_player)
 	# Create stamina bar UI
 	_create_stamina_bar(_player)
+	# Create tentacle-sprint stamina bar (only shown while Tentacle Snatch is up)
+	_create_tentacle_stamina_bar(_player)
 	
 	add_child(_player)
 	if is_killer_player:
@@ -736,6 +740,9 @@ func _clear_role_entities() -> void:
 		var sb: Node = hud_node.get_node_or_null("StaminaBar")
 		if sb:
 			sb.queue_free()
+		var tsb: Node = hud_node.get_node_or_null("TentacleStaminaBar")
+		if tsb:
+			tsb.queue_free()
 	# Fullscreen overlays (epilepsy + vignette + ending) — free them so they don't
 	# stack/get progressively greyer on repeated role switches.
 	if is_instance_valid(_epilepsy_overlay):
@@ -937,6 +944,50 @@ func _create_stamina_bar(player: Node2D) -> void:
 	# Connect to player's stamina signal
 	if player.has_signal("stamina_changed"):
 		player.stamina_changed.connect(_on_player_stamina_changed.bind(fill))
+
+
+func _create_tentacle_stamina_bar(player: Node2D) -> void:
+	"""Create a tentacle-sprint stamina bar, shown only while Tentacle Snatch is
+	active. The killer has a dedicated 50 stamina pool for sprinting the
+	tentacle (Shift), separate from normal movement sprint stamina."""
+	var c := Control.new()
+	c.name = "TentacleStaminaBar"
+	c.position = tentacle_stamina_bar_pos
+	c.size = tentacle_stamina_bar_size
+	c.visible = false  # Only shown while the tentacle is active
+	$HUD.add_child(c)
+
+	var bg := ColorRect.new()
+	bg.name = "Bg"
+	bg.size = Vector2(240, 14)
+	bg.color = Color(0.15, 0.1, 0.12, 0.85)
+	c.add_child(bg)
+
+	var fill := ColorRect.new()
+	fill.name = "Fill"
+	fill.size = Vector2(240, 14)
+	fill.color = Color(0.85, 0.25, 0.4, 0.95)  # tentacle red/purple
+	c.add_child(fill)
+
+	var label := Label.new()
+	label.name = "Label"
+	label.text = "TENTACLE SPRINT"
+	label.position = Vector2(0, 16)
+	label.size = Vector2(240, 14)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 1))
+	label.add_theme_constant_override("shadow_offset_x", 1)
+	label.add_theme_constant_override("shadow_offset_y", 1)
+	label.add_theme_font_size_override("font_size", 10)
+	c.add_child(label)
+
+	if player.has_signal("tentacle_stamina_changed"):
+		player.tentacle_stamina_changed.connect(_on_player_tentacle_stamina_changed.bind(fill))
+	if player.has_signal("tentacle_activated"):
+		player.tentacle_activated.connect(_on_tentacle_activated.bind(c))
+	if player.has_signal("tentacle_deactivated"):
+		player.tentacle_deactivated.connect(_on_tentacle_deactivated.bind(c))
 
 
 func _process(delta: float) -> void:
@@ -1461,6 +1512,20 @@ func _on_player_stamina_changed(current: float, max_stamina: float, fill: ColorR
 	var ratio: float = current / max_stamina if max_stamina > 0 else 0.0
 	fill.size.x = 400.0 * clampf(ratio, 0.0, 1.0)
 	fill.color.a = 0.5 if ratio < 0.2 else 0.9  # Dim when low
+
+
+func _on_player_tentacle_stamina_changed(current: float, max_stamina: float, fill: ColorRect) -> void:
+	"""Update the tentacle-sprint stamina fill bar width."""
+	var ratio: float = current / max_stamina if max_stamina > 0 else 0.0
+	fill.size.x = 240.0 * clampf(ratio, 0.0, 1.0)
+
+
+func _on_tentacle_activated(bar: Control) -> void:
+	bar.visible = true
+
+
+func _on_tentacle_deactivated(bar: Control) -> void:
+	bar.visible = false
 
 
 const MAX_SURVIVOR_BOTS: int = 7  # TEST MODE: 7 bots + the human survivor = 8 total
