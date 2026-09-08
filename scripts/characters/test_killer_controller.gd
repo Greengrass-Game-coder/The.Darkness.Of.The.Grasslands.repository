@@ -668,9 +668,8 @@ func _tentacle_wall_push_dir(body: StaticBody2D, shape_idx: int, surv: Character
 	"""Compute a push direction for a wall polygon: from the polygon's center
 	back toward the survivor (away from the wall)."""
 	var centroid: Vector2 = body.global_position
-	if body.shape_owners_get_count() > 0:
-		var owner_id: int = body.shape_find_owner(shape_idx)
-		if owner_id != -1:
+	var owner_id: int = body.shape_find_owner(shape_idx)
+	if owner_id != -1:
 			var owner_node: Node = body.shape_owner_get_owner(owner_id)
 			if owner_node is CollisionPolygon2D:
 				var poly: CollisionPolygon2D = owner_node as CollisionPolygon2D
