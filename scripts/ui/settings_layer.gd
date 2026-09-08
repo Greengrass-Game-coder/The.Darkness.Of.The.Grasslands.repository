@@ -381,9 +381,20 @@ func _add_keybind_item(item_data: Dictionary, section: VBoxContainer) -> void:
 
 func _key_name(action: String) -> String:
 	var key: int = InputSystem.current_key(action)
-	if key == 0:
-		return "—"
-	return OS.get_keycode_string(key)
+	if key != 0:
+		return OS.get_keycode_string(key)
+	var mb: int = InputSystem.current_mouse(action)
+	if mb >= 0:
+		return _mouse_name(mb)
+	return "—"
+
+
+func _mouse_name(button: int) -> String:
+	return {
+		MOUSE_BUTTON_LEFT: "LMB", MOUSE_BUTTON_RIGHT: "RMB", MOUSE_BUTTON_MIDDLE: "MMB",
+		MOUSE_BUTTON_WHEEL_UP: "Wheel Up", MOUSE_BUTTON_WHEEL_DOWN: "Wheel Down",
+		MOUSE_BUTTON_XBUTTON1: "MB4", MOUSE_BUTTON_XBUTTON2: "MB5",
+	}.get(button, "Mouse%d" % button)
 
 
 func _pad_name(action: String) -> String:
@@ -413,6 +424,29 @@ func _on_keybind_pressed(action_name: String, button: Button, mode: String) -> v
 	_rebinding_button = button
 	button.text = "..."
 	button.disabled = true
+
+
+func _input(event: InputEvent) -> void:
+	"""Capture a mouse button for the keyboard slot during rebinding.
+
+	Done in _input (not _unhandled_input) because mouse presses that land on a
+	Control are consumed by the UI and never reach _unhandled_input — the
+	settings panel would swallow the click and the binding would silently fail.
+	The click that opened rebinding already finished (its release fired the
+	button signal), so the next mouse press is always a fresh binding press."""
+	if _rebinding_action.is_empty() or _rebinding_mode != "key":
+		return
+	if event is InputEventMouseButton and event.pressed:
+		# Mouse buttons (incl. extra MB4/MB5 side buttons) go in the keyboard
+		# slot so players with gaming mice can bind them.
+		var action_m: String = _rebinding_action
+		InputSystem.rebind_mouse(action_m, event.button_index)
+		var btn_m: Button = _rebind_key_buttons.get(action_m)
+		if btn_m:
+			btn_m.text = _mouse_name(event.button_index)
+			btn_m.disabled = false
+		_finish_rebinding()
+		get_viewport().set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:

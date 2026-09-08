@@ -141,8 +141,9 @@ func _apply_defaults() -> void:
 	"""Create/refresh every action with its default key + gamepad binding."""
 	for action: String in ACTIONS:
 		var key: int = ACTIONS[action]["key"]
+		var mb: int = ACTIONS[action].get("mb", -1)
 		var button: int = ACTIONS[action]["button"]
-		_apply_action(action, key, button)
+		_apply_action(action, key, mb, button)
 
 
 func _add_ui_gamepad() -> void:
@@ -159,7 +160,7 @@ func _add_ui_gamepad() -> void:
 				InputMap.action_add_event(action, ev)
 
 
-func _apply_action(action: String, key: int, button: int) -> void:
+func _apply_action(action: String, key: int, mb: int, button: int) -> void:
 	if not InputMap.has_action(action):
 		InputMap.add_action(action)
 	InputMap.action_erase_events(action)
@@ -167,6 +168,10 @@ func _apply_action(action: String, key: int, button: int) -> void:
 		var kev := InputEventKey.new()
 		kev.keycode = key as Key
 		InputMap.action_add_event(action, kev)
+	if mb >= 0:
+		var mev := InputEventMouseButton.new()
+		mev.button_index = mb as MouseButton
+		InputMap.action_add_event(action, mev)
 	if button >= 0:
 		var bev := InputEventJoypadButton.new()
 		bev.button_index = button as JoyButton
@@ -184,18 +189,39 @@ func _has_button(action: String, button: int) -> bool:
 
 func rebind_key(action: String, keycode: int) -> void:
 	"""Replace only the keyboard binding for an action, keeping its gamepad
-	binding. Saving afterwards preserves both."""
+	binding. The keyboard slot can hold EITHER a key or a mouse button, so
+	binding a key also clears any previously assigned mouse button. Saving
+	afterwards preserves both devices."""
 	if not ACTIONS.has(action):
 		return
 	if not InputMap.has_action(action):
 		InputMap.add_action(action)
-	# remove only keyboard events
+	# remove only keyboard + mouse events
 	for e in InputMap.action_get_events(action):
-		if e is InputEventKey:
+		if e is InputEventKey or e is InputEventMouseButton:
 			InputMap.action_erase_event(action, e)
 	if keycode != 0:
 		var ev := InputEventKey.new()
 		ev.keycode = keycode as Key
+		InputMap.action_add_event(action, ev)
+	_save()
+
+
+func rebind_mouse(action: String, button: int) -> void:
+	"""Replace only the mouse binding for an action (the keyboard slot), keeping
+	its gamepad binding. Lets players with extra mouse buttons (e.g. MB4/MB5
+	side buttons) bind them to any action."""
+	if not ACTIONS.has(action):
+		return
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	# remove only keyboard + mouse events
+	for e in InputMap.action_get_events(action):
+		if e is InputEventKey or e is InputEventMouseButton:
+			InputMap.action_erase_event(action, e)
+	if button >= 0:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = button as MouseButton
 		InputMap.action_add_event(action, ev)
 	_save()
 
@@ -220,7 +246,7 @@ func rebind_button(action: String, button: int) -> void:
 func reset_action(action: String) -> void:
 	if not ACTIONS.has(action):
 		return
-	_apply_action(action, ACTIONS[action]["key"], ACTIONS[action]["button"])
+	_apply_action(action, ACTIONS[action]["key"], ACTIONS[action].get("mb", -1), ACTIONS[action]["button"])
 	_save()
 
 
@@ -238,6 +264,14 @@ func current_key(action: String) -> int:
 		if e is InputEventKey:
 			return e.keycode
 	return 0
+
+
+func current_mouse(action: String) -> int:
+	"""Return the mouse button bound to an action's keyboard slot, or -1."""
+	for e in InputMap.action_get_events(action):
+		if e is InputEventMouseButton:
+			return e.button_index
+	return -1
 
 
 func current_button(action: String) -> int:
@@ -260,7 +294,20 @@ func prompt_for(action: String, fallback: String = "") -> String:
 			return _button_name(button) if button >= 0 else fallback
 		_:
 			var key: int = current_key(action)
-			return OS.get_keycode_string(key) if key != 0 else fallback
+			if key != 0:
+				return OS.get_keycode_string(key)
+			var mb: int = current_mouse(action)
+			if mb >= 0:
+				return _mouse_name(mb)
+			return fallback
+
+
+func _mouse_name(button: int) -> String:
+	return {
+		MOUSE_BUTTON_LEFT: "LMB", MOUSE_BUTTON_RIGHT: "RMB", MOUSE_BUTTON_MIDDLE: "MMB",
+		MOUSE_BUTTON_WHEEL_UP: "Wheel Up", MOUSE_BUTTON_WHEEL_DOWN: "Wheel Down",
+		MOUSE_BUTTON_XBUTTON1: "MB4", MOUSE_BUTTON_XBUTTON2: "MB5",
+	}.get(button, "Mouse%d" % button)
 
 
 func _button_name(button: int) -> String:
@@ -279,6 +326,7 @@ func _save() -> void:
 	var cfg := ConfigFile.new()
 	for action: String in ACTIONS:
 		cfg.set_value("key", action, current_key(action))
+		cfg.set_value("mb", action, current_mouse(action))
 		cfg.set_value("button", action, current_button(action))
 	cfg.save(CFG)
 
@@ -289,6 +337,7 @@ func _load() -> void:
 		return
 	for action: String in ACTIONS:
 		var key: int = cfg.get_value("key", action, -1)
+		var mb: int = cfg.get_value("mb", action, -1)
 		var button: int = cfg.get_value("button", action, -1)
-		if key >= 0 or button >= 0:
-			_apply_action(action, key if key >= 0 else 0, button)
+		if key >= 0 or mb >= 0 or button >= 0:
+			_apply_action(action, key if key >= 0 else 0, mb, button)
