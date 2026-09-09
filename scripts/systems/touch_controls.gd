@@ -167,6 +167,7 @@ const RED := Color(0.8, 0.38, 0.32, 0.6)
 const BLUE := Color(0.36, 0.58, 0.82, 0.6)
 const PURPLE := Color(0.6, 0.46, 0.82, 0.6)
 const YELLOW := Color(0.85, 0.7, 0.3, 0.6)
+const ORANGE := Color(0.9, 0.55, 0.25, 0.6)
 const NEUTRAL := Color(0.55, 0.55, 0.62, 0.6)
 
 
@@ -181,6 +182,16 @@ func _build_buttons() -> void:
 		Vector2(0.74, 0.62), NEUTRAL)
 	_add_pill("ovw_menu", "MENU", ["pause"], [OVERWORLD],
 		Vector2(0.05, 0.18), NEUTRAL)
+	# Abilities — survivor Q/E/R/T (block, punch, ability 3/4) and killer
+	# Q = hit. Generic AB1-4 labels because every binding is rebindable.
+	_add_pill("ovw_ab1", "AB1", ["ability_1"], [OVERWORLD],
+		Vector2(0.60, 0.84), ORANGE)
+	_add_pill("ovw_ab2", "AB2", ["ability_2"], [OVERWORLD],
+		Vector2(0.60, 0.72), ORANGE)
+	_add_pill("ovw_ab3", "AB3", ["ability_3"], [OVERWORLD],
+		Vector2(0.60, 0.60), ORANGE)
+	_add_pill("ovw_ab4", "AB4", ["ability_4"], [OVERWORLD],
+		Vector2(0.60, 0.48), ORANGE)
 
 	# --- Tetris (Tetrivo): joystick moves; dedicated action buttons. ---
 	_add_pill("tet_drop", "DROP", ["tetris_harddrop"], [TETRIS],

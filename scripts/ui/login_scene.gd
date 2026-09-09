@@ -17,18 +17,12 @@ signal login_completed()
 @onready var login_button: Button = $CenterPanel/VBoxContainer/LoginButton
 @onready var status_label: Label = $CenterPanel/VBoxContainer/StatusLabel
 @onready var loading_indicator: ColorRect = $LoadingIndicator
-@onready var server_url_input: LineEdit = $CenterPanel/VBoxContainer/ServerURLInput
-
-const SERVER_URL_FILE: String = "user://server_url.cfg"
 
 func _ready() -> void:
 	title_label.text = title_text
 	subtitle_label.text = subtitle_text
 	loading_indicator.hide()
 	status_label.text = ""
-	
-	# Load saved server URL
-	_load_server_url()
 	
 	# Connect to NetworkManager auth signals
 	var nm := get_node("/root/NetworkManager")
@@ -55,50 +49,6 @@ func _ready() -> void:
 	# Connect signals
 	login_button.pressed.connect(_on_login_pressed)
 	password_input.text_submitted.connect(_on_password_submitted)
-
-
-func _load_server_url() -> void:
-	"""Load the last-used server URL from disk."""
-	var f := FileAccess.open(SERVER_URL_FILE, FileAccess.READ)
-	if f:
-		var url: String = f.get_as_text().strip_edges()
-		if not url.is_empty():
-			server_url_input.text = url
-		f.close()
-	# Otherwise, show the default from EnvironmentConfig
-	if server_url_input.text.is_empty():
-		var env := get_node_or_null("/root/EnvironmentConfig")
-		if env and env.has_method("get_ws_url"):
-			server_url_input.text = env.get_ws_url()
-
-
-func _save_server_url() -> void:
-	"""Save the server URL to disk so it persists."""
-	var url: String = server_url_input.text.strip_edges()
-	if url.is_empty():
-		return
-	var f := FileAccess.open(SERVER_URL_FILE, FileAccess.WRITE)
-	if f:
-		f.store_string(url)
-		f.close()
-
-
-func _apply_server_url() -> void:
-	"""Point the game at whatever server URL is typed in the box.
-
-	The whole game connects to ONE server (the NetworkManager WebSocket). Two
-	people on the same Wi-Fi can play together by running the dedicated server
-	on one PC and entering that PC's address here (the host uses
-	ws://localhost:8080, the other person uses ws://<host-LAN-IP>:8080).
-	"""
-	var url: String = server_url_input.text.strip_edges()
-	if url.is_empty():
-		return
-	_save_server_url()
-	var nm := get_node_or_null("/root/NetworkManager")
-	if nm and nm.has_method("apply_custom_url"):
-		nm.apply_custom_url(url)
-		print("LoginScene: Server URL set to %s" % url)
 
 
 func _detect_steam_and_prefill() -> void:
@@ -216,8 +166,6 @@ func _on_auth_failed(reason: String) -> void:
 
 
 func _on_login_successful() -> void:
-	# Apply the typed server URL (so a local/same-Wi-Fi server can be used)
-	_apply_server_url()
 	login_completed.emit()
 	
 	# Transition to start menu instead of lobby

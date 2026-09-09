@@ -106,20 +106,6 @@ placeholder_text = "Enter password"
 max_length = 32
 secret = true
 
-[node name="ServerURLLabel" type="Label" parent="CenterPanel/VBoxContainer" unique_id=488011416]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
-theme_override_font_sizes/font_size = 10
-text = "Server URL (optional):"
-
-[node name="ServerURLInput" type="LineEdit" parent="CenterPanel/VBoxContainer" unique_id=560607444]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
-theme_override_colors/font_placeholder_color = Color(0.4, 0.4, 0.4, 1)
-placeholder_text = "ws://your-tunnel-url.loclx.io"
-max_length = 256
-
 [node name="SpacerMid" type="Control" parent="CenterPanel/VBoxContainer" unique_id=1195657712]
 layout_mode = 2
 

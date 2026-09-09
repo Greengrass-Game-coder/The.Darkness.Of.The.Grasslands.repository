@@ -31,7 +31,7 @@ signal private_room_created(code: String)
 signal private_room_joined(code: String, player_count: int)
 signal server_error(message: String)
 
-const DEFAULT_WS_URL: String = "ws://localhost:8080"
+const DEFAULT_WS_URL: String = "wss://zizir-2a00-5400-e052-6ab2-f420-3134-12-9e7d.run.pinggy-free.link"
 const CONNECT_TIMEOUT: float = 10.0  # seconds before giving up
 
 ## Whether we're connected to the server
@@ -75,19 +75,6 @@ func _process(_delta: float) -> void:
 		
 		elif state == WebSocketPeer.STATE_CLOSED:
 			_disconnected()
-
-
-func apply_custom_url(url: String) -> void:
-	"""Override the WebSocket URL with a user-provided one (e.g. from login screen)."""
-	if url.is_empty():
-		return
-	# Only override if different from default
-	if url != _ws_url:
-		_ws_url = url
-		print("NetworkManager: Custom URL set to %s" % _ws_url)
-		# If already connected to a different URL, disconnect first
-		if connected or (_ws and _ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING):
-			disconnect_from_server()
 
 
 func connect_to_server() -> void:
@@ -300,6 +287,13 @@ func join_private_server(code: String) -> void:
 		connect_to_server()
 		await connected_to_server
 	send_json({"type": "join_private_server", "code": code})
+
+
+func start_private_match() -> void:
+	"""Ask the server to start a match for the private room you host."""
+	if not connected:
+		return
+	send_json({"type": "start_private_match"})
 
 
 # ═══════════════ AUTH ═══════════════

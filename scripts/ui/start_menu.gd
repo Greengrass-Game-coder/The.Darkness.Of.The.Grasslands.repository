@@ -27,6 +27,7 @@ func _ready() -> void:
 		SubtleMotion.attach($TitleLabel, SubtleMotion.Mode.BOB, 6.0, 0.9)
 	_setup_buttons()
 	_setup_account_panel()
+	_setup_play_online_panel()
 	_load_current_settings()
 
 
@@ -35,11 +36,14 @@ func _setup_buttons() -> void:
 	var buttons: VBoxContainer = $MenuButtons if has_node("MenuButtons") else null
 	if not buttons:
 		return
+	var play_online_btn: Button = buttons.get_node("PlayOnlineBtn") as Button
 	var find_btn: Button = buttons.get_node("FindGameBtn") as Button
 	var settings_btn: Button = buttons.get_node("SettingsBtn") as Button
 	var account_btn: Button = buttons.get_node("AccountSettingsBtn") as Button
 	var logout_btn: Button = buttons.get_node("LogoutBtn") as Button
 	
+	if play_online_btn:
+		play_online_btn.pressed.connect(_open_play_online)
 	if find_btn:
 		find_btn.pressed.connect(_on_find_game_pressed)
 	if settings_btn:
@@ -274,6 +278,146 @@ func _on_find_game_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/loading_screen.tscn")
 
 
+# ── PLAY ONLINE (open server / private room by code) ────────────────────
+
+func _setup_play_online_panel() -> void:
+	var panel: Control = get_node_or_null("PlayOnlinePanel")
+	if panel == null:
+		return
+	var close_btn: Button = panel.get_node_or_null("CloseBtn")
+	var open_btn: Button = panel.get_node_or_null("OpenServerBtn")
+	var create_btn: Button = panel.get_node_or_null("CreateRoomBtn")
+	var join_btn: Button = panel.get_node_or_null("JoinCodeBtn")
+	var start_btn: Button = panel.get_node_or_null("StartMatchBtn")
+	if close_btn:
+		close_btn.pressed.connect(_close_play_online)
+	if open_btn:
+		open_btn.pressed.connect(_join_open_server)
+	if create_btn:
+		create_btn.pressed.connect(_create_private_room)
+	if join_btn:
+		join_btn.pressed.connect(_join_by_code)
+	if start_btn:
+		start_btn.pressed.connect(_start_private_match)
+	var nm := get_node_or_null("/root/NetworkManager")
+	if nm:
+		if not nm.private_room_created.is_connected(_on_private_created):
+			nm.private_room_created.connect(_on_private_created)
+		if not nm.private_room_joined.is_connected(_on_private_joined):
+			nm.private_room_joined.connect(_on_private_joined)
+		if not nm.server_error.is_connected(_on_play_server_error):
+			nm.server_error.connect(_on_play_server_error)
+		if not nm.connection_failed.is_connected(_on_play_connect_failed):
+			nm.connection_failed.connect(_on_play_connect_failed)
+
+
+func _open_play_online() -> void:
+	var panel: Control = get_node_or_null("PlayOnlinePanel")
+	if panel:
+		panel.visible = true
+		var lbl: Label = panel.get_node_or_null("StatusLabel")
+		if lbl:
+			lbl.text = ""
+	var nm := get_node_or_null("/root/NetworkManager")
+	if nm and not nm.connected and not (nm._ws and nm._ws.get_ready_state() == 1):
+		nm.connect_to_server()
+
+
+func _close_play_online() -> void:
+	var panel: Control = get_node_or_null("PlayOnlinePanel")
+	if panel:
+		panel.visible = false
+
+
+func _play_status(text: String, ok: bool = true) -> void:
+	var panel: Control = get_node_or_null("PlayOnlinePanel")
+	if panel == null:
+		return
+	var lbl: Label = panel.get_node_or_null("StatusLabel")
+	if lbl:
+		lbl.text = text
+		lbl.add_theme_color_override("font_color", Color(0.4, 1, 0.5) if ok else Color(1, 0.4, 0.4))
+
+
+func _join_open_server() -> void:
+	"""Connect to the public server and join its open lobby."""
+	var nm := get_node_or_null("/root/NetworkManager")
+	if nm and not nm.connected:
+		_play_status("Connecting to the public server...")
+		nm.connect_to_server()
+		await nm.connected_to_server
+	_play_status("Connected! Entering the open-server lobby...")
+	get_tree().change_scene_to_file("res://scenes/loading_screen.tscn")
+
+
+func _create_private_room() -> void:
+	"""Create a private room and show its join code so friends can punch it in."""
+	var nm := get_node_or_null("/root/NetworkManager")
+	if nm and not nm.connected:
+		_play_status("Connecting to the public server...")
+		nm.connect_to_server()
+		await nm.connected_to_server
+	if nm:
+		nm.create_private_server(_random_code())
+
+
+func _join_by_code() -> void:
+	"""Join a private room that someone else made, by its code."""
+	var panel: Control = get_node_or_null("PlayOnlinePanel")
+	var code: String = ""
+	if panel:
+		var input: LineEdit = panel.get_node_or_null("CodeInput")
+		if input:
+			code = input.text.strip_edges().to_upper()
+	if code.is_empty():
+		_play_status("Enter a friend's room code first.", false)
+		return
+	var nm := get_node_or_null("/root/NetworkManager")
+	if nm and not nm.connected:
+		_play_status("Connecting to the public server...")
+		nm.connect_to_server()
+		await nm.connected_to_server
+	if nm:
+		nm.join_private_server(code)
+
+
+func _random_code() -> String:
+	var chars := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var code := ""
+	for i in 6:
+		code += chars[rng.randi_range(0, chars.length() - 1)]
+	return code
+
+
+func _on_private_created(code: String) -> void:
+	_play_status("PRIVATE ROOM CODE: %s\nShare this with friends so they can punch it in and join you." % code)
+
+
+func _on_private_joined(code: String, _count: int) -> void:
+	_play_status("Joined room %s! Entering the lobby..." % code)
+	get_tree().change_scene_to_file("res://scenes/loading_screen.tscn")
+
+
+func _start_private_match() -> void:
+	"""Host only: tell the server to start a match for everyone in the room."""
+	var nm := get_node_or_null("/root/NetworkManager")
+	if not nm or not nm.connected:
+		_play_status("Not connected to the server yet. Create or join a room first.", false)
+		return
+	nm.start_private_match()
+	_play_status("Starting the private match...")
+
+
+func _on_play_server_error(message: String) -> void:
+	_play_status(message, false)
+
+
+func _on_play_connect_failed(_error_msg: String) -> void:
+	_play_status("Could not reach the server. Check your connection and try again.", false)
+
+
 func _on_settings_pressed() -> void:
 	"""Open the settings layer."""
 	if not _settings_layer:
@@ -313,10 +457,15 @@ func _on_logout_pressed() -> void:
 func _input(event: InputEvent) -> void:
 	"""Handle ESC to close account panel or settings."""
 	if event.is_action_pressed("ui_cancel"):
-		var panel: Control = %AccountPanel
-		if panel.visible:
-			panel.visible = false
+		var po: Control = get_node_or_null("PlayOnlinePanel")
+		if po and po.visible:
+			po.visible = false
 			get_viewport().set_input_as_handled()
 		elif _settings_layer and _settings_layer.visible:
 			_settings_layer.close()
 			get_viewport().set_input_as_handled()
+		else:
+			var panel: Control = %AccountPanel
+			if panel.visible:
+				panel.visible = false
+				get_viewport().set_input_as_handled()

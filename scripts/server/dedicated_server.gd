@@ -355,6 +355,8 @@ func _handle_client_message(pid: int, data: Dictionary) -> void:
 			_handle_create_private(pid, data.get("code", ""))
 		"join_private_server":
 			_handle_join_private(pid, data.get("code", ""))
+		"start_private_match":
+			_handle_start_private_match(pid)
 		"save_data":
 			_handle_save_data(pid, data.get("data", {}))
 		"load_data":
@@ -706,6 +708,45 @@ func _handle_join_private(pid: int, code: String) -> void:
 	if _peer_info.has(pid):
 		_peer_info[pid]["room_code"] = code
 	_send_to(pid, "private_room_joined", {"code": code, "players": room["players"].size()})
+
+
+func _handle_start_private_match(pid: int) -> void:
+	"""Start a match for every member of the private room whose HOST is pid.
+	Only the room host may start it; everyone in the room then enters the
+	round together."""
+	var host_room: String = ""
+	for code: String in _private_rooms:
+		if _private_rooms[code]["host_peer_id"] == pid:
+			host_room = code
+			break
+	if host_room.is_empty():
+		_send_to(pid, "error", {"message": "Only the private-room host can start the match."})
+		return
+	var room: Dictionary = _private_rooms[host_room]
+	var members: Array = room["players"]
+	if members.size() < 1:
+		return
+	_current_match_id += 1
+	for i: int in range(members.size()):
+		var mpid: int = int(members[i])
+		if not _peer_info.has(mpid):
+			continue
+		_peer_info[mpid]["role"] = "killer" if i == 0 else "survivor"
+		_peer_info[mpid]["alive"] = true
+	for mpid: int in members:
+		if not _peer_info.has(mpid):
+			continue
+		var role: String = _peer_info[mpid]["role"]
+		_send_to(mpid, "game_started", {
+			"role": role,
+			"player_list": _get_player_summaries(),
+			"force_ai_killer": _force_ai_killer
+		})
+	_force_ai_killer = false
+	_phase = MatchPhase.ROUND_ACTIVE
+	_phase_timer = MATCH_DURATION_ROUND
+	_broadcast_phase("ROUND_ACTIVE", MATCH_DURATION_ROUND)
+	print("DedicatedServer: Private room ", host_room, " started with ", members.size(), " players")
 
 
 func _rotate_killer_role() -> void:
