@@ -719,8 +719,12 @@ func _update_held_item_visual() -> void:
 	var holding: bool = _is_holding_item() and _heal_channel_slot == -1
 	_held_item_sprite.visible = holding
 	if is_instance_valid(animated_sprite):
-		# Keep the normal body visible; the hand + flower orbit around it.
-		animated_sprite.visible = true
+		# Keep the normal body visible, UNLESS an ability VFX is hiding it
+		# (block/punch/heal). The ability overlay IS the character during those,
+		# so only it should show — this guard stops this per-frame update from
+		# re-showing the body on top of the ability animation.
+		if current_state not in [State.BLOCKING, State.DASH_BLOCKING, State.PUNCHING, State.PUNCH_CHARGING, State.HEALING]:
+			animated_sprite.visible = true
 	if holding:
 		_update_held_item_orbit()
 
