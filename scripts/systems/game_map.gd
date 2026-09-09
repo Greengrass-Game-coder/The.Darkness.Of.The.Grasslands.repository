@@ -49,7 +49,7 @@ const SURVIVOR_CHASE_ENTER: Array[float] = [1500.0, 1000.0, 500.0, 250.0]
 const SURVIVOR_CHASE_EXIT: Array[float]  = [1520.0, 1030.0, 530.0, 2000.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
-const CHASE_MAP_DUCK_DB: float = -80.0  # Background music FULLY muted while chase is active (restore only when killer is far)
+const CHASE_MAP_DUCK_DB: float = -14.0  # Background music ducked (kept clearly audible) while chase is active — the map/ending track keeps playing under the chase
 # Killer (Violentgrass) build-up: each build-up layer plays for this many seconds
 # before advancing to the next (Layer1 → Layer2 → Layer3 → Chase). Matches the
 # ~9.6s duration of the Layer1/2/3 WAV files.

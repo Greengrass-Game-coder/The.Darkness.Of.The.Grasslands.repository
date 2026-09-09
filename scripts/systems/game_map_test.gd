@@ -49,7 +49,7 @@ const SURVIVOR_CHASE_ENTER: Array[float] = [1500.0, 1000.0, 500.0, 250.0]
 const SURVIVOR_CHASE_EXIT: Array[float]  = [1520.0, 1030.0, 530.0, 2000.0]
 const CHASE_LAYER_VOLUME: Array[float] = [-6.0, -3.0, -1.0, 0.0]     # Volume per layer (Layer1 audible, Chase loud)
 const CHASE_VOL_FADE_MS: float = 0.3  # Crossfade time (seconds)
-const CHASE_MAP_DUCK_DB: float = -18.0  # Background music volume when chase is active
+const CHASE_MAP_DUCK_DB: float = -14.0  # Background music ducked (kept clearly audible) while chase is active
 # Killer (Violentgrass) build-up: each build-up layer plays for this many seconds
 # before advancing to the next (Layer1 → Layer2 → Layer3 → Chase). Matches the
 # ~9.6s duration of the Layer1/2/3 WAV files.
@@ -2265,7 +2265,15 @@ func _update_chase_music(_delta: float) -> void:
 			bg_player = get_node_or_null("MapMusicPlayer")
 		if bg_player:
 			var is_chasing: bool = target_layer >= 0
-			var target_bg_db: float = CHASE_MAP_DUCK_DB if is_chasing else (-2.0 if _ending_music_switched else 0.0)
+			var target_bg_db: float = 0.0
+			if _ending_music_switched:
+				# The match-ending music is the finale score — chase layers sit on
+				# top of it and never duck it, so it keeps playing through a chase.
+				target_bg_db = -2.0
+			elif is_chasing:
+				# Map music stays clearly audible during a chase (partial duck,
+				# not muted) so the map track keeps playing under the chase.
+				target_bg_db = CHASE_MAP_DUCK_DB
 			var mtween := create_tween()
 			mtween.tween_property(bg_player, "volume_db", target_bg_db, CHASE_VOL_FADE_MS)
 

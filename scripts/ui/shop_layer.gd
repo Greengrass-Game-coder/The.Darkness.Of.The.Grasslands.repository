@@ -29,6 +29,9 @@ var _details_tab: Button = null
 var _skins_tab: Button = null
 var _packs_tab: Button = null
 var _content_view: Control = null
+var _preview_players: Array = []
+var _previewing_id: String = ""
+var _preview_btn: Button = null
 
 
 func _ready() -> void:
@@ -53,6 +56,7 @@ func _sync_visibility() -> void:
 		_ui_layer.visible = visible
 
 func close() -> void:
+	_stop_pack_preview()
 	visible = false
 	_sync_visibility()
 	_close_side_panel(true)
@@ -484,6 +488,7 @@ func _open_side_panel() -> void:
 func _close_side_panel(instant: bool = false) -> void:
 	if not _side_open and instant:
 		return
+	_stop_pack_preview()
 	_side_open = false
 	if _side_tween and _side_tween.is_valid():
 		_side_tween.kill()
@@ -607,12 +612,60 @@ func _add_pack_card(id: String, def: Dictionary, list: VBoxContainer) -> void:
 	list.add_child(card)
 
 
+func _pack_preview_label(id: String) -> String:
+	"""Side-button text: show STOP while this pack's preview is playing."""
+	return "■ STOP PREVIEW" if _previewing_id == id else "▶ PLAY PREVIEW"
+
+
+func _toggle_pack_preview(id: String) -> void:
+	"""Start or stop an in-shop audition of a sound pack. The pack's audio layer
+	plays on the Music bus, on top of whatever music is already playing, so the
+	player hears exactly how the layer sits on the music before buying."""
+	var def: Dictionary = GameState.SOUND_PACK_CATALOG.get(id, {})
+	if def.is_empty():
+		return
+	_stop_pack_preview()
+	var layers: Array = def.get("layers", [])
+	for layer_path in layers:
+		if not ResourceLoader.exists(layer_path):
+			continue
+		var stream: AudioStream = load(layer_path)
+		if not stream:
+			continue
+		var pl := AudioStreamPlayer.new()
+		pl.name = "PackPreview"
+		pl.bus = "Music"
+		pl.volume_db = -6.0
+		pl.stream = stream
+		if stream is AudioStreamWAV:
+			(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+		add_child(pl)
+		pl.play()
+		_preview_players.append(pl)
+	_previewing_id = id
+	if _preview_btn and is_instance_valid(_preview_btn):
+		_preview_btn.text = _pack_preview_label(id)
+
+
+func _stop_pack_preview() -> void:
+	"""Stop and free any sound-pack preview players."""
+	for pl in _preview_players:
+		if is_instance_valid(pl):
+			pl.stop()
+			pl.queue_free()
+	_preview_players.clear()
+	_previewing_id = ""
+
+
 func _populate_pack_side(id: String, def: Dictionary) -> void:
 	_selected_name = id
 	_selected_kind = "sound_pack"
 	_selected_def = def
 	if not _side_panel:
 		return
+	# Switching to a different pack stops any preview that was playing.
+	if _previewing_id != "" and _previewing_id != id:
+		_stop_pack_preview()
 	_side_icon.texture = null
 	_side_name.label_text = id
 	var owned: bool = GameState.is_sound_pack_owned(id)
@@ -635,6 +688,13 @@ func _populate_pack_side(id: String, def: Dictionary) -> void:
 		_side_status.font_color = Color(1, 0.85, 0.2, 1)
 	for c in _side_buttons.get_children():
 		c.queue_free()
+	# Preview: play the pack's audio layer on top of the current music so the
+	# player can hear how it sounds before spending gold.
+	var prev := _make_side_button(_pack_preview_label(id))
+	prev.add_theme_color_override("font_color", Color(0.6, 1, 0.9, 1))
+	prev.pressed.connect(_toggle_pack_preview.bind(id))
+	_side_buttons.add_child(prev)
+	_preview_btn = prev
 	if not owned:
 		var buy := _make_side_button("BUY — $%d" % cost)
 		buy.add_theme_color_override("font_color", Color(1, 0.85, 0.2, 1))
