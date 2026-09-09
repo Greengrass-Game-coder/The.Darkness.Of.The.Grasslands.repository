@@ -445,9 +445,14 @@ func _play_animation(anim: String) -> void:
 				animated_sprite.play(walk_anim)
 			else:
 				animated_sprite.play(idle_anim)  # Fallback
-		"hit", "teleport":
+		"hit":
+			# Hide the base body while the hit VFX plays so only ONE animation
+			# shows at a time; the body is restored when the VFX hides.
+			animated_sprite.visible = false
+			_play_ability_vfx(anim)  # Show the hit VFX overlay
+		"teleport":
 			animated_sprite.play(idle_anim)  # Character stays on idle
-			_play_ability_vfx(anim)  # Show full-screen VFX overlay
+			_play_ability_vfx(anim)  # Show teleport VFX overlay
 
 
 func _change_state(new_state: State) -> void:
@@ -476,24 +481,10 @@ func _setup_ability_vfx_frames() -> void:
 		for tex in hit_frames:
 			vfx_sf.add_frame("hit", tex)
 
-	# Directional Hit variants (left/right/back) matching the base 10 frames.
-	# Down (the main animation) stays as the base "hit"; left/right/back are
-	# picked by facing via _dir_ability_anim(). Back frames are added later and
-	# load automatically once the "Hit MB1 back/" folder exists.
-	for dw in ["left", "right", "back"]:
-		var dir_frames: Array[Texture2D] = []
-		for i in range(1, 11):
-			var dpath: String = "res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit MB1 %s/Hit_MB1_looking_%s_frame-%d.png" % [dw, dw, i]
-			var dtex: Texture2D = load(dpath)
-			if dtex:
-				dir_frames.append(dtex)
-		if not dir_frames.is_empty():
-			var anim_name: String = "hit_" + dw
-			vfx_sf.add_animation(anim_name)
-			vfx_sf.set_animation_loop(anim_name, false)
-			vfx_sf.set_animation_speed(anim_name, 20.0)
-			for tex in dir_frames:
-				vfx_sf.add_frame(anim_name, tex)
+	# Directional Hit variants (left/right/back): the character is realigned
+	# onto the main/down frame position for each direction so it never jumps
+	# when the facing changes. Back frames load automatically once added.
+	_build_dir_anim(vfx_sf, "hit", "res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit_MB1_frame-1.png", 20.0, "res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit MB1 %s/Hit_MB1_looking_%s_frame-%d.png", 1)
 	
 	# Teleport animation (7 frames: 1-7)
 	var teleport_frames: Array[Texture2D] = []
@@ -524,6 +515,76 @@ func _dir_ability_anim(anim: String) -> String:
 	return anim
 
 
+func _frame_centroid(tex: Texture2D) -> Vector2:
+	"""Alpha-weighted center of a texture (sampled for speed). Used to realign
+	the directional ability frames onto the main/down frame so the character
+	stays put when the facing changes (fixes off-center abilities)."""
+	var img: Image = tex.get_image()
+	var w: int = img.get_width()
+	var h: int = img.get_height()
+	var cx: float = 0.0
+	var cy: float = 0.0
+	var tot: int = 0
+	for y in range(0, h, 4):
+		for x in range(0, w, 4):
+			var a: int = img.get_pixel(x, y).a8
+			if a > 12:
+				cx += float(x) * a
+				cy += float(y) * a
+				tot += a
+	if tot == 0:
+		return Vector2(w * 0.5, h * 0.5)
+	return Vector2(cx / tot, cy / tot)
+
+
+func _shift_texture(src: Texture2D, dx: int, dy: int) -> Texture2D:
+	"""Return a copy of src shifted by (dx, dy) px so the character can be
+	realigned onto the main/down position. No-op when there's nothing to shift."""
+	if dx == 0 and dy == 0:
+		return src
+	var img: Image = src.get_image()
+	var out := Image.create(src.get_width(), src.get_height(), false, Image.FORMAT_RGBA8)
+	out.fill(Color(0, 0, 0, 0))
+	out.blit_rect(img, Rect2(0, 0, src.get_width(), src.get_height()), Vector2(dx, dy))
+	return ImageTexture.create_from_image(out)
+
+
+func _build_dir_anim(vfx_sf: SpriteFrames, anim_base: String, main_frame0_path: String, speed: float, template: String, index_offset: int = 0) -> void:
+	"""Build left/right/back variants of an ability animation, each realigned so
+	its character sits where the main/down character does (fixed centering).
+	Back frames are added later and load automatically once the folder exists;
+	missing frames are skipped silently so the console stays clean."""
+	var main_tex: Texture2D = load(main_frame0_path)
+	var ref_c: Vector2 = _frame_centroid(main_tex) if main_tex else Vector2.ZERO
+	for dw in ["left", "right", "back"]:
+		var frames: Array[Texture2D] = []
+		var shift := Vector2.ZERO
+		var miss := 0
+		var i := 0
+		while miss < 6 and i < 60:
+			var idx: int = i + index_offset
+			var path: String = template % [dw, dw, idx]
+			i += 1
+			if not ResourceLoader.exists(path):
+				miss += 1
+				continue
+			miss = 0
+			var tex: Texture2D = load(path)
+			if tex == null:
+				miss += 1
+				continue
+			if frames.is_empty():
+				shift = (ref_c - _frame_centroid(tex)).round()
+			frames.append(_shift_texture(tex, int(shift.x), int(shift.y)))
+		if not frames.is_empty():
+			var anim_name: String = anim_base + "_" + dw
+			vfx_sf.add_animation(anim_name)
+			vfx_sf.set_animation_loop(anim_name, false)
+			vfx_sf.set_animation_speed(anim_name, speed)
+			for tex in frames:
+				vfx_sf.add_frame(anim_name, tex)
+
+
 func _play_ability_vfx(anim: String) -> void:
 	"""Play a full-screen VFX overlay animation."""
 	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(anim):
@@ -533,7 +594,9 @@ func _play_ability_vfx(anim: String) -> void:
 
 
 func _hide_vfx() -> void:
-	"""Hide the VFX overlay."""
+	"""Hide the VFX overlay and restore the base body."""
+	if is_instance_valid(animated_sprite):
+		animated_sprite.visible = true
 	ability_vfx.visible = false
 	ability_vfx.stop()
 

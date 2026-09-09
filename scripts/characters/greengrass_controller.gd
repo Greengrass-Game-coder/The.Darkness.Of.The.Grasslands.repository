@@ -820,12 +820,12 @@ func _setup_ability_vfx_frames() -> void:
 		for tex in heal_frames:
 			vfx_sf.add_frame("heal", tex)
 
-	_add_directional_ability_frames(vfx_sf)
+	_build_directional_ability_frames(vfx_sf)
 	ability_vfx.sprite_frames = vfx_sf
 	ability_vfx.visible = false
 
 
-func _add_directional_ability_frames(vfx_sf: SpriteFrames) -> void:
+func _add_directional_ability_frames_legacy(vfx_sf: SpriteFrames) -> void:  # DEPRECATED — unused
 	"""Add left/right/back directional variants for the block and punch-charge
 	animations. Down (the main animation) stays as the base "block"/"charge";
 	the other three are picked by facing/aim via _dir_ability_anim()/aim version.
@@ -899,14 +899,104 @@ func _sync_directional_vfx(anim: String) -> void:
 		ability_vfx.play(target)
 
 
+func _frame_centroid(tex: Texture2D) -> Vector2:
+	"""Alpha-weighted center of a texture (sampled for speed). Used to realign
+	the directional ability frames onto the main/down frame so the character
+	stays put when the facing changes (fixes off-center abilities)."""
+	var img: Image = tex.get_image()
+	var w: int = img.get_width()
+	var h: int = img.get_height()
+	var cx: float = 0.0
+	var cy: float = 0.0
+	var tot: int = 0
+	for y in range(0, h, 4):
+		for x in range(0, w, 4):
+			var a: int = img.get_pixel(x, y).a8
+			if a > 12:
+				cx += float(x) * a
+				cy += float(y) * a
+				tot += a
+	if tot == 0:
+		return Vector2(w * 0.5, h * 0.5)
+	return Vector2(cx / tot, cy / tot)
+
+
+func _shift_texture(src: Texture2D, dx: int, dy: int) -> Texture2D:
+	"""Return a copy of src shifted by (dx, dy) px so the character can be
+	realigned onto the main/down position. No-op when there's nothing to shift."""
+	if dx == 0 and dy == 0:
+		return src
+	var img: Image = src.get_image()
+	var out := Image.create(src.get_width(), src.get_height(), false, Image.FORMAT_RGBA8)
+	out.fill(Color(0, 0, 0, 0))
+	out.blit_rect(img, Rect2(0, 0, src.get_width(), src.get_height()), Vector2(dx, dy))
+	return ImageTexture.create_from_image(out)
+
+
+func _build_dir_anim(vfx_sf: SpriteFrames, anim_base: String, main_frame0_path: String, speed: float, template: String) -> void:
+	"""Build left/right/back variants of an ability animation, each realigned so
+	its character sits where the main/down character does (fixed centering).
+	Back frames are added later and load automatically once the folder exists;
+	missing frames are skipped silently so the console stays clean."""
+	var main_tex: Texture2D = load(main_frame0_path)
+	var ref_c: Vector2 = _frame_centroid(main_tex) if main_tex else Vector2.ZERO
+	for dw in ["left", "right", "back"]:
+		var frames: Array[Texture2D] = []
+		var shift := Vector2.ZERO
+		var miss := 0
+		var i := 0
+		while miss < 6 and i < 60:
+			var idx: int = i
+			var path: String = template % [dw, dw, idx]
+			i += 1
+			if not ResourceLoader.exists(path):
+				miss += 1
+				continue
+			miss = 0
+			var tex: Texture2D = load(path)
+			if tex == null:
+				miss += 1
+				continue
+			if frames.is_empty():
+				shift = (ref_c - _frame_centroid(tex)).round()
+			frames.append(_shift_texture(tex, int(shift.x), int(shift.y)))
+		if not frames.is_empty():
+			var anim_name: String = anim_base + "_" + dw
+			vfx_sf.add_animation(anim_name)
+			vfx_sf.set_animation_loop(anim_name, false)
+			vfx_sf.set_animation_speed(anim_name, speed)
+			for tex in frames:
+				vfx_sf.add_frame(anim_name, tex)
+
+
+func _build_directional_ability_frames(vfx_sf: SpriteFrames) -> void:
+	"""Build the directional variants (left/right/back) of every ability,
+	centered onto the main/down character position. Punch now uses BOTH the
+	directional charge (3 frames) and the directional strike (12 frames)."""
+	_build_dir_anim(vfx_sf, "block", "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Ability_BLOCK_frame_0.png", 10.0, "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Block %s/Ability_BLOCK_looking_%s_frame_%d.png")
+	_build_dir_anim(vfx_sf, "charge", "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/ABILITY_PARRY_punch_CHARGE_frame_0000.png", 12.0, "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/Punch %s/PUNCH_CHARGE_looking_%s_frame_%d.png")
+	_build_dir_anim(vfx_sf, "punch", "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/PUNCH_frame_00000.png", 12.0, "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/Punch %s/PUNCH_looking_%s_frame_%d.png")
+
+
+func _dir_from_vector(v: Vector2) -> Direction:
+	"""Map an aim/launch vector to a Direction for directional punch playback."""
+	if abs(v.x) > abs(v.y):
+		return Direction.RIGHT if v.x > 0 else Direction.LEFT
+	return Direction.DOWN if v.y > 0 else Direction.UP
+
+
 func _play_ability_vfx(anim: String) -> void:
 	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(anim):
 		ability_vfx.visible = true
 		var resolved: String = _dir_ability_anim(anim)
+		if is_instance_valid(animated_sprite):
+			animated_sprite.visible = false
 		ability_vfx.play(resolved)
 
 
 func _hide_vfx() -> void:
+	if is_instance_valid(animated_sprite):
+		animated_sprite.visible = true
 	ability_vfx.visible = false
 	ability_vfx.stop()
 
@@ -1068,10 +1158,13 @@ func _start_charge_punch() -> void:
 	_charging = true
 	_charge_time = 0.0
 	_change_state(State.PUNCH_CHARGING)
+	animated_sprite.visible = false
 	_play_animation("idle")
 	ability_vfx.visible = true
+	var charge_aim0: Vector2 = get_global_mouse_position() - global_position
+	var charge_anim0: String = _aim_dir_anim("charge", charge_aim0.normalized())
 	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation("charge"):
-		ability_vfx.play("charge")
+		ability_vfx.play(charge_anim0)
 	else:
 		ability_vfx.play("punch")
 	queue_redraw()
@@ -1100,6 +1193,7 @@ func _fire_charged_punch() -> void:
 	if parry_window_active:
 		parry_window_active = false
 		punch_locked = true  # Re-lock after parry punch is used
+	current_direction = _dir_from_vector(dir)
 	_play_animation("punch_parry" if is_parry_punch else "punch")
 
 	var charge_ratio: float = min(_charge_time / 1.5, 1.0)
