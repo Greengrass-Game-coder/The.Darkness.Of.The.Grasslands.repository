@@ -418,6 +418,7 @@ func _physics_process(delta: float) -> void:
 			_handle_movement(delta)
 		State.BLOCKING:
 			_handle_blocking(delta)
+			_sync_directional_vfx("block")
 		State.DASH_BLOCKING:
 			_handle_dash_blocking(delta)
 		State.PUNCHING:
@@ -819,14 +820,90 @@ func _setup_ability_vfx_frames() -> void:
 		for tex in heal_frames:
 			vfx_sf.add_frame("heal", tex)
 
+	_add_directional_ability_frames(vfx_sf)
 	ability_vfx.sprite_frames = vfx_sf
 	ability_vfx.visible = false
+
+
+func _add_directional_ability_frames(vfx_sf: SpriteFrames) -> void:
+	"""Add left/right/back directional variants for the block and punch-charge
+	animations. Down (the main animation) stays as the base "block"/"charge";
+	the other three are picked by facing/aim via _dir_ability_anim()/aim version.
+	Back frames are added later and load automatically once the folders exist."""
+	# Block — directional variants (11 frames, 0-indexed)
+	for dw in ["left", "right", "back"]:
+		var frames: Array[Texture2D] = []
+		for i in range(11):
+			var path: String = "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- BLOCK/Block %s/Ability_BLOCK_looking_%s_frame_%d.png" % [dw, dw, i]
+			var tex: Texture2D = load(path)
+			if tex:
+				frames.append(tex)
+		if not frames.is_empty():
+			var anim_name: String = "block_" + dw
+			vfx_sf.add_animation(anim_name)
+			vfx_sf.set_animation_loop(anim_name, false)
+			vfx_sf.set_animation_speed(anim_name, 10.0)
+			for tex in frames:
+				vfx_sf.add_frame(anim_name, tex)
+	# Punch charge — directional variants (15 frames, 0-indexed)
+	for dw in ["left", "right", "back"]:
+		var frames: Array[Texture2D] = []
+		for i in range(15):
+			var path: String = "res://The Darkness Of The Grasslands assets/Sprites/Greengrass/Abilities/Ability --- PUNCH/Punch %s/PUNCH_CHARGE_looking_%s_frame_%d.png" % [dw, dw, i]
+			var tex: Texture2D = load(path)
+			if tex:
+				frames.append(tex)
+		if not frames.is_empty():
+			var anim_name: String = "charge_" + dw
+			vfx_sf.add_animation(anim_name)
+			vfx_sf.set_animation_loop(anim_name, false)
+			vfx_sf.set_animation_speed(anim_name, 12.0)
+			for tex in frames:
+				vfx_sf.add_frame(anim_name, tex)
+
+
+func _dir_ability_anim(anim: String) -> String:
+	"""Return the directional variant of an ability anim for the current facing.
+	Down -> base (main), Left -> _left, Right -> _right, Up -> _back.
+	Falls back to the base anim if that direction's frames aren't available."""
+	var suffix: String = ["", "_left", "_right", "_back"][int(current_direction)]
+	var candidate: String = anim + suffix
+	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(candidate):
+		return candidate
+	return anim
+
+
+func _aim_dir_anim(anim: String, aim: Vector2) -> String:
+	"""Like _dir_ability_anim() but for an arbitrary aim vector (punch targets
+	where the mouse is pointing, independent of movement facing)."""
+	var dir: Direction = current_direction
+	if abs(aim.x) > abs(aim.y):
+		dir = Direction.RIGHT if aim.x > 0 else Direction.LEFT
+	else:
+		dir = Direction.DOWN if aim.y > 0 else Direction.UP
+	var suffix: String = ["", "_left", "_right", "_back"][int(dir)]
+	var candidate: String = anim + suffix
+	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(candidate):
+		return candidate
+	return anim
+
+
+func _sync_directional_vfx(anim: String) -> void:
+	"""Point a currently-playing directional ability VFX at the current facing.
+	Used by block, which can move around (change facing) while the block VFX
+	plays, so the direction needs to update live."""
+	if not ability_vfx.visible:
+		return
+	var target: String = _dir_ability_anim(anim)
+	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(target) and ability_vfx.animation != target:
+		ability_vfx.play(target)
 
 
 func _play_ability_vfx(anim: String) -> void:
 	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(anim):
 		ability_vfx.visible = true
-		ability_vfx.play(anim)
+		var resolved: String = _dir_ability_anim(anim)
+		ability_vfx.play(resolved)
 
 
 func _hide_vfx() -> void:
@@ -1095,6 +1172,14 @@ func _handle_charge(delta: float) -> void:
 	velocity = Vector2.ZERO
 	move_and_slide()
 	# Keep the aim arrow tracking the cursor while charging.
+	var aim_mouse: Vector2 = get_global_mouse_position()
+	var aim_vec: Vector2 = aim_mouse - global_position
+	var aim_dir: Vector2 = aim_vec.normalized()
+	if aim_vec.length() < 1.0:
+		aim_dir = _facing_dir()
+	var charge_anim: String = _aim_dir_anim("charge", aim_dir)
+	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(charge_anim) and ability_vfx.animation != charge_anim:
+		ability_vfx.play(charge_anim)
 	queue_redraw()
 
 

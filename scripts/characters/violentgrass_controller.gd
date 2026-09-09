@@ -475,6 +475,25 @@ func _setup_ability_vfx_frames() -> void:
 		vfx_sf.set_animation_speed("hit", 20.0)
 		for tex in hit_frames:
 			vfx_sf.add_frame("hit", tex)
+
+	# Directional Hit variants (left/right/back) matching the base 10 frames.
+	# Down (the main animation) stays as the base "hit"; left/right/back are
+	# picked by facing via _dir_ability_anim(). Back frames are added later and
+	# load automatically once the "Hit MB1 back/" folder exists.
+	for dw in ["left", "right", "back"]:
+		var dir_frames: Array[Texture2D] = []
+		for i in range(1, 11):
+			var dpath: String = "res://The Darkness Of The Grasslands assets/Sprites/Violentgrass/abilities/Hit MB1/Hit MB1 %s/Hit_MB1_looking_%s_frame-%d.png" % [dw, dw, i]
+			var dtex: Texture2D = load(dpath)
+			if dtex:
+				dir_frames.append(dtex)
+		if not dir_frames.is_empty():
+			var anim_name: String = "hit_" + dw
+			vfx_sf.add_animation(anim_name)
+			vfx_sf.set_animation_loop(anim_name, false)
+			vfx_sf.set_animation_speed(anim_name, 20.0)
+			for tex in dir_frames:
+				vfx_sf.add_frame(anim_name, tex)
 	
 	# Teleport animation (7 frames: 1-7)
 	var teleport_frames: Array[Texture2D] = []
@@ -494,11 +513,23 @@ func _setup_ability_vfx_frames() -> void:
 	ability_vfx.visible = false
 
 
+func _dir_ability_anim(anim: String) -> String:
+	"""Return the directional variant of an ability anim for the current facing.
+	Down -> base (main), Left -> _left, Right -> _right, Up -> _back.
+	Falls back to the base anim if that direction's frames aren't available."""
+	var suffix: String = ["", "_left", "_right", "_back"][int(current_direction)]
+	var candidate: String = anim + suffix
+	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(candidate):
+		return candidate
+	return anim
+
+
 func _play_ability_vfx(anim: String) -> void:
 	"""Play a full-screen VFX overlay animation."""
 	if ability_vfx.sprite_frames and ability_vfx.sprite_frames.has_animation(anim):
 		ability_vfx.visible = true
-		ability_vfx.play(anim)
+		var resolved: String = _dir_ability_anim(anim)
+		ability_vfx.play(resolved)
 
 
 func _hide_vfx() -> void:
